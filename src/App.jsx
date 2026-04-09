@@ -10,8 +10,8 @@ if (!window.storage) {
     },
   };
 }
-import { useState, useEffect, useCallback } from "react";
-import { PieChart, Pie, Cell, Tooltip as RTooltip, ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, BarChart, Bar } from "recharts";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { PieChart, Pie, Cell, Tooltip as RTooltip, ResponsiveContainer, XAxis, YAxis, CartesianGrid, BarChart, Bar } from "recharts";
 
 const THEME = {
   bg: "#f4f5f7",
@@ -91,6 +91,19 @@ function defaultData() {
   };
 }
 
+function exportData(data) {
+  const json = JSON.stringify(data, null, 2);
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `budget-ctrl-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 function normalizeCatName(name) {
   return (name || "").trim();
 }
@@ -143,6 +156,29 @@ function migrateCredits(data) {
     }
   }
   return { ...data, months };
+}
+
+function spentByCategory(month) {
+  const totals = new Map();
+  for (const e of (month.expenses || [])) {
+    totals.set(e.category, (totals.get(e.category) || 0) + e.amount);
+  }
+  for (const r of (month.recurring || [])) {
+    totals.set(r.category, (totals.get(r.category) || 0) + r.amount);
+  }
+  return totals;
+}
+
+function categoryAverage(data, categoryName, excludeKey) {
+  const keys = Object.keys(data.months).filter((k) => k !== excludeKey);
+  if (keys.length === 0) return null;
+  let total = 0;
+  for (const k of keys) {
+    const m = data.months[k];
+    for (const e of (m.expenses || [])) if (e.category === categoryName) total += e.amount;
+    for (const r of (m.recurring || [])) if (r.category === categoryName) total += r.amount;
+  }
+  return total / keys.length;
 }
 
 function migrate(raw) {
@@ -206,54 +242,6 @@ function categoryBreakdown(month, categories) {
     const cat = categories.find((c) => c.name === name) || { color: "#9ca3af", icon: "·" };
     return { name, value, color: cat.color, icon: cat.icon };
   }).sort((a, b) => b.value - a.value);
-}
-
-function variableDaily(month, key, baseIncome, credits, savingsPct) {
-  const [year, mon] = key.split("-").map(Number);
-  const daysInMonth = new Date(year, mon, 0).getDate();
-
-  const fixed = (month.recurring || []).reduce((a, r) => a + r.amount, 0)
-              + (month.upcoming  || []).reduce((a, u) => a + u.amount, 0);
-  const effective = baseIncome + credits;
-  const savingsTargetRaw = (baseIncome * (savingsPct || 0)) / 100;
-  const afterFixed = Math.max(0, effective - fixed);
-  const savings = Math.min(savingsTargetRaw, afterFixed);
-  const variableBudget = Math.max(0, afterFixed - savings);
-
-  const out = [];
-  let running = 0;
-  for (let day = 1; day <= daysInMonth; day++) {
-    for (const e of (month.expenses || [])) {
-      const d = Number((e.date || "").slice(8, 10));
-      if (d === day) running += e.amount;
-    }
-    out.push({ day, actual: running, pace: (variableBudget / daysInMonth) * day });
-  }
-
-  const today = new Date();
-  const curKeyNow = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-  const isCurrentMonth = key === curKeyNow;
-  const todayDay = isCurrentMonth ? Math.min(today.getDate(), daysInMonth) : 0;
-  const actualToday = todayDay > 0 ? out[todayDay - 1].actual : 0;
-  const projectedVariable = todayDay >= 5
-    ? (actualToday / todayDay) * daysInMonth
-    : null;
-
-  if (projectedVariable != null) {
-    for (let i = 0; i < out.length; i++) {
-      const day = i + 1;
-      if (day < todayDay) {
-        out[i].projected = null;
-      } else if (day === todayDay) {
-        out[i].projected = actualToday;
-      } else {
-        const t = (day - todayDay) / (daysInMonth - todayDay);
-        out[i].projected = actualToday + (projectedVariable - actualToday) * t;
-      }
-    }
-  }
-
-  return { data: out, variableBudget, fixed, todayDay, actualToday, projectedVariable };
 }
 
 function monthlyTotals(data) {
@@ -367,7 +355,7 @@ function StatCard({ label, value, accent, sub, icon }) {
         <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1.5, color: "#6b7280", fontWeight: 600 }}>{label}</div>
         <div style={{ fontSize: 20, opacity: 0.3 }}>{icon}</div>
       </div>
-      <div style={{ fontSize: 28, fontWeight: 800, color: accent, fontFamily: "'JetBrains Mono', monospace", margin: "8px 0 4px" }}>{value}</div>
+      <div style={{ fontSize: 28, fontWeight: 800, color: accent, fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", margin: "8px 0 4px" }}>{value}</div>
       {sub && <div style={{ fontSize: 12, color: "#6b7280" }}>{sub}</div>}
     </div>
   );
@@ -411,7 +399,7 @@ function CategoryDonut({ data, total }) {
             return (
               <div style={s.chartTooltip}>
                 <div style={{ fontWeight: 700, marginBottom: 2 }}>{d.icon} {d.name}</div>
-                <div style={{ fontFamily: "'JetBrains Mono', monospace" }}>{fmt(d.value)} · {pct}%</div>
+                <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums" }}>{fmt(d.value)} · {pct}%</div>
               </div>
             );
           }} />
@@ -419,76 +407,8 @@ function CategoryDonut({ data, total }) {
       </ResponsiveContainer>
       <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", textAlign: "center", pointerEvents: "none" }}>
         <div style={{ fontSize: 11, color: THEME.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>Total</div>
-        <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", color: THEME.text }}>{fmt(total)}</div>
+        <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", color: THEME.text }}>{fmt(total)}</div>
       </div>
-    </div>
-  );
-}
-
-function VariableSpendChart({ data, variableBudget, fixed, todayDay, projectedVariable }) {
-  if (!data.length) {
-    return <div style={s.chartEmpty}>No variable spending yet this month.</div>;
-  }
-  const allZero = data.every((d) => d.actual === 0);
-  return (
-    <div style={{ width: "100%", height: 240, position: "relative" }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ top: 10, right: 10, bottom: 0, left: 10 }}>
-          <CartesianGrid stroke={THEME.border} strokeDasharray="3 3" vertical={false} />
-          <XAxis dataKey="day" stroke={THEME.textFaint} fontSize={11} tickLine={false} axisLine={false} />
-          <YAxis stroke={THEME.textFaint} fontSize={11} tickLine={false} axisLine={false}
-            tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)} />
-          <RTooltip content={({ active, payload, label }) => {
-            if (!active || !payload?.length) return null;
-            const actual = payload.find((p) => p.dataKey === "actual")?.value ?? 0;
-            const pace = payload.find((p) => p.dataKey === "pace")?.value ?? 0;
-            const projected = payload.find((p) => p.dataKey === "projected")?.value;
-            const delta = actual - pace;
-            const deltaLabel = delta >= 0 ? "Over" : "Under";
-            const deltaColor = delta >= 0 ? THEME.danger : THEME.success;
-            return (
-              <div style={s.chartTooltip}>
-                <div style={{ fontWeight: 700, marginBottom: 4 }}>Day {label}</div>
-                <div style={{ fontFamily: "'JetBrains Mono', monospace", color: THEME.accent }}>Spent: {fmt(actual)}</div>
-                {variableBudget > 0 && (
-                  <>
-                    <div style={{ fontFamily: "'JetBrains Mono', monospace", color: THEME.textMuted }}>Pace: {fmt(pace)}</div>
-                    <div style={{ fontFamily: "'JetBrains Mono', monospace", color: deltaColor }}>{deltaLabel}: {fmt(Math.abs(delta))}</div>
-                    {projected != null && (
-                      <div style={{ fontFamily: "'JetBrains Mono', monospace", color: THEME.warning }}>Projected: {fmt(projected)}</div>
-                    )}
-                  </>
-                )}
-              </div>
-            );
-          }} />
-          {variableBudget > 0 && (
-            <Line type="monotone" dataKey="pace" stroke={THEME.textFaint} strokeWidth={1.5} strokeDasharray="4 4" dot={false} />
-          )}
-          {projectedVariable != null && (
-            <Line
-              type="monotone"
-              dataKey="projected"
-              stroke={THEME.warning}
-              strokeWidth={2}
-              strokeDasharray="6 3"
-              dot={false}
-              connectNulls={false}
-            />
-          )}
-          <Line type="monotone" dataKey="actual" stroke={THEME.accent} strokeWidth={2.5} dot={false} />
-        </LineChart>
-      </ResponsiveContainer>
-      {variableBudget === 0 && (
-        <div style={{ position: "absolute", top: 12, left: 0, right: 0, textAlign: "center", fontSize: 12, color: THEME.warning, pointerEvents: "none" }}>
-          Fixed costs ({fmt(fixed)}) consume your budget. No variable spend headroom.
-        </div>
-      )}
-      {allZero && variableBudget > 0 && (
-        <div style={{ position: "absolute", top: 12, left: 0, right: 0, textAlign: "center", fontSize: 12, color: THEME.textMuted, pointerEvents: "none" }}>
-          No one-off spending yet this month.
-        </div>
-      )}
     </div>
   );
 }
@@ -511,8 +431,8 @@ function MonthlyBarChart({ data, curKey, onBarClick }) {
             return (
               <div style={s.chartTooltip}>
                 <div style={{ fontWeight: 700, marginBottom: 4 }}>{d.key}</div>
-                <div style={{ fontFamily: "'JetBrains Mono', monospace", color: THEME.danger }}>Spent: {fmt(d.spent)}</div>
-                <div style={{ fontFamily: "'JetBrains Mono', monospace", color: THEME.textMuted }}>Income: {fmt(d.income)}</div>
+                <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", color: THEME.danger }}>Spent: {fmt(d.spent)}</div>
+                <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", color: THEME.textMuted }}>Income: {fmt(d.income)}</div>
               </div>
             );
           }} />
@@ -535,12 +455,126 @@ function MonthlyBarChart({ data, curKey, onBarClick }) {
   );
 }
 
+function CategoryBudgets({ categories, spent, average, onSetCap }) {
+  const [editing, setEditing] = useState(null);
+  const [draftCap, setDraftCap] = useState("");
+
+  const startEdit = (c) => {
+    setEditing(c.name);
+    setDraftCap(c.cap != null ? String(c.cap) : "");
+  };
+  const commitEdit = () => {
+    const n = parseFloat(String(draftCap).replace(",", "."));
+    onSetCap(editing, isFinite(n) && n > 0 ? n : null);
+    setEditing(null);
+  };
+  const cancelEdit = () => setEditing(null);
+
+  const rows = categories
+    .filter((c) => c.name !== "Uncategorized")
+    .map((c) => {
+      const sp = spent.get(c.name) || 0;
+      const pct = c.cap ? (sp / c.cap) * 100 : null;
+      return { ...c, sp, pct };
+    })
+    .sort((a, b) => {
+      if (a.pct == null && b.pct == null) return a.name.localeCompare(b.name);
+      if (a.pct == null) return 1;
+      if (b.pct == null) return -1;
+      return b.pct - a.pct;
+    });
+
+  if (rows.length === 0) {
+    return <div style={s.empty}>No categories yet. Add an expense to start tracking.</div>;
+  }
+
+  return (
+    <div>
+      {rows.map((r) => {
+        const isEditing = editing === r.name;
+        const avg = average(r.name);
+        const barColor = r.pct == null ? THEME.border
+          : r.pct > 100 ? THEME.danger
+          : r.pct > 80 ? THEME.warning
+          : THEME.accent;
+        return (
+          <div key={r.name} style={{ padding: "12px 0", borderBottom: `1px solid ${THEME.border}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 22, height: 22, borderRadius: "50%", background: r.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 }}>{r.icon}</div>
+                <span style={{ fontWeight: 600, fontSize: 13 }}>{r.name}</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {!isEditing && (
+                  <span style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontSize: 12, color: THEME.textMuted }}>
+                    {fmt(r.sp)} / {r.cap != null ? fmt(r.cap) : "—"}
+                  </span>
+                )}
+                {!isEditing && (
+                  <button style={s.editBtn} onClick={() => startEdit(r)}>{r.cap != null ? "✎" : "+"}</button>
+                )}
+                {isEditing && (
+                  <>
+                    <input type="text" inputMode="decimal" autoFocus
+                      value={draftCap}
+                      placeholder="Cap"
+                      onChange={(e) => setDraftCap(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") cancelEdit(); }}
+                      style={{ width: 80, ...s.input, padding: "6px 10px", fontSize: 12 }} />
+                    <button style={s.editBtn} onClick={commitEdit}>✓</button>
+                    <button style={s.delBtn} onClick={cancelEdit}>✕</button>
+                  </>
+                )}
+              </div>
+            </div>
+            {r.cap != null && (
+              <div style={{ height: 6, background: THEME.bg, borderRadius: 3, overflow: "hidden" }}>
+                <div style={{ width: `${Math.min(100, r.pct)}%`, height: "100%", background: barColor, transition: "width .3s" }} />
+              </div>
+            )}
+            {avg != null && (
+              <div style={{ fontSize: 11, color: THEME.textFaint, marginTop: 4 }}>
+                avg of past months: {fmt(avg)}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function App() {
   const [data, setData] = useState(defaultData());
   const [tab, setTab] = useState("dashboard");
   const [modal, setModal] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [historyKey, setHistoryKey] = useState(null);
+  const importInputRef = useRef(null);
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const triggerImport = () => importInputRef.current?.click();
+  const onImportFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(reader.result);
+        if (!parsed || typeof parsed !== "object" || !parsed.months || typeof parsed.months !== "object") {
+          alert("Could not read backup file. Make sure it's a valid budget-ctrl JSON export.");
+          return;
+        }
+        if (!confirm("Replace ALL current data with the contents of this backup? This cannot be undone.")) return;
+        const migrated = migrateCredits(migrateCategories(ensureCurrentMonth(migrate(parsed))));
+        save(migrated);
+      } catch {
+        alert("Could not read backup file. Make sure it's a valid budget-ctrl JSON export.");
+      } finally {
+        e.target.value = "";
+      }
+    };
+    reader.readAsText(file);
+  };
 
   useEffect(() => {
     (async () => {
@@ -560,6 +594,12 @@ export default function App() {
       setLoaded(true);
     })();
   }, []);
+
+  useEffect(() => {
+    if (!pendingDelete) return;
+    const t = setTimeout(() => setPendingDelete(null), 3000);
+    return () => clearTimeout(t);
+  }, [pendingDelete]);
 
   const save = useCallback(async (next) => {
     setData(next);
@@ -588,10 +628,12 @@ export default function App() {
   const baseIncome = cur.income;
   const effectiveIncome = baseIncome + totalCredits;
   const totalCommitted = totalExpenses + totalRecurring + totalAllUpcoming;
-  const savingsTargetRaw = (baseIncome * data.savingsGoalPercent) / 100;
   const availableAfterCommitted = Math.max(0, effectiveIncome - totalCommitted);
-  const savingsTarget = Math.min(savingsTargetRaw, availableAfterCommitted);
-  const savingsShortfall = Math.max(0, savingsTargetRaw - savingsTarget);
+  const maxSavingsPct = baseIncome > 0
+    ? Math.min(50, Math.max(0, Math.floor((availableAfterCommitted / baseIncome) * 100)))
+    : 0;
+  const displayPct = Math.min(data.savingsGoalPercent, maxSavingsPct);
+  const savingsTarget = (baseIncome * displayPct) / 100;
   const canInvest = Math.max(0, availableAfterCommitted - savingsTarget);
   const remaining = effectiveIncome - totalCommitted;
   const unpaidCount = cur.upcoming.filter((u) => !u.paid).length;
@@ -599,17 +641,20 @@ export default function App() {
 
   const catBreakdown = categoryBreakdown(cur, data.categories || []);
   const catTotal = catBreakdown.reduce((a, c) => a + c.value, 0);
-  const dailyResult = variableDaily(cur, curKey, baseIncome, totalCredits, data.savingsGoalPercent);
-  const dailyData = dailyResult.data;
-  const variableBudget = dailyResult.variableBudget;
-  const fixedTotal = dailyResult.fixed;
-  const todayDay = dailyResult.todayDay;
-  const projectedVariable = dailyResult.projectedVariable;
   const monthlyData = monthlyTotals(data);
+  const spentByCat = spentByCategory(cur);
+  const onSetCap = (name, newCap) => {
+    save({
+      ...data,
+      categories: data.categories.map((c) => c.name === name
+        ? (newCap == null ? { ...c, cap: undefined } : { ...c, cap: newCap })
+        : c),
+    });
+  };
 
   return (
     <div style={s.shell}>
-      <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800&display=swap" rel="stylesheet" />
+      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800&display=swap" rel="stylesheet" />
 
       {/* SIDEBAR */}
       <aside style={s.sidebar}>
@@ -636,16 +681,19 @@ export default function App() {
             <span style={{ fontSize: 12, color: THEME.outerTextMuted, fontWeight: 600 }}>PLN</span>
           </div>
           {totalCredits > 0 && (
-            <div style={{ fontSize: 11, color: "#10b981", marginTop: 6, fontFamily: "'JetBrains Mono', monospace" }}>
+            <div style={{ fontSize: 11, color: "#10b981", marginTop: 6, fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums" }}>
               + {fmt(totalCredits)} credits
             </div>
           )}
         </div>
         <div style={{ padding: "12px 20px", borderTop: "1px solid " + THEME.outerBorder }}>
-          <div style={{ fontSize: 10, color: THEME.outerTextMuted, letterSpacing: 1, textAlign: "center", cursor: "pointer" }}
-            onClick={async () => { if (confirm("Reset all data?")) await save(migrateCategories(ensureCurrentMonth(defaultData()))); }}>
-            RESET DATA
+          <div style={{ fontSize: 10, color: THEME.outerTextMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>DATA</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <button style={s.dataLink} onClick={() => exportData(data)}>EXPORT</button>
+            <button style={s.dataLink} onClick={triggerImport}>IMPORT</button>
+            <button style={s.dataLink} onClick={async () => { if (confirm("Reset all data?")) await save(migrateCredits(migrateCategories(ensureCurrentMonth(defaultData())))); }}>RESET</button>
           </div>
+          <input type="file" accept=".json" ref={importInputRef} onChange={onImportFile} style={{ display: "none" }} />
         </div>
       </aside>
 
@@ -672,25 +720,11 @@ export default function App() {
           {/* DASHBOARD */}
           {tab === "dashboard" && (
             <>
-              <div style={{ ...s.statsRow, gridTemplateColumns: projectedVariable != null ? "repeat(5, 1fr)" : "repeat(4, 1fr)" }}>
+              <div style={s.statsRow}>
                 <StatCard label="Remaining" value={fmt(remaining)} accent={remaining >= 0 ? "#10b981" : "#ef4444"} sub="After everything this month" icon="↓" />
                 <StatCard label="Still to Pay" value={fmt(totalUpcoming)} accent="#f59e0b" sub={`${unpaidCount} upcoming payment${unpaidCount !== 1 ? "s" : ""}`} icon="◈" />
-                <StatCard label="Can Invest" value={fmt(canInvest)} accent="#0066ff" sub={`After ${data.savingsGoalPercent}% savings goal`} icon="↗" />
+                <StatCard label="Can Invest" value={fmt(canInvest)} accent="#0066ff" sub={`After ${displayPct}% savings goal`} icon="↗" />
                 <StatCard label="Total Spent" value={fmt(totalExpenses + totalRecurring)} accent="#ef4444" sub={`${cur.expenses.length} one-off · ${cur.recurring.length} recurring`} icon="↻" />
-                {projectedVariable != null && (() => {
-                  const delta = projectedVariable - variableBudget;
-                  const overBudget = delta > 0;
-                  const noBudget = variableBudget === 0;
-                  const accent = noBudget ? "#6b7280" : (overBudget ? "#ef4444" : "#10b981");
-                  const sub = noBudget
-                    ? "No variable budget"
-                    : overBudget
-                      ? `Over by ${fmt(delta)}`
-                      : `Under by ${fmt(-delta)}`;
-                  return (
-                    <StatCard label="Projected" value={fmt(projectedVariable)} accent={accent} sub={sub} icon="↗" />
-                  );
-                })()}
               </div>
               {/* Savings goal + income breakdown strip */}
               <div style={{ ...s.card, marginBottom: 16 }}>
@@ -698,17 +732,12 @@ export default function App() {
                   <div>
                     <div style={s.cardTitle}>Savings Goal</div>
                     <div style={{ display: "flex", alignItems: "center", gap: 20, marginTop: 12 }}>
-                      <input type="range" min={0} max={50} value={data.savingsGoalPercent}
+                      <input type="range" min={0} max={maxSavingsPct} value={displayPct}
                         onChange={(e) => save({ ...data, savingsGoalPercent: +e.target.value })}
                         style={{ flex: 1, accentColor: "#0066ff" }} />
-                      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "#0066ff", fontSize: 18, minWidth: 100, textAlign: "right" }}>
-                        {data.savingsGoalPercent}%
+                      <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066ff", fontSize: 18, minWidth: 100, textAlign: "right" }}>
+                        {displayPct}%
                         <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 400 }}>{fmt(savingsTarget)}</div>
-                        {savingsShortfall > 0 && (
-                          <div style={{ fontSize: 11, color: "#f59e0b", fontWeight: 500, marginTop: 4 }}>
-                            ⚠ Short by {fmt(savingsShortfall)}
-                          </div>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -736,7 +765,7 @@ export default function App() {
                             <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
                               <div style={{ width: 10, height: 10, borderRadius: 3, background: l.color }} />
                               <span style={{ color: "#9ca3af" }}>{l.label}</span>
-                              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, color: "#0c0d12" }}>{fmt(l.val)}</span>
+                              <span style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 600, color: "#0c0d12" }}>{fmt(l.val)}</span>
                             </div>
                           ))}
                         </div>
@@ -751,15 +780,15 @@ export default function App() {
               {/* Charts row 1: daily line + category donut */}
               <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)", gap: 16, marginBottom: 16 }}>
                 <div style={s.card}>
-                  <div style={s.cardTitle}>Variable Spend</div>
-                  <div style={{ fontSize: 11, color: THEME.textMuted, marginTop: -4, marginBottom: 8 }}>Excludes recurring & upcoming</div>
-                  <VariableSpendChart
-                    data={dailyData}
-                    variableBudget={variableBudget}
-                    fixed={fixedTotal}
-                    todayDay={todayDay}
-                    projectedVariable={projectedVariable}
-                  />
+                  <div style={s.cardTitle}>Category Budgets</div>
+                  <div style={{ marginTop: 12 }}>
+                    <CategoryBudgets
+                      categories={data.categories}
+                      spent={spentByCat}
+                      average={(name) => categoryAverage(data, name, curKey)}
+                      onSetCap={onSetCap}
+                    />
+                  </div>
                 </div>
                 <div style={s.card}>
                   <div style={s.cardTitle}>By Category</div>
@@ -789,7 +818,7 @@ export default function App() {
                   ) : cur.expenses.slice(-4).reverse().map((e) => (
                     <div key={e.id} style={s.miniRow}>
                       <div><div style={{ fontWeight: 600, fontSize: 13 }}>{e.name}</div><div style={{ fontSize: 11, color: "#6b7280" }}>{e.date}</div></div>
-                      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "#ef4444", fontSize: 13 }}>{fmt(e.amount)}</div>
+                      <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444", fontSize: 13 }}>{fmt(e.amount)}</div>
                     </div>
                   ))}
                 </div>
@@ -803,7 +832,7 @@ export default function App() {
                   ) : cur.upcoming.filter((u) => !u.paid).slice(0, 4).map((u) => (
                     <div key={u.id} style={s.miniRow}>
                       <div><div style={{ fontWeight: 600, fontSize: 13 }}>{u.name}</div><div style={{ fontSize: 11, color: "#6b7280" }}>Due {u.dueDate}</div></div>
-                      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "#f59e0b", fontSize: 13 }}>{fmt(u.amount)}</div>
+                      <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#f59e0b", fontSize: 13 }}>{fmt(u.amount)}</div>
                     </div>
                   ))}
                 </div>
@@ -819,7 +848,7 @@ export default function App() {
                           <div style={{ fontWeight: 600, fontSize: 13 }}>{c.name}</div>
                           <div style={{ fontSize: 11, color: "#6b7280" }}>{c.source} · {c.date}</div>
                         </div>
-                        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "#10b981", fontSize: 13 }}>+{fmt(c.amount)}</div>
+                        <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#10b981", fontSize: 13 }}>+{fmt(c.amount)}</div>
                       </div>
                     ))}
                   </div>
@@ -833,18 +862,35 @@ export default function App() {
             <div style={s.card}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                 <div style={s.cardTitle}>All Expenses</div>
-                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "#ef4444", fontSize: 16 }}>Total: {fmt(totalExpenses)}</div>
+                <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444", fontSize: 16 }}>Total: {fmt(totalExpenses)}</div>
               </div>
               {cur.expenses.length === 0 ? <div style={s.empty}>No expenses yet. Click "+ Add Expense" to start tracking.</div> : (
                 <>
-                  <TableHeader columns={[{ label: "NAME", flex: 2 }, { label: "CATEGORY", flex: 1.2 }, { label: "DATE", flex: 1 }, { label: "AMOUNT", flex: 1, align: "right" }, { label: "", flex: 0.3, align: "center" }]} />
+                  <TableHeader columns={[{ label: "NAME", flex: 2 }, { label: "CATEGORY", flex: 1.2 }, { label: "DATE", flex: 1 }, { label: "AMOUNT", flex: 1, align: "right" }, { label: "", flex: 0.6, align: "center" }]} />
                   {cur.expenses.map((e) => (
                     <div key={e.id} style={s.tableRow}>
                       <div style={{ flex: 2, fontWeight: 600 }}>{e.name}</div>
                       <div style={{ flex: 1.2 }}><CategoryPill categoryName={e.category} categories={data.categories} /></div>
                       <div style={{ flex: 1, color: "#6b7280", fontSize: 13 }}>{e.date}</div>
-                      <div style={{ flex: 1, textAlign: "right", fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "#ef4444" }}>{fmt(e.amount)}</div>
-                      <div style={{ flex: 0.3, textAlign: "center" }}><button style={s.delBtn} onClick={() => patchCur({ expenses: cur.expenses.filter((x) => x.id !== e.id) })}>✕</button></div>
+                      <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444" }}>{fmt(e.amount)}</div>
+                      <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: 4 }}>
+                        <button style={s.editBtn} onClick={() => setModal({ type: "expense", editId: e.id })}>✎</button>
+                        <button
+                          style={{
+                            ...s.delBtn,
+                            color: pendingDelete === e.id ? "#ef4444" : THEME.textFaint,
+                            fontWeight: pendingDelete === e.id ? 700 : 400,
+                          }}
+                          onClick={() => {
+                            if (pendingDelete === e.id) {
+                              patchCur({ expenses: cur.expenses.filter((x) => x.id !== e.id) });
+                              setPendingDelete(null);
+                            } else {
+                              setPendingDelete(e.id);
+                            }
+                          }}
+                        >✕</button>
+                      </div>
                     </div>
                   ))}
                 </>
@@ -857,23 +903,40 @@ export default function App() {
             <div style={s.card}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                 <div style={s.cardTitle}>Recurring Payments</div>
-                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "#0066ff", fontSize: 16 }}>Monthly: {fmt(totalRecurring)}</div>
+                <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066ff", fontSize: 16 }}>Monthly: {fmt(totalRecurring)}</div>
               </div>
               {cur.recurring.length === 0 ? <div style={s.empty}>No recurring payments set up. Click "+ Add Recurring" to create one.</div> : (
                 <>
-                  <TableHeader columns={[{ label: "NAME", flex: 2 }, { label: "CATEGORY", flex: 1.2 }, { label: "FREQUENCY", flex: 1 }, { label: "DAY", flex: 0.5, align: "center" }, { label: "AMOUNT", flex: 1, align: "right" }, { label: "", flex: 0.3, align: "center" }]} />
+                  <TableHeader columns={[{ label: "NAME", flex: 2 }, { label: "CATEGORY", flex: 1.2 }, { label: "FREQUENCY", flex: 1 }, { label: "DAY", flex: 0.5, align: "center" }, { label: "AMOUNT", flex: 1, align: "right" }, { label: "", flex: 0.6, align: "center" }]} />
                   {cur.recurring.map((r) => (
                     <div key={r.id} style={s.tableRow}>
                       <div style={{ flex: 2, fontWeight: 600 }}>{r.name}</div>
                       <div style={{ flex: 1.2 }}><CategoryPill categoryName={r.category} categories={data.categories} /></div>
                       <div style={{ flex: 1, color: "#6b7280", fontSize: 13 }}>{r.frequency}</div>
                       <div style={{ flex: 0.5, textAlign: "center", color: "#6b7280", fontSize: 13 }}>{r.dayOfMonth || "—"}</div>
-                      <div style={{ flex: 1, textAlign: "right", fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "#0066ff" }}>{fmt(r.amount)}</div>
-                      <div style={{ flex: 0.3, textAlign: "center" }}><button style={s.delBtn} onClick={() => save({
-                        ...data,
-                        months: { ...data.months, [curKey]: { ...cur, recurring: cur.recurring.filter((x) => x.id !== r.id) } },
-                        recurringTemplate: data.recurringTemplate.filter((x) => !(x.name === r.name && x.amount === r.amount)),
-                      })}>✕</button></div>
+                      <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066ff" }}>{fmt(r.amount)}</div>
+                      <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: 4 }}>
+                        <button style={s.editBtn} onClick={() => setModal({ type: "recurring", editId: r.id })}>✎</button>
+                        <button
+                          style={{
+                            ...s.delBtn,
+                            color: pendingDelete === r.id ? "#ef4444" : THEME.textFaint,
+                            fontWeight: pendingDelete === r.id ? 700 : 400,
+                          }}
+                          onClick={() => {
+                            if (pendingDelete === r.id) {
+                              save({
+                                ...data,
+                                months: { ...data.months, [curKey]: { ...cur, recurring: cur.recurring.filter((x) => x.id !== r.id) } },
+                                recurringTemplate: data.recurringTemplate.filter((x) => !(x.name === r.name && x.amount === r.amount)),
+                              });
+                              setPendingDelete(null);
+                            } else {
+                              setPendingDelete(r.id);
+                            }
+                          }}
+                        >✕</button>
+                      </div>
                     </div>
                   ))}
                 </>
@@ -886,11 +949,11 @@ export default function App() {
             <div style={s.card}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                 <div style={s.cardTitle}>Upcoming Payments</div>
-                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "#f59e0b", fontSize: 16 }}>Owed: {fmt(totalUpcoming)}</div>
+                <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#f59e0b", fontSize: 16 }}>Owed: {fmt(totalUpcoming)}</div>
               </div>
               {cur.upcoming.length === 0 ? <div style={s.empty}>No upcoming payments. Click "+ Add Payment" to schedule one.</div> : (
                 <>
-                  <TableHeader columns={[{ label: "", flex: 0.3 }, { label: "NAME", flex: 2 }, { label: "CATEGORY", flex: 1.2 }, { label: "DUE DATE", flex: 1 }, { label: "AMOUNT", flex: 1, align: "right" }, { label: "STATUS", flex: 0.7, align: "center" }, { label: "", flex: 0.3, align: "center" }]} />
+                  <TableHeader columns={[{ label: "", flex: 0.3 }, { label: "NAME", flex: 2 }, { label: "CATEGORY", flex: 1.2 }, { label: "DUE DATE", flex: 1 }, { label: "AMOUNT", flex: 1, align: "right" }, { label: "STATUS", flex: 0.7, align: "center" }, { label: "", flex: 0.6, align: "center" }]} />
                   {cur.upcoming.map((u) => (
                     <div key={u.id} style={{ ...s.tableRow, opacity: u.paid ? 0.4 : 1 }}>
                       <div style={{ flex: 0.3 }}>
@@ -901,14 +964,31 @@ export default function App() {
                       <div style={{ flex: 2, fontWeight: 600, textDecoration: u.paid ? "line-through" : "none" }}>{u.name}</div>
                       <div style={{ flex: 1.2 }}><CategoryPill categoryName={u.category} categories={data.categories} /></div>
                       <div style={{ flex: 1, color: "#6b7280", fontSize: 13 }}>{u.dueDate}</div>
-                      <div style={{ flex: 1, textAlign: "right", fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: u.paid ? "#10b981" : "#f59e0b" }}>{fmt(u.amount)}</div>
+                      <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: u.paid ? "#10b981" : "#f59e0b" }}>{fmt(u.amount)}</div>
                       <div style={{ flex: 0.7, textAlign: "center" }}>
                         <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 20, fontWeight: 600,
                           background: u.paid ? "rgba(16,185,129,0.12)" : "rgba(245,158,11,0.12)",
                           color: u.paid ? "#10b981" : "#f59e0b"
                         }}>{u.paid ? "Paid" : "Pending"}</span>
                       </div>
-                      <div style={{ flex: 0.3, textAlign: "center" }}><button style={s.delBtn} onClick={() => patchCur({ upcoming: cur.upcoming.filter((x) => x.id !== u.id) })}>✕</button></div>
+                      <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: 4 }}>
+                        <button style={s.editBtn} onClick={() => setModal({ type: "upcoming", editId: u.id })}>✎</button>
+                        <button
+                          style={{
+                            ...s.delBtn,
+                            color: pendingDelete === u.id ? "#ef4444" : THEME.textFaint,
+                            fontWeight: pendingDelete === u.id ? 700 : 400,
+                          }}
+                          onClick={() => {
+                            if (pendingDelete === u.id) {
+                              patchCur({ upcoming: cur.upcoming.filter((x) => x.id !== u.id) });
+                              setPendingDelete(null);
+                            } else {
+                              setPendingDelete(u.id);
+                            }
+                          }}
+                        >✕</button>
+                      </div>
                     </div>
                   ))}
                 </>
@@ -921,21 +1001,36 @@ export default function App() {
             <div style={s.card}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                 <div style={s.cardTitle}>Credits</div>
-                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "#10b981", fontSize: 16 }}>Total: {fmt(totalCredits)}</div>
+                <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#10b981", fontSize: 16 }}>Total: {fmt(totalCredits)}</div>
               </div>
               {(cur.credits || []).length === 0 ? (
                 <div style={s.empty}>No credits this month. Use "+ Add Credit" to log a refund, gift, or bonus.</div>
               ) : (
                 <>
-                  <TableHeader columns={[{ label: "NAME", flex: 2 }, { label: "SOURCE", flex: 1.2 }, { label: "DATE", flex: 1 }, { label: "AMOUNT", flex: 1, align: "right" }, { label: "", flex: 0.3, align: "center" }]} />
+                  <TableHeader columns={[{ label: "NAME", flex: 2 }, { label: "SOURCE", flex: 1.2 }, { label: "DATE", flex: 1 }, { label: "AMOUNT", flex: 1, align: "right" }, { label: "", flex: 0.6, align: "center" }]} />
                   {[...cur.credits].sort((a, b) => (b.date || "").localeCompare(a.date || "")).map((c) => (
                     <div key={c.id} style={s.tableRow}>
                       <div style={{ flex: 2, fontWeight: 600 }}>{c.name}</div>
                       <div style={{ flex: 1.2, color: "#6b7280", fontSize: 13 }}>{c.source || "Other"}</div>
                       <div style={{ flex: 1, color: "#6b7280", fontSize: 13 }}>{c.date}</div>
-                      <div style={{ flex: 1, textAlign: "right", fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "#10b981" }}>+{fmt(c.amount)}</div>
-                      <div style={{ flex: 0.3, textAlign: "center" }}>
-                        <button style={s.delBtn} onClick={() => patchCur({ credits: cur.credits.filter((x) => x.id !== c.id) })}>✕</button>
+                      <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#10b981" }}>+{fmt(c.amount)}</div>
+                      <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: 4 }}>
+                        <button style={s.editBtn} onClick={() => setModal({ type: "credit", editId: c.id })}>✎</button>
+                        <button
+                          style={{
+                            ...s.delBtn,
+                            color: pendingDelete === c.id ? "#ef4444" : THEME.textFaint,
+                            fontWeight: pendingDelete === c.id ? 700 : 400,
+                          }}
+                          onClick={() => {
+                            if (pendingDelete === c.id) {
+                              patchCur({ credits: cur.credits.filter((x) => x.id !== c.id) });
+                              setPendingDelete(null);
+                            } else {
+                              setPendingDelete(c.id);
+                            }
+                          }}
+                        >✕</button>
                       </div>
                     </div>
                   ))}
@@ -974,18 +1069,18 @@ export default function App() {
                           <div style={{ fontWeight: 700, fontSize: 16 }}>{monthLabel(k)}</div>
                           <div>
                             <div style={{ fontSize: 11, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1 }}>Income</div>
-                            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 }}>{fmt(m.income)}</div>
+                            <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>{fmt(m.income)}</div>
                             {credits > 0 && (
-                              <div style={{ fontSize: 10, color: "#10b981", fontFamily: "'JetBrains Mono', monospace" }}>+{fmt(credits)}</div>
+                              <div style={{ fontSize: 10, color: "#10b981", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums" }}>+{fmt(credits)}</div>
                             )}
                           </div>
                           <div>
                             <div style={{ fontSize: 11, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1 }}>Spent</div>
-                            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "#ef4444" }}>{fmt(spent)}</div>
+                            <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444" }}>{fmt(spent)}</div>
                           </div>
                           <div>
                             <div style={{ fontSize: 11, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1 }}>Remaining</div>
-                            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color }}>{fmt(rem)}</div>
+                            <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color }}>{fmt(rem)}</div>
                           </div>
                           <div style={{ width: 8, height: 40, background: color, borderRadius: 4 }} />
                         </button>
@@ -1031,7 +1126,7 @@ export default function App() {
                           <div style={{ flex: 2, fontWeight: 600 }}>{e.name}</div>
                           <div style={{ flex: 1.2 }}><CategoryPill categoryName={e.category} categories={data.categories} /></div>
                           <div style={{ flex: 1, color: "#6b7280", fontSize: 13 }}>{e.date}</div>
-                          <div style={{ flex: 1, textAlign: "right", fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "#ef4444" }}>{fmt(e.amount)}</div>
+                          <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444" }}>{fmt(e.amount)}</div>
                         </div>
                       ))}
                     </>
@@ -1048,7 +1143,7 @@ export default function App() {
                           <div style={{ flex: 1.2 }}><CategoryPill categoryName={r.category} categories={data.categories} /></div>
                           <div style={{ flex: 1, color: "#6b7280", fontSize: 13 }}>{r.frequency}</div>
                           <div style={{ flex: 0.5, textAlign: "center", color: "#6b7280", fontSize: 13 }}>{r.dayOfMonth || "—"}</div>
-                          <div style={{ flex: 1, textAlign: "right", fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "#0066ff" }}>{fmt(r.amount)}</div>
+                          <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066ff" }}>{fmt(r.amount)}</div>
                         </div>
                       ))}
                     </>
@@ -1065,7 +1160,7 @@ export default function App() {
                           <div style={{ flex: 1.2 }}><CategoryPill categoryName={u.category} categories={data.categories} /></div>
                           <div style={{ flex: 1, color: "#6b7280", fontSize: 13 }}>{u.dueDate}</div>
                           <div style={{ flex: 0.7, textAlign: "center", color: u.paid ? "#10b981" : "#6b7280", fontSize: 13 }}>{u.paid ? "Yes" : "No"}</div>
-                          <div style={{ flex: 1, textAlign: "right", fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: u.paid ? "#10b981" : "#f59e0b" }}>{fmt(u.amount)}</div>
+                          <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: u.paid ? "#10b981" : "#f59e0b" }}>{fmt(u.amount)}</div>
                         </div>
                       ))}
                     </>
@@ -1079,73 +1174,152 @@ export default function App() {
       </main>
 
       {/* MODALS */}
-      {modal?.type === "expense" && (
-        <FormModal title="Add Expense" fields={[
-          { key: "name", label: "Name", placeholder: "e.g. Groceries" },
-          { key: "amount", label: "Amount (PLN)", type: "number", placeholder: "0" },
-          { key: "category", label: "Category", type: "category", categories: data.categories },
-          { key: "date", label: "Date", type: "date", defaultValue: new Date().toISOString().slice(0, 10) },
-        ]} onClose={() => setModal(null)} onSave={(v) => {
-          const { categories, category } = ensureCategory(data.categories, v.category);
-          const newExp = { id: uid(), name: v.name, amount: +v.amount, date: v.date, category: category.name };
-          save({
-            ...data,
-            categories,
-            months: { ...data.months, [curKey]: { ...cur, expenses: [...cur.expenses, newExp] } },
-          });
-          setModal(null);
-        }} />
-      )}
-      {modal?.type === "recurring" && (
-        <FormModal title="Add Recurring Payment" fields={[
-          { key: "name", label: "Name", placeholder: "e.g. Rent" },
-          { key: "amount", label: "Amount (PLN)", type: "number", placeholder: "0" },
-          { key: "category", label: "Category", type: "category", categories: data.categories },
-          { key: "frequency", label: "Frequency", type: "select", options: ["Monthly", "Weekly", "Yearly"] },
-          { key: "dayOfMonth", label: "Day of Month", type: "number", placeholder: "1" },
-        ]} onClose={() => setModal(null)} onSave={(v) => {
-          const { categories, category } = ensureCategory(data.categories, v.category);
-          const newItem = { id: uid(), name: v.name, amount: +v.amount, frequency: v.frequency || "Monthly", dayOfMonth: +v.dayOfMonth || 1, category: category.name };
-          save({
-            ...data,
-            categories,
-            months: { ...data.months, [curKey]: { ...cur, recurring: [...cur.recurring, newItem] } },
-            recurringTemplate: [...data.recurringTemplate, { ...newItem }],
-          });
-          setModal(null);
-        }} />
-      )}
-      {modal?.type === "upcoming" && (
-        <FormModal title="Add Upcoming Payment" fields={[
-          { key: "name", label: "Name", placeholder: "e.g. Car Insurance" },
-          { key: "amount", label: "Amount (PLN)", type: "number", placeholder: "0" },
-          { key: "category", label: "Category", type: "category", categories: data.categories },
-          { key: "dueDate", label: "Due Date", type: "date", defaultValue: new Date().toISOString().slice(0, 10) },
-        ]} onClose={() => setModal(null)} onSave={(v) => {
-          const { categories, category } = ensureCategory(data.categories, v.category);
-          const newItem = { id: uid(), name: v.name, amount: +v.amount, dueDate: v.dueDate, paid: false, category: category.name };
-          save({
-            ...data,
-            categories,
-            months: { ...data.months, [curKey]: { ...cur, upcoming: [...cur.upcoming, newItem] } },
-          });
-          setModal(null);
-        }} />
-      )}
-      {modal?.type === "credit" && (
-        <FormModal title="Add Credit" fields={[
-          { key: "name", label: "Name", placeholder: "e.g. Amazon refund" },
-          { key: "amount", label: "Amount (PLN)", type: "number", placeholder: "0" },
-          { key: "source", label: "Source", placeholder: "Refund, Gift, Bonus, Other" },
-          { key: "date", label: "Date", type: "date", defaultValue: new Date().toISOString().slice(0, 10) },
-        ]} onClose={() => setModal(null)} onSave={(v) => {
-          const amt = +v.amount;
-          if (!v.name || !(amt > 0)) { setModal(null); return; }
-          const newCredit = { id: uid(), name: v.name, amount: amt, date: v.date, source: (v.source || "Other").trim() || "Other" };
-          patchCur({ credits: [...(cur.credits || []), newCredit] });
-          setModal(null);
-        }} />
-      )}
+      {modal?.type === "expense" && (() => {
+        const editing = modal.editId ? cur.expenses.find((x) => x.id === modal.editId) : null;
+        return (
+          <FormModal title={editing ? "Edit Expense" : "Add Expense"} fields={[
+            { key: "name", label: "Name", placeholder: "e.g. Groceries", defaultValue: editing?.name },
+            { key: "amount", label: "Amount (PLN)", type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
+            { key: "category", label: "Category", type: "category", categories: data.categories, defaultValue: editing?.category },
+            { key: "date", label: "Date", type: "date", defaultValue: editing?.date || new Date().toISOString().slice(0, 10) },
+          ]} onClose={() => setModal(null)} onSave={(v) => {
+            const { categories, category } = ensureCategory(data.categories, v.category);
+            if (editing) {
+              save({
+                ...data,
+                categories,
+                months: {
+                  ...data.months,
+                  [curKey]: {
+                    ...cur,
+                    expenses: cur.expenses.map((x) => x.id === editing.id
+                      ? { ...x, name: v.name, amount: +v.amount, date: v.date, category: category.name }
+                      : x),
+                  },
+                },
+              });
+            } else {
+              const newExp = { id: uid(), name: v.name, amount: +v.amount, date: v.date, category: category.name };
+              save({
+                ...data,
+                categories,
+                months: { ...data.months, [curKey]: { ...cur, expenses: [...cur.expenses, newExp] } },
+              });
+            }
+            setModal(null);
+          }} />
+        );
+      })()}
+      {modal?.type === "recurring" && (() => {
+        const editing = modal.editId ? cur.recurring.find((x) => x.id === modal.editId) : null;
+        return (
+          <FormModal title={editing ? "Edit Recurring Payment" : "Add Recurring Payment"} fields={[
+            { key: "name", label: "Name", placeholder: "e.g. Rent", defaultValue: editing?.name },
+            { key: "amount", label: "Amount (PLN)", type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
+            { key: "category", label: "Category", type: "category", categories: data.categories, defaultValue: editing?.category },
+            { key: "frequency", label: "Frequency", type: "select", options: ["Monthly", "Weekly", "Yearly"], defaultValue: editing?.frequency },
+            { key: "dayOfMonth", label: "Day of Month", type: "number", placeholder: "1", defaultValue: editing ? String(editing.dayOfMonth) : "" },
+          ]} onClose={() => setModal(null)} onSave={(v) => {
+            const { categories, category } = ensureCategory(data.categories, v.category);
+            if (editing) {
+              const updatedItem = {
+                ...editing,
+                name: v.name,
+                amount: +v.amount,
+                frequency: v.frequency || "Monthly",
+                dayOfMonth: +v.dayOfMonth || 1,
+                category: category.name,
+              };
+              save({
+                ...data,
+                categories,
+                months: {
+                  ...data.months,
+                  [curKey]: {
+                    ...cur,
+                    recurring: cur.recurring.map((x) => x.id === editing.id ? updatedItem : x),
+                  },
+                },
+                recurringTemplate: data.recurringTemplate.map((t) =>
+                  (t.name === editing.name && t.amount === editing.amount)
+                    ? { ...t, name: v.name, amount: +v.amount, frequency: v.frequency || "Monthly", dayOfMonth: +v.dayOfMonth || 1, category: category.name }
+                    : t
+                ),
+              });
+            } else {
+              const newItem = { id: uid(), name: v.name, amount: +v.amount, frequency: v.frequency || "Monthly", dayOfMonth: +v.dayOfMonth || 1, category: category.name };
+              save({
+                ...data,
+                categories,
+                months: { ...data.months, [curKey]: { ...cur, recurring: [...cur.recurring, newItem] } },
+                recurringTemplate: [...data.recurringTemplate, { ...newItem }],
+              });
+            }
+            setModal(null);
+          }} />
+        );
+      })()}
+      {modal?.type === "upcoming" && (() => {
+        const editing = modal.editId ? cur.upcoming.find((x) => x.id === modal.editId) : null;
+        return (
+          <FormModal title={editing ? "Edit Upcoming Payment" : "Add Upcoming Payment"} fields={[
+            { key: "name", label: "Name", placeholder: "e.g. Car Insurance", defaultValue: editing?.name },
+            { key: "amount", label: "Amount (PLN)", type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
+            { key: "category", label: "Category", type: "category", categories: data.categories, defaultValue: editing?.category },
+            { key: "dueDate", label: "Due Date", type: "date", defaultValue: editing?.dueDate || new Date().toISOString().slice(0, 10) },
+          ]} onClose={() => setModal(null)} onSave={(v) => {
+            const { categories, category } = ensureCategory(data.categories, v.category);
+            if (editing) {
+              save({
+                ...data,
+                categories,
+                months: {
+                  ...data.months,
+                  [curKey]: {
+                    ...cur,
+                    upcoming: cur.upcoming.map((x) => x.id === editing.id
+                      ? { ...x, name: v.name, amount: +v.amount, dueDate: v.dueDate, category: category.name }
+                      : x),
+                  },
+                },
+              });
+            } else {
+              const newItem = { id: uid(), name: v.name, amount: +v.amount, dueDate: v.dueDate, paid: false, category: category.name };
+              save({
+                ...data,
+                categories,
+                months: { ...data.months, [curKey]: { ...cur, upcoming: [...cur.upcoming, newItem] } },
+              });
+            }
+            setModal(null);
+          }} />
+        );
+      })()}
+      {modal?.type === "credit" && (() => {
+        const editing = modal.editId ? cur.credits.find((x) => x.id === modal.editId) : null;
+        return (
+          <FormModal title={editing ? "Edit Credit" : "Add Credit"} fields={[
+            { key: "name", label: "Name", placeholder: "e.g. Amazon refund", defaultValue: editing?.name },
+            { key: "amount", label: "Amount (PLN)", type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
+            { key: "source", label: "Source", placeholder: "Refund, Gift, Bonus, Other", defaultValue: editing?.source },
+            { key: "date", label: "Date", type: "date", defaultValue: editing?.date || new Date().toISOString().slice(0, 10) },
+          ]} onClose={() => setModal(null)} onSave={(v) => {
+            const amt = +v.amount;
+            if (!v.name || !(amt > 0)) { setModal(null); return; }
+            if (editing) {
+              patchCur({
+                credits: cur.credits.map((x) => x.id === editing.id
+                  ? { ...x, name: v.name, amount: amt, date: v.date, source: (v.source || "Other").trim() || "Other" }
+                  : x),
+              });
+            } else {
+              const newCredit = { id: uid(), name: v.name, amount: amt, date: v.date, source: (v.source || "Other").trim() || "Other" };
+              patchCur({ credits: [...(cur.credits || []), newCredit] });
+            }
+            setModal(null);
+          }} />
+        );
+      })()}
     </div>
   );
 }
@@ -1159,7 +1333,7 @@ const s = {
   navItemActive: { background: THEME.outerAccentSoft, color: "#ffffff" },
   badge: { background: THEME.warning, color: "#fff", fontSize: 10, fontWeight: 800, borderRadius: 999, padding: "1px 7px", marginLeft: "auto" },
   sidebarIncome: { padding: "16px 20px", borderTop: "1px solid " + THEME.outerBorder },
-  incomeInput: { background: THEME.outerBorder, border: "1px solid " + THEME.outerBorder, borderRadius: 10, padding: "10px 12px", color: THEME.success, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: 16, width: "100%", textAlign: "right", outline: "none", boxSizing: "border-box" },
+  incomeInput: { background: THEME.outerBorder, border: "1px solid " + THEME.outerBorder, borderRadius: 10, padding: "10px 12px", color: THEME.success, fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 16, width: "100%", textAlign: "right", outline: "none", boxSizing: "border-box" },
   main: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: THEME.outerBg },
   topbar: { padding: "24px 36px 20px", borderBottom: "none", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0, background: THEME.outerBg },
   content: { flex: 1, overflow: "auto", background: THEME.bg, borderRadius: 20, margin: "0 16px 16px 0", padding: 32 },
@@ -1170,12 +1344,14 @@ const s = {
   card: { background: THEME.surface, borderRadius: 16, padding: 24, border: `1px solid ${THEME.border}`, boxShadow: THEME.shadowCard },
   cardTitle: { fontSize: 12, textTransform: "uppercase", letterSpacing: 1.2, color: THEME.textMuted, fontWeight: 700 },
   linkBtn: { background: "none", border: "none", color: THEME.accent, fontSize: 13, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", fontWeight: 600 },
+  dataLink: { background: "none", border: "none", color: THEME.outerTextMuted, fontSize: 11, textTransform: "uppercase", letterSpacing: 1, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, padding: "6px 0", textAlign: "left" },
   breakdownBar: { display: "flex", height: 12, borderRadius: 999, overflow: "hidden", background: THEME.bg, marginTop: 12 },
   tableHeader: { display: "flex", padding: "12px 16px", borderBottom: `1px solid ${THEME.border}`, marginTop: 16, fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: THEME.textFaint, fontWeight: 700 },
   tableRow: { display: "flex", alignItems: "center", padding: "14px 16px", borderBottom: `1px solid ${THEME.border}`, fontSize: 14 },
   miniRow: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${THEME.border}` },
   addBtn: { background: THEME.accent, color: "#fff", border: "none", borderRadius: 10, padding: "10px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" },
   delBtn: { background: "none", border: "none", color: THEME.textFaint, cursor: "pointer", fontSize: 14, padding: "4px 8px" },
+  editBtn: { background: "none", border: "none", color: THEME.textMuted, cursor: "pointer", fontSize: 14, padding: "4px 8px" },
   empty: { textAlign: "center", color: THEME.textFaint, padding: "60px 20px", fontSize: 14 },
   emptySmall: { textAlign: "center", color: THEME.textFaint, padding: "24px 0", fontSize: 13 },
   overlay: { position: "fixed", inset: 0, background: "rgba(12,13,18,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 },
