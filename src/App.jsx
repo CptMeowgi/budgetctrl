@@ -10,7 +10,7 @@ if (!window.storage) {
     },
   };
 }
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, createContext, useContext, useMemo } from "react";
 import { PieChart, Pie, Cell, Tooltip as RTooltip, ResponsiveContainer, XAxis, YAxis, CartesianGrid, BarChart, Bar } from "recharts";
 
 const THEME = {
@@ -34,6 +34,24 @@ const THEME = {
   outerAccentSoft: "rgba(0,102,255,0.15)",
 };
 
+// Phase 5 — light panel theme is just THEME aliased (current default)
+const THEME_LIGHT_PANEL = THEME;
+
+// Phase 5 — dark panel theme overrides inner-panel surfaces only.
+// outerBg, outerText, outerBorder, accent, success, danger, warning are unchanged
+// (the dark sidebar/topbar frame stays as brand identity in both modes).
+const THEME_DARK_PANEL = {
+  ...THEME,
+  bg: "#1a1b22",
+  surface: "#25262d",
+  border: "#2f3038",
+  text: "#e5e7eb",
+  textMuted: "#9ca3af",
+  textFaint: "#6b7280",
+  shadowCard: "0 1px 2px rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.4)",
+  accentSoft: "rgba(0,102,255,0.18)",
+};
+
 const CATEGORY_COLORS = ["#ef4444", "#f59e0b", "#10b981", "#0066ff", "#8b5cf6", "#ec4899", "#14b8a6", "#f97316"];
 const CATEGORY_ICONS = ["🍔", "🚗", "🛍️", "📄", "🎮", "💊", "💰", "🏠", "✈️", "🎁", "☕", "📱"];
 const UNCATEGORIZED = { name: "Uncategorized", color: "#9ca3af", icon: "·" };
@@ -46,6 +64,7 @@ const TABS = [
   { id: "upcoming", label: "Upcoming", icon: "◈" },
   { id: "credits", label: "Credits", icon: "+" },
   { id: "history", label: "History", icon: "◷" },
+  { id: "year", label: "Year", icon: "▦" },
 ];
 
 function uid() {
@@ -169,6 +188,22 @@ function spentByCategory(month) {
   return totals;
 }
 
+function filterAndSort(arr, view) {
+  let out = arr;
+  if (view.search) {
+    const q = view.search.toLowerCase();
+    out = out.filter((x) => (x.name || "").toLowerCase().includes(q));
+  }
+  if (view.sortCol) {
+    out = [...out].sort((a, b) => {
+      const av = a[view.sortCol], bv = b[view.sortCol];
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+      return view.sortDir === "asc" ? cmp : -cmp;
+    });
+  }
+  return out;
+}
+
 function categoryAverage(data, categoryName, excludeKey) {
   const keys = Object.keys(data.months).filter((k) => k !== excludeKey);
   if (keys.length === 0) return null;
@@ -255,6 +290,7 @@ function monthlyTotals(data) {
 }
 
 function Modal({ title, onClose, children }) {
+  const { theme, s } = useThemed();
   return (
     <div style={s.overlay} onClick={onClose}>
       <div style={s.modal} onClick={(e) => e.stopPropagation()}>
@@ -269,6 +305,7 @@ function Modal({ title, onClose, children }) {
 }
 
 function CategoryPicker({ value, onChange, categories }) {
+  const { theme, s } = useThemed();
   const [open, setOpen] = useState(false);
   const suggestions = categories.filter((c) => {
     if (c.name === "Uncategorized") return false;
@@ -302,6 +339,7 @@ function CategoryPicker({ value, onChange, categories }) {
 }
 
 function FormModal({ title, fields, onClose, onSave }) {
+  const { theme, s } = useThemed();
   const [vals, setVals] = useState(() => {
     const init = {};
     fields.forEach((f) => { init[f.key] = f.defaultValue || ""; });
@@ -312,7 +350,7 @@ function FormModal({ title, fields, onClose, onSave }) {
       <div style={{ display: "grid", gridTemplateColumns: fields.length > 3 ? "1fr 1fr" : "1fr", gap: 16, padding: "20px 0" }}>
         {fields.map((f) => (
           <div key={f.key}>
-            <label style={{ fontSize: 11, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 6, display: "block", fontWeight: 600 }}>{f.label}</label>
+            <label style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 6, display: "block", fontWeight: 600 }}>{f.label}</label>
             {f.type === "select" ? (
               <select value={vals[f.key]} onChange={(e) => setVals({ ...vals, [f.key]: e.target.value })} style={s.input}>
                 {f.options.map((o) => <option key={o} value={o}>{o}</option>)}
@@ -349,29 +387,44 @@ function FormModal({ title, fields, onClose, onSave }) {
 }
 
 function StatCard({ label, value, accent, sub, icon }) {
+  const { theme, s } = useThemed();
   return (
     <div style={{ ...s.statCard, borderTop: `3px solid ${accent}` }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1.5, color: "#6b7280", fontWeight: 600 }}>{label}</div>
+        <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1.5, color: theme.textMuted, fontWeight: 600 }}>{label}</div>
         <div style={{ fontSize: 20, opacity: 0.3 }}>{icon}</div>
       </div>
       <div style={{ fontSize: 28, fontWeight: 800, color: accent, fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", margin: "8px 0 4px" }}>{value}</div>
-      {sub && <div style={{ fontSize: 12, color: "#6b7280" }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 12, color: theme.textMuted }}>{sub}</div>}
     </div>
   );
 }
 
-function TableHeader({ columns }) {
+function TableHeader({ columns, sortCol, sortDir, onSort }) {
+  const { theme, s } = useThemed();
   return (
     <div style={s.tableHeader}>
-      {columns.map((c, i) => (
-        <div key={i} style={{ flex: c.flex || 1, textAlign: c.align || "left" }}>{c.label}</div>
-      ))}
+      {columns.map((col, i) => {
+        const isSortable = col.sortKey && onSort;
+        const isActive = sortCol === col.sortKey;
+        const arrow = isActive ? (sortDir === "asc" ? " ↑" : " ↓") : "";
+        return (
+          <div key={i} style={{
+            flex: col.flex,
+            textAlign: col.align || "left",
+            cursor: isSortable ? "pointer" : "default",
+            userSelect: "none",
+          }} onClick={isSortable ? () => onSort(col.sortKey) : undefined}>
+            {col.label}{arrow}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
 function CategoryPill({ categoryName, categories }) {
+  const { theme, s } = useThemed();
   const cat = findCategory(categories, categoryName) || UNCATEGORIZED;
   return (
     <span style={{ ...s.catPill, background: `${cat.color}15`, color: cat.color }}>
@@ -382,6 +435,7 @@ function CategoryPill({ categoryName, categories }) {
 }
 
 function CategoryDonut({ data, total }) {
+  const { theme, s } = useThemed();
   if (!data.length) {
     return <div style={s.chartEmpty}>Add expenses to see category breakdown.</div>;
   }
@@ -406,14 +460,15 @@ function CategoryDonut({ data, total }) {
         </PieChart>
       </ResponsiveContainer>
       <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", textAlign: "center", pointerEvents: "none" }}>
-        <div style={{ fontSize: 11, color: THEME.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>Total</div>
-        <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", color: THEME.text }}>{fmt(total)}</div>
+        <div style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>Total</div>
+        <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", color: theme.text }}>{fmt(total)}</div>
       </div>
     </div>
   );
 }
 
 function MonthlyBarChart({ data, curKey, onBarClick }) {
+  const { theme, s } = useThemed();
   if (data.length < 2) {
     return <div style={s.chartEmpty}>Come back next month to see trends.</div>;
   }
@@ -421,9 +476,9 @@ function MonthlyBarChart({ data, curKey, onBarClick }) {
     <div style={{ width: "100%", height: 200 }}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 10, right: 10, bottom: 0, left: 10 }}>
-          <CartesianGrid stroke={THEME.border} strokeDasharray="3 3" vertical={false} />
-          <XAxis dataKey="label" stroke={THEME.textFaint} fontSize={11} tickLine={false} axisLine={false} />
-          <YAxis stroke={THEME.textFaint} fontSize={11} tickLine={false} axisLine={false}
+          <CartesianGrid stroke={theme.border} strokeDasharray="3 3" vertical={false} />
+          <XAxis dataKey="label" stroke={theme.textFaint} fontSize={11} tickLine={false} axisLine={false} />
+          <YAxis stroke={theme.textFaint} fontSize={11} tickLine={false} axisLine={false}
             tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)} />
           <RTooltip content={({ active, payload }) => {
             if (!active || !payload?.[0]) return null;
@@ -431,8 +486,8 @@ function MonthlyBarChart({ data, curKey, onBarClick }) {
             return (
               <div style={s.chartTooltip}>
                 <div style={{ fontWeight: 700, marginBottom: 4 }}>{d.key}</div>
-                <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", color: THEME.danger }}>Spent: {fmt(d.spent)}</div>
-                <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", color: THEME.textMuted }}>Income: {fmt(d.income)}</div>
+                <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", color: theme.danger }}>Spent: {fmt(d.spent)}</div>
+                <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", color: theme.textMuted }}>Income: {fmt(d.income)}</div>
               </div>
             );
           }} />
@@ -444,7 +499,7 @@ function MonthlyBarChart({ data, curKey, onBarClick }) {
             {data.map((d) => (
               <Cell
                 key={d.key}
-                fill={d.spent > d.income ? THEME.danger : THEME.accent}
+                fill={d.spent > d.income ? theme.danger : theme.accent}
                 style={{ cursor: d.key !== curKey ? "pointer" : "default" }}
               />
             ))}
@@ -456,6 +511,7 @@ function MonthlyBarChart({ data, curKey, onBarClick }) {
 }
 
 function CategoryBudgets({ categories, spent, average, onSetCap }) {
+  const { theme, s } = useThemed();
   const [editing, setEditing] = useState(null);
   const [draftCap, setDraftCap] = useState("");
 
@@ -493,12 +549,12 @@ function CategoryBudgets({ categories, spent, average, onSetCap }) {
       {rows.map((r) => {
         const isEditing = editing === r.name;
         const avg = average(r.name);
-        const barColor = r.pct == null ? THEME.border
-          : r.pct > 100 ? THEME.danger
-          : r.pct > 80 ? THEME.warning
-          : THEME.accent;
+        const barColor = r.pct == null ? theme.border
+          : r.pct > 100 ? theme.danger
+          : r.pct > 80 ? theme.warning
+          : theme.accent;
         return (
-          <div key={r.name} style={{ padding: "12px 0", borderBottom: `1px solid ${THEME.border}` }}>
+          <div key={r.name} style={{ padding: "12px 0", borderBottom: `1px solid ${theme.border}` }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{ width: 22, height: 22, borderRadius: "50%", background: r.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 }}>{r.icon}</div>
@@ -506,7 +562,7 @@ function CategoryBudgets({ categories, spent, average, onSetCap }) {
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 {!isEditing && (
-                  <span style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontSize: 12, color: THEME.textMuted }}>
+                  <span style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontSize: 12, color: theme.textMuted }}>
                     {fmt(r.sp)} / {r.cap != null ? fmt(r.cap) : "—"}
                   </span>
                 )}
@@ -528,12 +584,12 @@ function CategoryBudgets({ categories, spent, average, onSetCap }) {
               </div>
             </div>
             {r.cap != null && (
-              <div style={{ height: 6, background: THEME.bg, borderRadius: 3, overflow: "hidden" }}>
+              <div style={{ height: 6, background: theme.bg, borderRadius: 3, overflow: "hidden" }}>
                 <div style={{ width: `${Math.min(100, r.pct)}%`, height: "100%", background: barColor, transition: "width .3s" }} />
               </div>
             )}
             {avg != null && (
-              <div style={{ fontSize: 11, color: THEME.textFaint, marginTop: 4 }}>
+              <div style={{ fontSize: 11, color: theme.textFaint, marginTop: 4 }}>
                 avg of past months: {fmt(avg)}
               </div>
             )}
@@ -550,8 +606,16 @@ export default function App() {
   const [modal, setModal] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [historyKey, setHistoryKey] = useState(null);
+  const [yearKey, setYearKey] = useState(() => String(new Date().getFullYear()));
   const importInputRef = useRef(null);
   const [pendingDelete, setPendingDelete] = useState(null);
+  const [themeMode, setThemeMode] = useState(() => {
+    try { return localStorage.getItem("themeMode") || "light"; } catch { return "light"; }
+  });
+  const [expensesView, setExpensesView] = useState({ search: "", sortCol: null, sortDir: "asc" });
+  const [recurringView, setRecurringView] = useState({ search: "", sortCol: null, sortDir: "asc" });
+  const [upcomingView, setUpcomingView] = useState({ search: "", sortCol: null, sortDir: "asc" });
+  const [creditsView, setCreditsView] = useState({ search: "", sortCol: null, sortDir: "asc" });
   const triggerImport = () => importInputRef.current?.click();
   const onImportFile = (e) => {
     const file = e.target.files?.[0];
@@ -601,6 +665,16 @@ export default function App() {
     return () => clearTimeout(t);
   }, [pendingDelete]);
 
+  useEffect(() => {
+    try { localStorage.setItem("themeMode", themeMode); } catch {}
+  }, [themeMode]);
+
+  const themedValue = useMemo(() => {
+    const theme = themeMode === "dark" ? THEME_DARK_PANEL : THEME_LIGHT_PANEL;
+    return { theme, s: makeStyles(theme) };
+  }, [themeMode]);
+  const { theme, s } = themedValue;
+
   const save = useCallback(async (next) => {
     setData(next);
     try { await window.storage.set(STORAGE_KEY, JSON.stringify(next)); } catch {}
@@ -643,6 +717,22 @@ export default function App() {
   const catTotal = catBreakdown.reduce((a, c) => a + c.value, 0);
   const monthlyData = monthlyTotals(data);
   const spentByCat = spentByCategory(cur);
+  const onSortExpenses = (col) => {
+    setExpensesView((v) => ({ ...v, sortCol: col, sortDir: v.sortCol === col && v.sortDir === "asc" ? "desc" : "asc" }));
+  };
+  const filteredExpenses = filterAndSort(cur.expenses, expensesView);
+  const onSortRecurring = (col) => {
+    setRecurringView((v) => ({ ...v, sortCol: col, sortDir: v.sortCol === col && v.sortDir === "asc" ? "desc" : "asc" }));
+  };
+  const filteredRecurring = filterAndSort(cur.recurring, recurringView);
+  const onSortUpcoming = (col) => {
+    setUpcomingView((v) => ({ ...v, sortCol: col, sortDir: v.sortCol === col && v.sortDir === "asc" ? "desc" : "asc" }));
+  };
+  const filteredUpcoming = filterAndSort(cur.upcoming, upcomingView);
+  const onSortCredits = (col) => {
+    setCreditsView((v) => ({ ...v, sortCol: col, sortDir: v.sortCol === col && v.sortDir === "asc" ? "desc" : "asc" }));
+  };
+  const filteredCredits = filterAndSort(cur.credits || [], creditsView);
   const onSetCap = (name, newCap) => {
     save({
       ...data,
@@ -653,6 +743,7 @@ export default function App() {
   };
 
   return (
+    <ThemeContext.Provider value={themedValue}>
     <div style={s.shell}>
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800&display=swap" rel="stylesheet" />
 
@@ -660,7 +751,7 @@ export default function App() {
       <aside style={s.sidebar}>
         <div style={s.logo}>
           <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: -0.5, color: "#ffffff" }}>BUDGET</div>
-          <div style={{ fontSize: 10, letterSpacing: 3, color: THEME.accent, fontWeight: 700 }}>CTRL</div>
+          <div style={{ fontSize: 10, letterSpacing: 3, color: theme.accent, fontWeight: 700 }}>CTRL</div>
         </div>
         <nav style={s.nav}>
           {TABS.map((t) => (
@@ -673,12 +764,12 @@ export default function App() {
           ))}
         </nav>
         <div style={s.sidebarIncome}>
-          <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 1.5, color: THEME.outerTextMuted, marginBottom: 8, fontWeight: 600 }}>Monthly Income</div>
+          <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 1.5, color: theme.outerTextMuted, marginBottom: 8, fontWeight: 600 }}>Monthly Income</div>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <input type="number" value={cur.income || ""}
               onChange={(e) => patchCur({ income: +e.target.value || 0 })}
               placeholder="0" style={s.incomeInput} />
-            <span style={{ fontSize: 12, color: THEME.outerTextMuted, fontWeight: 600 }}>PLN</span>
+            <span style={{ fontSize: 12, color: theme.outerTextMuted, fontWeight: 600 }}>PLN</span>
           </div>
           {totalCredits > 0 && (
             <div style={{ fontSize: 11, color: "#10b981", marginTop: 6, fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums" }}>
@@ -686,8 +777,8 @@ export default function App() {
             </div>
           )}
         </div>
-        <div style={{ padding: "12px 20px", borderTop: "1px solid " + THEME.outerBorder }}>
-          <div style={{ fontSize: 10, color: THEME.outerTextMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>DATA</div>
+        <div style={{ padding: "12px 20px", borderTop: "1px solid " + theme.outerBorder }}>
+          <div style={{ fontSize: 10, color: theme.outerTextMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>DATA</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             <button style={s.dataLink} onClick={() => exportData(data)}>EXPORT</button>
             <button style={s.dataLink} onClick={triggerImport}>IMPORT</button>
@@ -704,15 +795,24 @@ export default function App() {
             <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0, letterSpacing: -0.5, color: "#ffffff" }}>
               {TABS.find((t) => t.id === tab)?.label}
             </h1>
-            <div style={{ fontSize: 12, color: THEME.outerTextMuted, marginTop: 2 }}>
+            <div style={{ fontSize: 12, color: theme.outerTextMuted, marginTop: 2 }}>
               {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
             </div>
           </div>
-          {tab !== "dashboard" && tab !== "history" && (
-            <button style={s.addBtn} onClick={() => setModal({ type: tab === "expenses" ? "expense" : tab === "credits" ? "credit" : tab })}>
-              + Add {tab === "expenses" ? "Expense" : tab === "recurring" ? "Recurring" : tab === "credits" ? "Credit" : "Payment"}
+          <div style={{ display: "flex", alignItems: "center" }}>
+            <button
+              style={s.themeToggle}
+              onClick={() => setThemeMode((m) => m === "dark" ? "light" : "dark")}
+              title={themeMode === "dark" ? "Switch to light panel" : "Switch to dark panel"}
+            >
+              {themeMode === "dark" ? "☀" : "☾"}
             </button>
-          )}
+            {tab !== "dashboard" && tab !== "history" && tab !== "year" && (
+              <button style={s.addBtn} onClick={() => setModal({ type: tab === "expenses" ? "expense" : tab === "credits" ? "credit" : tab })}>
+                + Add {tab === "expenses" ? "Expense" : tab === "recurring" ? "Recurring" : tab === "credits" ? "Credit" : "Payment"}
+              </button>
+            )}
+          </div>
         </header>
 
         <div style={s.content}>
@@ -737,7 +837,7 @@ export default function App() {
                         style={{ flex: 1, accentColor: "#0066ff" }} />
                       <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066ff", fontSize: 18, minWidth: 100, textAlign: "right" }}>
                         {displayPct}%
-                        <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 400 }}>{fmt(savingsTarget)}</div>
+                        <div style={{ fontSize: 12, color: theme.textMuted, fontWeight: 400 }}>{fmt(savingsTarget)}</div>
                       </div>
                     </div>
                   </div>
@@ -764,8 +864,8 @@ export default function App() {
                           ].map((l) => (
                             <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
                               <div style={{ width: 10, height: 10, borderRadius: 3, background: l.color }} />
-                              <span style={{ color: "#9ca3af" }}>{l.label}</span>
-                              <span style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 600, color: "#0c0d12" }}>{fmt(l.val)}</span>
+                              <span style={{ color: theme.textFaint }}>{l.label}</span>
+                              <span style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 600, color: theme.text }}>{fmt(l.val)}</span>
                             </div>
                           ))}
                         </div>
@@ -817,7 +917,7 @@ export default function App() {
                     <div style={s.emptySmall}>No expenses logged</div>
                   ) : cur.expenses.slice(-4).reverse().map((e) => (
                     <div key={e.id} style={s.miniRow}>
-                      <div><div style={{ fontWeight: 600, fontSize: 13 }}>{e.name}</div><div style={{ fontSize: 11, color: "#6b7280" }}>{e.date}</div></div>
+                      <div><div style={{ fontWeight: 600, fontSize: 13 }}>{e.name}</div><div style={{ fontSize: 11, color: theme.textMuted }}>{e.date}</div></div>
                       <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444", fontSize: 13 }}>{fmt(e.amount)}</div>
                     </div>
                   ))}
@@ -831,7 +931,7 @@ export default function App() {
                     <div style={s.emptySmall}>All caught up!</div>
                   ) : cur.upcoming.filter((u) => !u.paid).slice(0, 4).map((u) => (
                     <div key={u.id} style={s.miniRow}>
-                      <div><div style={{ fontWeight: 600, fontSize: 13 }}>{u.name}</div><div style={{ fontSize: 11, color: "#6b7280" }}>Due {u.dueDate}</div></div>
+                      <div><div style={{ fontWeight: 600, fontSize: 13 }}>{u.name}</div><div style={{ fontSize: 11, color: theme.textMuted }}>Due {u.dueDate}</div></div>
                       <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#f59e0b", fontSize: 13 }}>{fmt(u.amount)}</div>
                     </div>
                   ))}
@@ -846,7 +946,7 @@ export default function App() {
                       <div key={c.id} style={s.miniRow}>
                         <div>
                           <div style={{ fontWeight: 600, fontSize: 13 }}>{c.name}</div>
-                          <div style={{ fontSize: 11, color: "#6b7280" }}>{c.source} · {c.date}</div>
+                          <div style={{ fontSize: 11, color: theme.textMuted }}>{c.source} · {c.date}</div>
                         </div>
                         <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#10b981", fontSize: 13 }}>+{fmt(c.amount)}</div>
                       </div>
@@ -864,21 +964,28 @@ export default function App() {
                 <div style={s.cardTitle}>All Expenses</div>
                 <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444", fontSize: 16 }}>Total: {fmt(totalExpenses)}</div>
               </div>
-              {cur.expenses.length === 0 ? <div style={s.empty}>No expenses yet. Click "+ Add Expense" to start tracking.</div> : (
+              <input
+                type="text"
+                placeholder="Search expenses..."
+                value={expensesView.search}
+                onChange={(e) => setExpensesView((v) => ({ ...v, search: e.target.value }))}
+                style={s.searchInput}
+              />
+              {filteredExpenses.length === 0 ? <div style={s.empty}>{expensesView.search ? `No expenses match "${expensesView.search}".` : `No expenses yet. Click "+ Add Expense" to start tracking.`}</div> : (
                 <>
-                  <TableHeader columns={[{ label: "NAME", flex: 2 }, { label: "CATEGORY", flex: 1.2 }, { label: "DATE", flex: 1 }, { label: "AMOUNT", flex: 1, align: "right" }, { label: "", flex: 0.6, align: "center" }]} />
-                  {cur.expenses.map((e) => (
+                  <TableHeader columns={[{ label: "NAME", flex: 2, sortKey: "name" }, { label: "CATEGORY", flex: 1.2, sortKey: "category" }, { label: "DATE", flex: 1, sortKey: "date" }, { label: "AMOUNT", flex: 1, align: "right", sortKey: "amount" }, { label: "", flex: 0.6, align: "center" }]} sortCol={expensesView.sortCol} sortDir={expensesView.sortDir} onSort={onSortExpenses} />
+                  {filteredExpenses.map((e) => (
                     <div key={e.id} style={s.tableRow}>
                       <div style={{ flex: 2, fontWeight: 600 }}>{e.name}</div>
                       <div style={{ flex: 1.2 }}><CategoryPill categoryName={e.category} categories={data.categories} /></div>
-                      <div style={{ flex: 1, color: "#6b7280", fontSize: 13 }}>{e.date}</div>
+                      <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{e.date}</div>
                       <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444" }}>{fmt(e.amount)}</div>
                       <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: 4 }}>
                         <button style={s.editBtn} onClick={() => setModal({ type: "expense", editId: e.id })}>✎</button>
                         <button
                           style={{
                             ...s.delBtn,
-                            color: pendingDelete === e.id ? "#ef4444" : THEME.textFaint,
+                            color: pendingDelete === e.id ? "#ef4444" : theme.textFaint,
                             fontWeight: pendingDelete === e.id ? 700 : 400,
                           }}
                           onClick={() => {
@@ -905,22 +1012,29 @@ export default function App() {
                 <div style={s.cardTitle}>Recurring Payments</div>
                 <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066ff", fontSize: 16 }}>Monthly: {fmt(totalRecurring)}</div>
               </div>
-              {cur.recurring.length === 0 ? <div style={s.empty}>No recurring payments set up. Click "+ Add Recurring" to create one.</div> : (
+              <input
+                type="text"
+                placeholder="Search recurring..."
+                value={recurringView.search}
+                onChange={(e) => setRecurringView((v) => ({ ...v, search: e.target.value }))}
+                style={s.searchInput}
+              />
+              {filteredRecurring.length === 0 ? <div style={s.empty}>{recurringView.search ? `No recurring items match "${recurringView.search}".` : `No recurring payments set up. Click "+ Add Recurring" to create one.`}</div> : (
                 <>
-                  <TableHeader columns={[{ label: "NAME", flex: 2 }, { label: "CATEGORY", flex: 1.2 }, { label: "FREQUENCY", flex: 1 }, { label: "DAY", flex: 0.5, align: "center" }, { label: "AMOUNT", flex: 1, align: "right" }, { label: "", flex: 0.6, align: "center" }]} />
-                  {cur.recurring.map((r) => (
+                  <TableHeader columns={[{ label: "NAME", flex: 2, sortKey: "name" }, { label: "CATEGORY", flex: 1.2, sortKey: "category" }, { label: "FREQUENCY", flex: 1 }, { label: "DAY", flex: 0.5, align: "center", sortKey: "dayOfMonth" }, { label: "AMOUNT", flex: 1, align: "right", sortKey: "amount" }, { label: "", flex: 0.6, align: "center" }]} sortCol={recurringView.sortCol} sortDir={recurringView.sortDir} onSort={onSortRecurring} />
+                  {filteredRecurring.map((r) => (
                     <div key={r.id} style={s.tableRow}>
                       <div style={{ flex: 2, fontWeight: 600 }}>{r.name}</div>
                       <div style={{ flex: 1.2 }}><CategoryPill categoryName={r.category} categories={data.categories} /></div>
-                      <div style={{ flex: 1, color: "#6b7280", fontSize: 13 }}>{r.frequency}</div>
-                      <div style={{ flex: 0.5, textAlign: "center", color: "#6b7280", fontSize: 13 }}>{r.dayOfMonth || "—"}</div>
+                      <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{r.frequency}</div>
+                      <div style={{ flex: 0.5, textAlign: "center", color: theme.textMuted, fontSize: 13 }}>{r.dayOfMonth || "—"}</div>
                       <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066ff" }}>{fmt(r.amount)}</div>
                       <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: 4 }}>
                         <button style={s.editBtn} onClick={() => setModal({ type: "recurring", editId: r.id })}>✎</button>
                         <button
                           style={{
                             ...s.delBtn,
-                            color: pendingDelete === r.id ? "#ef4444" : THEME.textFaint,
+                            color: pendingDelete === r.id ? "#ef4444" : theme.textFaint,
                             fontWeight: pendingDelete === r.id ? 700 : 400,
                           }}
                           onClick={() => {
@@ -951,10 +1065,17 @@ export default function App() {
                 <div style={s.cardTitle}>Upcoming Payments</div>
                 <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#f59e0b", fontSize: 16 }}>Owed: {fmt(totalUpcoming)}</div>
               </div>
-              {cur.upcoming.length === 0 ? <div style={s.empty}>No upcoming payments. Click "+ Add Payment" to schedule one.</div> : (
+              <input
+                type="text"
+                placeholder="Search upcoming..."
+                value={upcomingView.search}
+                onChange={(e) => setUpcomingView((v) => ({ ...v, search: e.target.value }))}
+                style={s.searchInput}
+              />
+              {filteredUpcoming.length === 0 ? <div style={s.empty}>{upcomingView.search ? `No upcoming items match "${upcomingView.search}".` : `No upcoming payments. Click "+ Add Payment" to schedule one.`}</div> : (
                 <>
-                  <TableHeader columns={[{ label: "", flex: 0.3 }, { label: "NAME", flex: 2 }, { label: "CATEGORY", flex: 1.2 }, { label: "DUE DATE", flex: 1 }, { label: "AMOUNT", flex: 1, align: "right" }, { label: "STATUS", flex: 0.7, align: "center" }, { label: "", flex: 0.6, align: "center" }]} />
-                  {cur.upcoming.map((u) => (
+                  <TableHeader columns={[{ label: "", flex: 0.3 }, { label: "NAME", flex: 2, sortKey: "name" }, { label: "CATEGORY", flex: 1.2, sortKey: "category" }, { label: "DUE DATE", flex: 1, sortKey: "dueDate" }, { label: "AMOUNT", flex: 1, align: "right", sortKey: "amount" }, { label: "STATUS", flex: 0.7, align: "center" }, { label: "", flex: 0.6, align: "center" }]} sortCol={upcomingView.sortCol} sortDir={upcomingView.sortDir} onSort={onSortUpcoming} />
+                  {filteredUpcoming.map((u) => (
                     <div key={u.id} style={{ ...s.tableRow, opacity: u.paid ? 0.4 : 1 }}>
                       <div style={{ flex: 0.3 }}>
                         <input type="checkbox" checked={!!u.paid}
@@ -963,7 +1084,7 @@ export default function App() {
                       </div>
                       <div style={{ flex: 2, fontWeight: 600, textDecoration: u.paid ? "line-through" : "none" }}>{u.name}</div>
                       <div style={{ flex: 1.2 }}><CategoryPill categoryName={u.category} categories={data.categories} /></div>
-                      <div style={{ flex: 1, color: "#6b7280", fontSize: 13 }}>{u.dueDate}</div>
+                      <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{u.dueDate}</div>
                       <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: u.paid ? "#10b981" : "#f59e0b" }}>{fmt(u.amount)}</div>
                       <div style={{ flex: 0.7, textAlign: "center" }}>
                         <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 20, fontWeight: 600,
@@ -976,7 +1097,7 @@ export default function App() {
                         <button
                           style={{
                             ...s.delBtn,
-                            color: pendingDelete === u.id ? "#ef4444" : THEME.textFaint,
+                            color: pendingDelete === u.id ? "#ef4444" : theme.textFaint,
                             fontWeight: pendingDelete === u.id ? 700 : 400,
                           }}
                           onClick={() => {
@@ -1003,23 +1124,30 @@ export default function App() {
                 <div style={s.cardTitle}>Credits</div>
                 <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#10b981", fontSize: 16 }}>Total: {fmt(totalCredits)}</div>
               </div>
-              {(cur.credits || []).length === 0 ? (
-                <div style={s.empty}>No credits this month. Use "+ Add Credit" to log a refund, gift, or bonus.</div>
+              <input
+                type="text"
+                placeholder="Search credits..."
+                value={creditsView.search}
+                onChange={(e) => setCreditsView((v) => ({ ...v, search: e.target.value }))}
+                style={s.searchInput}
+              />
+              {filteredCredits.length === 0 ? (
+                <div style={s.empty}>{creditsView.search ? `No credits match "${creditsView.search}".` : `No credits this month. Use "+ Add Credit" to log a refund, gift, or bonus.`}</div>
               ) : (
                 <>
-                  <TableHeader columns={[{ label: "NAME", flex: 2 }, { label: "SOURCE", flex: 1.2 }, { label: "DATE", flex: 1 }, { label: "AMOUNT", flex: 1, align: "right" }, { label: "", flex: 0.6, align: "center" }]} />
-                  {[...cur.credits].sort((a, b) => (b.date || "").localeCompare(a.date || "")).map((c) => (
+                  <TableHeader columns={[{ label: "NAME", flex: 2, sortKey: "name" }, { label: "SOURCE", flex: 1.2, sortKey: "source" }, { label: "DATE", flex: 1, sortKey: "date" }, { label: "AMOUNT", flex: 1, align: "right", sortKey: "amount" }, { label: "", flex: 0.6, align: "center" }]} sortCol={creditsView.sortCol} sortDir={creditsView.sortDir} onSort={onSortCredits} />
+                  {filteredCredits.map((c) => (
                     <div key={c.id} style={s.tableRow}>
                       <div style={{ flex: 2, fontWeight: 600 }}>{c.name}</div>
-                      <div style={{ flex: 1.2, color: "#6b7280", fontSize: 13 }}>{c.source || "Other"}</div>
-                      <div style={{ flex: 1, color: "#6b7280", fontSize: 13 }}>{c.date}</div>
+                      <div style={{ flex: 1.2, color: theme.textMuted, fontSize: 13 }}>{c.source || "Other"}</div>
+                      <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{c.date}</div>
                       <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#10b981" }}>+{fmt(c.amount)}</div>
                       <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: 4 }}>
                         <button style={s.editBtn} onClick={() => setModal({ type: "credit", editId: c.id })}>✎</button>
                         <button
                           style={{
                             ...s.delBtn,
-                            color: pendingDelete === c.id ? "#ef4444" : THEME.textFaint,
+                            color: pendingDelete === c.id ? "#ef4444" : theme.textFaint,
                             fontWeight: pendingDelete === c.id ? 700 : 400,
                           }}
                           onClick={() => {
@@ -1061,25 +1189,25 @@ export default function App() {
                       const color = rem >= 0 ? "#10b981" : "#ef4444";
                       return (
                         <button key={k} onClick={() => setHistoryKey(k)} style={{
-                          background: "#ffffff", border: "1px solid #e5e7eb", borderRadius: 12, padding: 20,
+                          background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 12, padding: 20,
                           textAlign: "left", cursor: "pointer", display: "grid",
                           gridTemplateColumns: "1.5fr 1fr 1fr 1fr 8px", gap: 16, alignItems: "center",
-                          color: "#0c0d12", fontFamily: "'DM Sans', sans-serif",
+                          color: theme.text, fontFamily: "'DM Sans', sans-serif",
                         }}>
                           <div style={{ fontWeight: 700, fontSize: 16 }}>{monthLabel(k)}</div>
                           <div>
-                            <div style={{ fontSize: 11, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1 }}>Income</div>
+                            <div style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>Income</div>
                             <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>{fmt(m.income)}</div>
                             {credits > 0 && (
                               <div style={{ fontSize: 10, color: "#10b981", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums" }}>+{fmt(credits)}</div>
                             )}
                           </div>
                           <div>
-                            <div style={{ fontSize: 11, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1 }}>Spent</div>
+                            <div style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>Spent</div>
                             <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444" }}>{fmt(spent)}</div>
                           </div>
                           <div>
-                            <div style={{ fontSize: 11, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1 }}>Remaining</div>
+                            <div style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>Remaining</div>
                             <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color }}>{fmt(rem)}</div>
                           </div>
                           <div style={{ width: 8, height: 40, background: color, borderRadius: 4 }} />
@@ -1125,7 +1253,7 @@ export default function App() {
                         <div key={e.id} style={s.tableRow}>
                           <div style={{ flex: 2, fontWeight: 600 }}>{e.name}</div>
                           <div style={{ flex: 1.2 }}><CategoryPill categoryName={e.category} categories={data.categories} /></div>
-                          <div style={{ flex: 1, color: "#6b7280", fontSize: 13 }}>{e.date}</div>
+                          <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{e.date}</div>
                           <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444" }}>{fmt(e.amount)}</div>
                         </div>
                       ))}
@@ -1141,8 +1269,8 @@ export default function App() {
                         <div key={r.id} style={s.tableRow}>
                           <div style={{ flex: 2, fontWeight: 600 }}>{r.name}</div>
                           <div style={{ flex: 1.2 }}><CategoryPill categoryName={r.category} categories={data.categories} /></div>
-                          <div style={{ flex: 1, color: "#6b7280", fontSize: 13 }}>{r.frequency}</div>
-                          <div style={{ flex: 0.5, textAlign: "center", color: "#6b7280", fontSize: 13 }}>{r.dayOfMonth || "—"}</div>
+                          <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{r.frequency}</div>
+                          <div style={{ flex: 0.5, textAlign: "center", color: theme.textMuted, fontSize: 13 }}>{r.dayOfMonth || "—"}</div>
                           <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066ff" }}>{fmt(r.amount)}</div>
                         </div>
                       ))}
@@ -1158,14 +1286,82 @@ export default function App() {
                         <div key={u.id} style={{ ...s.tableRow, opacity: u.paid ? 0.4 : 1 }}>
                           <div style={{ flex: 2, fontWeight: 600 }}>{u.name}</div>
                           <div style={{ flex: 1.2 }}><CategoryPill categoryName={u.category} categories={data.categories} /></div>
-                          <div style={{ flex: 1, color: "#6b7280", fontSize: 13 }}>{u.dueDate}</div>
-                          <div style={{ flex: 0.7, textAlign: "center", color: u.paid ? "#10b981" : "#6b7280", fontSize: 13 }}>{u.paid ? "Yes" : "No"}</div>
+                          <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{u.dueDate}</div>
+                          <div style={{ flex: 0.7, textAlign: "center", color: u.paid ? "#10b981" : theme.textMuted, fontSize: 13 }}>{u.paid ? "Yes" : "No"}</div>
                           <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: u.paid ? "#10b981" : "#f59e0b" }}>{fmt(u.amount)}</div>
                         </div>
                       ))}
                     </>
                   )}
                 </div>
+              </>
+            );
+          })()}
+          {tab === "year" && (() => {
+            const allYears = Array.from(new Set(Object.keys(data.months).map((k) => k.slice(0, 4)))).sort();
+            const monthsInYear = Object.entries(data.months)
+              .filter(([k]) => k.startsWith(yearKey + "-"))
+              .map(([, m]) => m);
+
+            const totalIncomeY = monthsInYear.reduce((a, m) => {
+              const cr = (m.credits || []).reduce((aa, c) => aa + c.amount, 0);
+              return a + (m.income || 0) + cr;
+            }, 0);
+            const totalSpentY = monthsInYear.reduce((a, m) => {
+              const exp = (m.expenses || []).reduce((aa, e) => aa + e.amount, 0);
+              const rec = (m.recurring || []).reduce((aa, r) => aa + r.amount, 0);
+              return a + exp + rec;
+            }, 0);
+            const totalSavedY = totalIncomeY - totalSpentY;
+            const monthsCount = monthsInYear.length;
+            const avgMonthlySpend = monthsCount > 0 ? totalSpentY / monthsCount : 0;
+
+            const yearCatTotals = new Map();
+            for (const m of monthsInYear) {
+              for (const e of (m.expenses || [])) yearCatTotals.set(e.category, (yearCatTotals.get(e.category) || 0) + e.amount);
+              for (const r of (m.recurring || [])) yearCatTotals.set(r.category, (yearCatTotals.get(r.category) || 0) + r.amount);
+            }
+            const yearCatBreakdown = Array.from(yearCatTotals.entries()).map(([name, value]) => {
+              const cat = (data.categories || []).find((c) => c.name === name) || { color: "#9ca3af", icon: "·" };
+              return { name, value, color: cat.color, icon: cat.icon };
+            }).sort((a, b) => b.value - a.value);
+            const yearCatTotal = yearCatBreakdown.reduce((a, c) => a + c.value, 0);
+
+            const prevYear = String(Number(yearKey) - 1);
+            const nextYear = String(Number(yearKey) + 1);
+            const canPrev = allYears.includes(prevYear);
+            const canNext = allYears.includes(nextYear);
+
+            return (
+              <>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 16, marginBottom: 16 }}>
+                  <button style={{ ...s.linkBtn, opacity: canPrev ? 1 : 0.3, cursor: canPrev ? "pointer" : "default" }}
+                    disabled={!canPrev} onClick={() => setYearKey(prevYear)}>← {prevYear}</button>
+                  <h2 style={{ fontSize: 24, fontWeight: 800, margin: 0 }}>{yearKey}</h2>
+                  <button style={{ ...s.linkBtn, opacity: canNext ? 1 : 0.3, cursor: canNext ? "pointer" : "default" }}
+                    disabled={!canNext} onClick={() => setYearKey(nextYear)}>{nextYear} →</button>
+                </div>
+                {monthsCount === 0 ? (
+                  <div style={s.empty}>No data for {yearKey}.</div>
+                ) : (
+                  <>
+                    <div style={s.statsRow}>
+                      <StatCard label="Total Income" value={fmt(totalIncomeY)} accent="#10b981"
+                        sub={`${monthsCount} month${monthsCount !== 1 ? "s" : ""} tracked`} icon="↑" />
+                      <StatCard label="Total Spent" value={fmt(totalSpentY)} accent="#ef4444"
+                        sub="Across the year" icon="↻" />
+                      <StatCard label="Total Saved" value={fmt(totalSavedY)}
+                        accent={totalSavedY >= 0 ? "#10b981" : "#ef4444"}
+                        sub={totalSavedY >= 0 ? "Income minus spent" : "Overspent"} icon="↓" />
+                      <StatCard label="Avg Monthly" value={fmt(avgMonthlySpend)} accent="#0066ff"
+                        sub="Spending per month" icon="◐" />
+                    </div>
+                    <div style={{ ...s.card, marginTop: 16 }}>
+                      <div style={s.cardTitle}>Category Breakdown — {yearKey}</div>
+                      <CategoryDonut data={yearCatBreakdown} total={yearCatTotal} />
+                    </div>
+                  </>
+                )}
               </>
             );
           })()}
@@ -1321,49 +1517,59 @@ export default function App() {
         );
       })()}
     </div>
+    </ThemeContext.Provider>
   );
 }
 
-const s = {
-  shell: { display: "flex", height: "100vh", background: THEME.outerBg, color: THEME.text, fontFamily: "'DM Sans', sans-serif", overflow: "hidden" },
-  sidebar: { width: 240, minWidth: 240, background: THEME.outerBg, borderRight: "none", display: "flex", flexDirection: "column", height: "100vh" },
-  logo: { padding: "28px 24px 24px", borderBottom: `1px solid ${THEME.border}` },
-  nav: { padding: "16px 12px", display: "flex", flexDirection: "column", gap: 4, flex: 1 },
-  navItem: { display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, border: "none", background: "transparent", color: THEME.outerTextMuted, fontSize: 14, fontWeight: 500, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", textAlign: "left", width: "100%" },
-  navItemActive: { background: THEME.outerAccentSoft, color: "#ffffff" },
-  badge: { background: THEME.warning, color: "#fff", fontSize: 10, fontWeight: 800, borderRadius: 999, padding: "1px 7px", marginLeft: "auto" },
-  sidebarIncome: { padding: "16px 20px", borderTop: "1px solid " + THEME.outerBorder },
-  incomeInput: { background: THEME.outerBorder, border: "1px solid " + THEME.outerBorder, borderRadius: 10, padding: "10px 12px", color: THEME.success, fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 16, width: "100%", textAlign: "right", outline: "none", boxSizing: "border-box" },
-  main: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: THEME.outerBg },
-  topbar: { padding: "24px 36px 20px", borderBottom: "none", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0, background: THEME.outerBg },
-  content: { flex: 1, overflow: "auto", background: THEME.bg, borderRadius: 20, margin: "0 16px 16px 0", padding: 32 },
-  contentInner: { maxWidth: 1400, margin: "0 auto" },
-  statsRow: { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 16, marginBottom: 24 },
-  statCard: { background: THEME.surface, borderRadius: 16, padding: 20, border: `1px solid ${THEME.border}`, boxShadow: THEME.shadowCard },
-  dashGrid: { display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)", gap: 16 },
-  card: { background: THEME.surface, borderRadius: 16, padding: 24, border: `1px solid ${THEME.border}`, boxShadow: THEME.shadowCard },
-  cardTitle: { fontSize: 12, textTransform: "uppercase", letterSpacing: 1.2, color: THEME.textMuted, fontWeight: 700 },
-  linkBtn: { background: "none", border: "none", color: THEME.accent, fontSize: 13, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", fontWeight: 600 },
-  dataLink: { background: "none", border: "none", color: THEME.outerTextMuted, fontSize: 11, textTransform: "uppercase", letterSpacing: 1, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, padding: "6px 0", textAlign: "left" },
-  breakdownBar: { display: "flex", height: 12, borderRadius: 999, overflow: "hidden", background: THEME.bg, marginTop: 12 },
-  tableHeader: { display: "flex", padding: "12px 16px", borderBottom: `1px solid ${THEME.border}`, marginTop: 16, fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: THEME.textFaint, fontWeight: 700 },
-  tableRow: { display: "flex", alignItems: "center", padding: "14px 16px", borderBottom: `1px solid ${THEME.border}`, fontSize: 14 },
-  miniRow: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${THEME.border}` },
-  addBtn: { background: THEME.accent, color: "#fff", border: "none", borderRadius: 10, padding: "10px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" },
-  delBtn: { background: "none", border: "none", color: THEME.textFaint, cursor: "pointer", fontSize: 14, padding: "4px 8px" },
-  editBtn: { background: "none", border: "none", color: THEME.textMuted, cursor: "pointer", fontSize: 14, padding: "4px 8px" },
-  empty: { textAlign: "center", color: THEME.textFaint, padding: "60px 20px", fontSize: 14 },
-  emptySmall: { textAlign: "center", color: THEME.textFaint, padding: "24px 0", fontSize: 13 },
-  overlay: { position: "fixed", inset: 0, background: "rgba(12,13,18,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 },
-  modal: { background: THEME.surface, borderRadius: 16, padding: 28, width: "100%", maxWidth: 460, border: `1px solid ${THEME.border}`, boxShadow: "0 20px 40px rgba(0,0,0,0.12)" },
-  modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
-  closeBtn: { background: "none", border: "none", color: THEME.textFaint, fontSize: 20, cursor: "pointer" },
-  input: { width: "100%", background: THEME.bg, border: `1px solid ${THEME.border}`, borderRadius: 10, padding: "11px 14px", color: THEME.text, fontSize: 14, outline: "none", boxSizing: "border-box", fontFamily: "'DM Sans', sans-serif" },
-  saveBtn: { width: "100%", background: THEME.accent, color: "#fff", border: "none", borderRadius: 10, padding: "13px", fontWeight: 700, fontSize: 14, cursor: "pointer", marginTop: 8, fontFamily: "'DM Sans', sans-serif" },
-  catPill: { display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px 4px 4px", borderRadius: 999, fontSize: 12, fontWeight: 600 },
-  catDot: { width: 22, height: 22, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 },
-  suggestBox: { position: "absolute", top: "100%", left: 0, right: 0, background: THEME.surface, border: `1px solid ${THEME.border}`, borderRadius: 10, boxShadow: THEME.shadowCard, zIndex: 10, maxHeight: 200, overflow: "auto", marginTop: 4 },
-  suggestItem: { display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", cursor: "pointer", fontSize: 14 },
-  chartEmpty: { textAlign: "center", color: THEME.textFaint, padding: "80px 20px", fontSize: 13 },
-  chartTooltip: { background: THEME.surface, border: `1px solid ${THEME.border}`, borderRadius: 10, padding: "10px 14px", fontSize: 13, color: THEME.text, boxShadow: THEME.shadowCard },
-};
+function makeStyles(theme) {
+  return {
+    shell: { display: "flex", height: "100vh", background: theme.outerBg, color: theme.text, fontFamily: "'DM Sans', sans-serif", overflow: "hidden" },
+    sidebar: { width: 240, minWidth: 240, background: theme.outerBg, borderRight: "none", display: "flex", flexDirection: "column", height: "100vh" },
+    logo: { padding: "28px 24px 24px", borderBottom: `1px solid ${theme.border}` },
+    nav: { padding: "16px 12px", display: "flex", flexDirection: "column", gap: 4, flex: 1 },
+    navItem: { display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, border: "none", background: "transparent", color: theme.outerTextMuted, fontSize: 14, fontWeight: 500, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", textAlign: "left", width: "100%" },
+    navItemActive: { background: theme.outerAccentSoft, color: "#ffffff" },
+    badge: { background: theme.warning, color: "#fff", fontSize: 10, fontWeight: 800, borderRadius: 999, padding: "1px 7px", marginLeft: "auto" },
+    sidebarIncome: { padding: "16px 20px", borderTop: "1px solid " + theme.outerBorder },
+    incomeInput: { background: theme.outerBorder, border: "1px solid " + theme.outerBorder, borderRadius: 10, padding: "10px 12px", color: theme.success, fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 16, width: "100%", textAlign: "right", outline: "none", boxSizing: "border-box" },
+    main: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: theme.outerBg },
+    topbar: { padding: "24px 36px 20px", borderBottom: "none", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0, background: theme.outerBg },
+    content: { flex: 1, overflow: "auto", background: theme.bg, borderRadius: 20, margin: "0 16px 16px 0", padding: 32 },
+    contentInner: { maxWidth: 1400, margin: "0 auto" },
+    statsRow: { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 16, marginBottom: 24 },
+    statCard: { background: theme.surface, borderRadius: 16, padding: 20, border: `1px solid ${theme.border}`, boxShadow: theme.shadowCard },
+    dashGrid: { display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)", gap: 16 },
+    card: { background: theme.surface, borderRadius: 16, padding: 24, border: `1px solid ${theme.border}`, boxShadow: theme.shadowCard },
+    cardTitle: { fontSize: 12, textTransform: "uppercase", letterSpacing: 1.2, color: theme.textMuted, fontWeight: 700 },
+    linkBtn: { background: "none", border: "none", color: theme.accent, fontSize: 13, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", fontWeight: 600 },
+    searchInput: { width: "100%", background: "transparent", border: `1px solid ${theme.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 13, color: theme.text, outline: "none", marginBottom: 12, fontFamily: "'DM Sans', sans-serif" },
+    dataLink: { background: "none", border: "none", color: theme.outerTextMuted, fontSize: 11, textTransform: "uppercase", letterSpacing: 1, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, padding: "6px 0", textAlign: "left" },
+    breakdownBar: { display: "flex", height: 12, borderRadius: 999, overflow: "hidden", background: theme.bg, marginTop: 12 },
+    tableHeader: { display: "flex", padding: "12px 16px", borderBottom: `1px solid ${theme.border}`, marginTop: 16, fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: theme.textFaint, fontWeight: 700 },
+    tableRow: { display: "flex", alignItems: "center", padding: "14px 16px", borderBottom: `1px solid ${theme.border}`, fontSize: 14 },
+    miniRow: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${theme.border}` },
+    addBtn: { background: theme.accent, color: "#fff", border: "none", borderRadius: 10, padding: "10px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" },
+    themeToggle: { background: "transparent", border: "none", color: "#ffffff", fontSize: 18, cursor: "pointer", padding: "6px 10px", marginRight: 8 },
+    delBtn: { background: "none", border: "none", color: theme.textFaint, cursor: "pointer", fontSize: 14, padding: "4px 8px" },
+    editBtn: { background: "none", border: "none", color: theme.textMuted, cursor: "pointer", fontSize: 14, padding: "4px 8px" },
+    empty: { textAlign: "center", color: theme.textFaint, padding: "60px 20px", fontSize: 14 },
+    emptySmall: { textAlign: "center", color: theme.textFaint, padding: "24px 0", fontSize: 13 },
+    overlay: { position: "fixed", inset: 0, background: "rgba(12,13,18,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 },
+    modal: { background: theme.surface, borderRadius: 16, padding: 28, width: "100%", maxWidth: 460, border: `1px solid ${theme.border}`, boxShadow: "0 20px 40px rgba(0,0,0,0.12)" },
+    modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
+    closeBtn: { background: "none", border: "none", color: theme.textFaint, fontSize: 20, cursor: "pointer" },
+    input: { width: "100%", background: theme.bg, border: `1px solid ${theme.border}`, borderRadius: 10, padding: "11px 14px", color: theme.text, fontSize: 14, outline: "none", boxSizing: "border-box", fontFamily: "'DM Sans', sans-serif" },
+    saveBtn: { width: "100%", background: theme.accent, color: "#fff", border: "none", borderRadius: 10, padding: "13px", fontWeight: 700, fontSize: 14, cursor: "pointer", marginTop: 8, fontFamily: "'DM Sans', sans-serif" },
+    catPill: { display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px 4px 4px", borderRadius: 999, fontSize: 12, fontWeight: 600 },
+    catDot: { width: 22, height: 22, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 },
+    suggestBox: { position: "absolute", top: "100%", left: 0, right: 0, background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 10, boxShadow: theme.shadowCard, zIndex: 10, maxHeight: 200, overflow: "auto", marginTop: 4 },
+    suggestItem: { display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", cursor: "pointer", fontSize: 14 },
+    chartEmpty: { textAlign: "center", color: theme.textFaint, padding: "80px 20px", fontSize: 13 },
+    chartTooltip: { background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 10, padding: "10px 14px", fontSize: 13, color: theme.text, boxShadow: theme.shadowCard },
+  };
+}
+
+const s = makeStyles(THEME_LIGHT_PANEL);
+
+const ThemeContext = createContext({ theme: THEME_LIGHT_PANEL, s });
+const useThemed = () => useContext(ThemeContext);
