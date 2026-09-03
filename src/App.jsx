@@ -34,14 +34,24 @@ const THEME = {
   outerAccentSoft: "rgba(0,102,255,0.15)",
 };
 
-// Phase 5 — light panel theme is just THEME aliased (current default)
-const THEME_LIGHT_PANEL = THEME;
-
-// Phase 5 — dark panel theme overrides inner-panel surfaces only.
-// outerBg, outerText, outerBorder, accent, success, danger, warning are unchanged
-// (the dark sidebar/topbar frame stays as brand identity in both modes).
-const THEME_DARK_PANEL = {
+// Full light theme — inner panel light AND outer frame light.
+const LIGHT_THEME = {
   ...THEME,
+  outerBg: "#ffffff",
+  outerText: "#0c0d12",
+  outerTextMuted: "#6b7280",
+  outerBorder: "#e5e7eb",
+  outerAccentSoft: "rgba(0,102,255,0.08)",
+};
+
+// Full dark theme — everything dark.
+const DARK_THEME = {
+  ...LIGHT_THEME,
+  outerBg: "#0c0d12",
+  outerText: "#e5e7eb",
+  outerTextMuted: "#9ca3af",
+  outerBorder: "#1f2028",
+  outerAccentSoft: "rgba(0,102,255,0.15)",
   bg: "#1a1b22",
   surface: "#25262d",
   border: "#2f3038",
@@ -177,15 +187,46 @@ function migrateCredits(data) {
   return { ...data, months };
 }
 
-function spentByCategory(month) {
+function isRecurringDue(r, monthKey, today) {
+  const [year, mon] = monthKey.split("-").map(Number);
+  const currentY = today.getFullYear();
+  const currentM = today.getMonth() + 1;
+  if (year < currentY || (year === currentY && mon < currentM)) return true;
+  if (year > currentY || (year === currentY && mon > currentM)) return false;
+  return Number(r.dayOfMonth || 1) <= today.getDate();
+}
+
+function spentByCategory(month, monthKey, today) {
   const totals = new Map();
   for (const e of (month.expenses || [])) {
     totals.set(e.category, (totals.get(e.category) || 0) + e.amount);
   }
   for (const r of (month.recurring || [])) {
-    totals.set(r.category, (totals.get(r.category) || 0) + r.amount);
+    if (!today || isRecurringDue(r, monthKey, today)) {
+      totals.set(r.category, (totals.get(r.category) || 0) + r.amount);
+    }
   }
   return totals;
+}
+
+function toggleSort(sorts, col, shiftKey) {
+  const arr = sorts || [];
+  const idx = arr.findIndex((s) => s.col === col);
+  if (shiftKey) {
+    if (idx === -1) return [...arr, { col, dir: "asc" }];
+    const cur = arr[idx];
+    if (cur.dir === "asc") {
+      const next = [...arr];
+      next[idx] = { col, dir: "desc" };
+      return next;
+    }
+    return arr.filter((_, i) => i !== idx);
+  }
+  if (arr.length === 1 && arr[0].col === col) {
+    if (arr[0].dir === "asc") return [{ col, dir: "desc" }];
+    return [];
+  }
+  return [{ col, dir: "asc" }];
 }
 
 function filterAndSort(arr, view) {
@@ -194,11 +235,15 @@ function filterAndSort(arr, view) {
     const q = view.search.toLowerCase();
     out = out.filter((x) => (x.name || "").toLowerCase().includes(q));
   }
-  if (view.sortCol) {
+  const sorts = view.sorts || [];
+  if (sorts.length > 0) {
     out = [...out].sort((a, b) => {
-      const av = a[view.sortCol], bv = b[view.sortCol];
-      const cmp = av < bv ? -1 : av > bv ? 1 : 0;
-      return view.sortDir === "asc" ? cmp : -cmp;
+      for (const { col, dir } of sorts) {
+        const av = a[col], bv = b[col];
+        const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+        if (cmp !== 0) return dir === "asc" ? cmp : -cmp;
+      }
+      return 0;
     });
   }
   return out;
@@ -280,12 +325,15 @@ function categoryBreakdown(month, categories) {
 }
 
 function monthlyTotals(data) {
+  const today = new Date();
   return Object.keys(data.months).sort().map((key) => {
     const m = data.months[key];
-    const spent = (m.expenses || []).reduce((a, e) => a + e.amount, 0)
-                + (m.recurring || []).reduce((a, e) => a + e.amount, 0);
+    const spentExpenses = (m.expenses || []).reduce((a, e) => a + e.amount, 0);
+    const spentRecurring = (m.recurring || [])
+      .filter((r) => isRecurringDue(r, key, today))
+      .reduce((a, e) => a + e.amount, 0);
     const credits = (m.credits || []).reduce((a, c) => a + c.amount, 0);
-    return { key, label: monthLabel(key).slice(0, 3), spent, income: (m.income || 0) + credits };
+    return { key, label: monthLabel(key).slice(0, 3), spent: spentExpenses + spentRecurring, income: (m.income || 0) + credits };
   });
 }
 
@@ -400,22 +448,29 @@ function StatCard({ label, value, accent, sub, icon }) {
   );
 }
 
-function TableHeader({ columns, sortCol, sortDir, onSort }) {
+function TableHeader({ columns, sorts, onSort }) {
   const { theme, s } = useThemed();
+  const showPriority = (sorts?.length || 0) > 1;
   return (
     <div style={s.tableHeader}>
       {columns.map((col, i) => {
         const isSortable = col.sortKey && onSort;
-        const isActive = sortCol === col.sortKey;
-        const arrow = isActive ? (sortDir === "asc" ? " ↑" : " ↓") : "";
+        const idx = sorts ? sorts.findIndex((sr) => sr.col === col.sortKey) : -1;
+        const active = idx !== -1;
+        const dir = active ? sorts[idx].dir : null;
+        const arrow = active ? (dir === "asc" ? " ↑" : " ↓") : "";
         return (
           <div key={i} style={{
             flex: col.flex,
             textAlign: col.align || "left",
             cursor: isSortable ? "pointer" : "default",
             userSelect: "none",
-          }} onClick={isSortable ? () => onSort(col.sortKey) : undefined}>
+          }} onClick={isSortable ? (e) => onSort(col.sortKey, e.shiftKey) : undefined}
+             title={isSortable ? "Click to sort · Shift+Click to add" : undefined}>
             {col.label}{arrow}
+            {active && showPriority && (
+              <sup style={{ fontSize: 8, marginLeft: 2, color: theme.textMuted }}>{idx + 1}</sup>
+            )}
           </div>
         );
       })}
@@ -612,10 +667,10 @@ export default function App() {
   const [themeMode, setThemeMode] = useState(() => {
     try { return localStorage.getItem("themeMode") || "light"; } catch { return "light"; }
   });
-  const [expensesView, setExpensesView] = useState({ search: "", sortCol: null, sortDir: "asc" });
-  const [recurringView, setRecurringView] = useState({ search: "", sortCol: null, sortDir: "asc" });
-  const [upcomingView, setUpcomingView] = useState({ search: "", sortCol: null, sortDir: "asc" });
-  const [creditsView, setCreditsView] = useState({ search: "", sortCol: null, sortDir: "asc" });
+  const [expensesView, setExpensesView] = useState({ search: "", sorts: [] });
+  const [recurringView, setRecurringView] = useState({ search: "", sorts: [] });
+  const [upcomingView, setUpcomingView] = useState({ search: "", sorts: [] });
+  const [creditsView, setCreditsView] = useState({ search: "", sorts: [] });
   const triggerImport = () => importInputRef.current?.click();
   const onImportFile = (e) => {
     const file = e.target.files?.[0];
@@ -670,7 +725,7 @@ export default function App() {
   }, [themeMode]);
 
   const themedValue = useMemo(() => {
-    const theme = themeMode === "dark" ? THEME_DARK_PANEL : THEME_LIGHT_PANEL;
+    const theme = themeMode === "dark" ? DARK_THEME : LIGHT_THEME;
     return { theme, s: makeStyles(theme) };
   }, [themeMode]);
   const { theme, s } = themedValue;
@@ -694,14 +749,21 @@ export default function App() {
   const curKey = currentMonthKey();
   const cur = data.months[curKey] || emptyMonth();
 
+  const today = new Date();
   const totalExpenses = cur.expenses.reduce((a, e) => a + e.amount, 0);
-  const totalRecurring = cur.recurring.reduce((a, e) => a + e.amount, 0);
+  const totalRecurringAll = cur.recurring.reduce((a, e) => a + e.amount, 0);
+  const totalRecurringPast = cur.recurring
+    .filter((r) => isRecurringDue(r, curKey, today))
+    .reduce((a, e) => a + e.amount, 0);
+  const totalRecurringFuture = totalRecurringAll - totalRecurringPast;
   const totalUnpaidUpcoming = cur.upcoming.filter((u) => !u.paid).reduce((a, e) => a + e.amount, 0);
-  const totalAllUpcoming = cur.upcoming.reduce((a, e) => a + e.amount, 0);
+  const totalPaidUpcoming = cur.upcoming.filter((u) => u.paid).reduce((a, e) => a + e.amount, 0);
   const totalCredits = (cur.credits || []).reduce((a, c) => a + c.amount, 0);
   const baseIncome = cur.income;
   const effectiveIncome = baseIncome + totalCredits;
-  const totalCommitted = totalExpenses + totalRecurring + totalAllUpcoming;
+  const totalActuallySpent = totalExpenses + totalRecurringPast + totalPaidUpcoming;
+  const totalStillScheduled = totalRecurringFuture + totalUnpaidUpcoming;
+  const totalCommitted = totalActuallySpent;
   const availableAfterCommitted = Math.max(0, effectiveIncome - totalCommitted);
   const maxSavingsPct = baseIncome > 0
     ? Math.min(50, Math.max(0, Math.floor((availableAfterCommitted / baseIncome) * 100)))
@@ -716,22 +778,18 @@ export default function App() {
   const catBreakdown = categoryBreakdown(cur, data.categories || []);
   const catTotal = catBreakdown.reduce((a, c) => a + c.value, 0);
   const monthlyData = monthlyTotals(data);
-  const spentByCat = spentByCategory(cur);
-  const onSortExpenses = (col) => {
-    setExpensesView((v) => ({ ...v, sortCol: col, sortDir: v.sortCol === col && v.sortDir === "asc" ? "desc" : "asc" }));
-  };
+  const spentByCat = spentByCategory(cur, curKey, today);
+  const onSortExpenses = (col, shift) =>
+    setExpensesView((v) => ({ ...v, sorts: toggleSort(v.sorts || [], col, shift) }));
   const filteredExpenses = filterAndSort(cur.expenses, expensesView);
-  const onSortRecurring = (col) => {
-    setRecurringView((v) => ({ ...v, sortCol: col, sortDir: v.sortCol === col && v.sortDir === "asc" ? "desc" : "asc" }));
-  };
+  const onSortRecurring = (col, shift) =>
+    setRecurringView((v) => ({ ...v, sorts: toggleSort(v.sorts || [], col, shift) }));
   const filteredRecurring = filterAndSort(cur.recurring, recurringView);
-  const onSortUpcoming = (col) => {
-    setUpcomingView((v) => ({ ...v, sortCol: col, sortDir: v.sortCol === col && v.sortDir === "asc" ? "desc" : "asc" }));
-  };
+  const onSortUpcoming = (col, shift) =>
+    setUpcomingView((v) => ({ ...v, sorts: toggleSort(v.sorts || [], col, shift) }));
   const filteredUpcoming = filterAndSort(cur.upcoming, upcomingView);
-  const onSortCredits = (col) => {
-    setCreditsView((v) => ({ ...v, sortCol: col, sortDir: v.sortCol === col && v.sortDir === "asc" ? "desc" : "asc" }));
-  };
+  const onSortCredits = (col, shift) =>
+    setCreditsView((v) => ({ ...v, sorts: toggleSort(v.sorts || [], col, shift) }));
   const filteredCredits = filterAndSort(cur.credits || [], creditsView);
   const onSetCap = (name, newCap) => {
     save({
@@ -750,7 +808,7 @@ export default function App() {
       {/* SIDEBAR */}
       <aside style={s.sidebar}>
         <div style={s.logo}>
-          <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: -0.5, color: "#ffffff" }}>BUDGET</div>
+          <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: -0.5, color: theme.outerText }}>BUDGET</div>
           <div style={{ fontSize: 10, letterSpacing: 3, color: theme.accent, fontWeight: 700 }}>CTRL</div>
         </div>
         <nav style={s.nav}>
@@ -792,7 +850,7 @@ export default function App() {
       <main style={s.main}>
         <header style={s.topbar}>
           <div>
-            <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0, letterSpacing: -0.5, color: "#ffffff" }}>
+            <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0, letterSpacing: -0.5, color: theme.outerText }}>
               {TABS.find((t) => t.id === tab)?.label}
             </h1>
             <div style={{ fontSize: 12, color: theme.outerTextMuted, marginTop: 2 }}>
@@ -821,10 +879,10 @@ export default function App() {
           {tab === "dashboard" && (
             <>
               <div style={s.statsRow}>
-                <StatCard label="Remaining" value={fmt(remaining)} accent={remaining >= 0 ? "#10b981" : "#ef4444"} sub="After everything this month" icon="↓" />
+                <StatCard label="Remaining" value={fmt(remaining)} accent={remaining >= 0 ? "#10b981" : "#ef4444"} sub={totalStillScheduled > 0 ? `${fmt(totalStillScheduled)} still scheduled` : "Everything's landed"} icon="↓" />
                 <StatCard label="Still to Pay" value={fmt(totalUpcoming)} accent="#f59e0b" sub={`${unpaidCount} upcoming payment${unpaidCount !== 1 ? "s" : ""}`} icon="◈" />
                 <StatCard label="Can Invest" value={fmt(canInvest)} accent="#0066ff" sub={`After ${displayPct}% savings goal`} icon="↗" />
-                <StatCard label="Total Spent" value={fmt(totalExpenses + totalRecurring)} accent="#ef4444" sub={`${cur.expenses.length} one-off · ${cur.recurring.length} recurring`} icon="↻" />
+                <StatCard label="Total Spent" value={fmt(totalActuallySpent)} accent="#ef4444" sub={`${cur.expenses.length} one-off · ${cur.recurring.length} recurring`} icon="↻" />
               </div>
               {/* Savings goal + income breakdown strip */}
               <div style={{ ...s.card, marginBottom: 16 }}>
@@ -847,8 +905,8 @@ export default function App() {
                       <>
                         <div style={s.breakdownBar}>
                           {[
-                            { pct: ((totalExpenses + totalRecurring) / effectiveIncome) * 100, color: "#ef4444" },
-                            { pct: (totalUpcoming / effectiveIncome) * 100, color: "#f59e0b" },
+                            { pct: (totalActuallySpent / effectiveIncome) * 100, color: "#ef4444" },
+                            { pct: (totalStillScheduled / effectiveIncome) * 100, color: "#f59e0b" },
                             { pct: (savingsTarget / effectiveIncome) * 100, color: "#0066ff" },
                             { pct: (canInvest / effectiveIncome) * 100, color: "#10b981" },
                           ].filter((x) => x.pct > 0 && isFinite(x.pct)).map((seg, i) => (
@@ -857,8 +915,8 @@ export default function App() {
                         </div>
                         <div style={{ display: "flex", gap: 20, marginTop: 10, flexWrap: "wrap" }}>
                           {[
-                            { color: "#ef4444", label: "Spent", val: totalExpenses + totalRecurring },
-                            { color: "#f59e0b", label: "Upcoming", val: totalUpcoming },
+                            { color: "#ef4444", label: "Spent", val: totalActuallySpent },
+                            { color: "#f59e0b", label: "Upcoming", val: totalStillScheduled },
                             { color: "#0066ff", label: "Savings", val: savingsTarget },
                             { color: "#10b981", label: "Investable", val: canInvest },
                           ].map((l) => (
@@ -973,7 +1031,7 @@ export default function App() {
               />
               {filteredExpenses.length === 0 ? <div style={s.empty}>{expensesView.search ? `No expenses match "${expensesView.search}".` : `No expenses yet. Click "+ Add Expense" to start tracking.`}</div> : (
                 <>
-                  <TableHeader columns={[{ label: "NAME", flex: 2, sortKey: "name" }, { label: "CATEGORY", flex: 1.2, sortKey: "category" }, { label: "DATE", flex: 1, sortKey: "date" }, { label: "AMOUNT", flex: 1, align: "right", sortKey: "amount" }, { label: "", flex: 0.6, align: "center" }]} sortCol={expensesView.sortCol} sortDir={expensesView.sortDir} onSort={onSortExpenses} />
+                  <TableHeader columns={[{ label: "NAME", flex: 2, sortKey: "name" }, { label: "CATEGORY", flex: 1.2, sortKey: "category" }, { label: "DATE", flex: 1, sortKey: "date" }, { label: "AMOUNT", flex: 1, align: "right", sortKey: "amount" }, { label: "", flex: 0.6, align: "center" }]} sorts={expensesView.sorts} onSort={onSortExpenses} />
                   {filteredExpenses.map((e) => (
                     <div key={e.id} style={s.tableRow}>
                       <div style={{ flex: 2, fontWeight: 600 }}>{e.name}</div>
@@ -1010,7 +1068,7 @@ export default function App() {
             <div style={s.card}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                 <div style={s.cardTitle}>Recurring Payments</div>
-                <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066ff", fontSize: 16 }}>Monthly: {fmt(totalRecurring)}</div>
+                <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066ff", fontSize: 16 }}>Monthly: {fmt(totalRecurringAll)}</div>
               </div>
               <input
                 type="text"
@@ -1021,7 +1079,7 @@ export default function App() {
               />
               {filteredRecurring.length === 0 ? <div style={s.empty}>{recurringView.search ? `No recurring items match "${recurringView.search}".` : `No recurring payments set up. Click "+ Add Recurring" to create one.`}</div> : (
                 <>
-                  <TableHeader columns={[{ label: "NAME", flex: 2, sortKey: "name" }, { label: "CATEGORY", flex: 1.2, sortKey: "category" }, { label: "FREQUENCY", flex: 1 }, { label: "DAY", flex: 0.5, align: "center", sortKey: "dayOfMonth" }, { label: "AMOUNT", flex: 1, align: "right", sortKey: "amount" }, { label: "", flex: 0.6, align: "center" }]} sortCol={recurringView.sortCol} sortDir={recurringView.sortDir} onSort={onSortRecurring} />
+                  <TableHeader columns={[{ label: "NAME", flex: 2, sortKey: "name" }, { label: "CATEGORY", flex: 1.2, sortKey: "category" }, { label: "FREQUENCY", flex: 1 }, { label: "DAY", flex: 0.5, align: "center", sortKey: "dayOfMonth" }, { label: "AMOUNT", flex: 1, align: "right", sortKey: "amount" }, { label: "", flex: 0.6, align: "center" }]} sorts={recurringView.sorts} onSort={onSortRecurring} />
                   {filteredRecurring.map((r) => (
                     <div key={r.id} style={s.tableRow}>
                       <div style={{ flex: 2, fontWeight: 600 }}>{r.name}</div>
@@ -1074,7 +1132,7 @@ export default function App() {
               />
               {filteredUpcoming.length === 0 ? <div style={s.empty}>{upcomingView.search ? `No upcoming items match "${upcomingView.search}".` : `No upcoming payments. Click "+ Add Payment" to schedule one.`}</div> : (
                 <>
-                  <TableHeader columns={[{ label: "", flex: 0.3 }, { label: "NAME", flex: 2, sortKey: "name" }, { label: "CATEGORY", flex: 1.2, sortKey: "category" }, { label: "DUE DATE", flex: 1, sortKey: "dueDate" }, { label: "AMOUNT", flex: 1, align: "right", sortKey: "amount" }, { label: "STATUS", flex: 0.7, align: "center" }, { label: "", flex: 0.6, align: "center" }]} sortCol={upcomingView.sortCol} sortDir={upcomingView.sortDir} onSort={onSortUpcoming} />
+                  <TableHeader columns={[{ label: "", flex: 0.3 }, { label: "NAME", flex: 2, sortKey: "name" }, { label: "CATEGORY", flex: 1.2, sortKey: "category" }, { label: "DUE DATE", flex: 1, sortKey: "dueDate" }, { label: "AMOUNT", flex: 1, align: "right", sortKey: "amount" }, { label: "STATUS", flex: 0.7, align: "center" }, { label: "", flex: 0.6, align: "center" }]} sorts={upcomingView.sorts} onSort={onSortUpcoming} />
                   {filteredUpcoming.map((u) => (
                     <div key={u.id} style={{ ...s.tableRow, opacity: u.paid ? 0.4 : 1 }}>
                       <div style={{ flex: 0.3 }}>
@@ -1135,7 +1193,7 @@ export default function App() {
                 <div style={s.empty}>{creditsView.search ? `No credits match "${creditsView.search}".` : `No credits this month. Use "+ Add Credit" to log a refund, gift, or bonus.`}</div>
               ) : (
                 <>
-                  <TableHeader columns={[{ label: "NAME", flex: 2, sortKey: "name" }, { label: "SOURCE", flex: 1.2, sortKey: "source" }, { label: "DATE", flex: 1, sortKey: "date" }, { label: "AMOUNT", flex: 1, align: "right", sortKey: "amount" }, { label: "", flex: 0.6, align: "center" }]} sortCol={creditsView.sortCol} sortDir={creditsView.sortDir} onSort={onSortCredits} />
+                  <TableHeader columns={[{ label: "NAME", flex: 2, sortKey: "name" }, { label: "SOURCE", flex: 1.2, sortKey: "source" }, { label: "DATE", flex: 1, sortKey: "date" }, { label: "AMOUNT", flex: 1, align: "right", sortKey: "amount" }, { label: "", flex: 0.6, align: "center" }]} sorts={creditsView.sorts} onSort={onSortCredits} />
                   {filteredCredits.map((c) => (
                     <div key={c.id} style={s.tableRow}>
                       <div style={{ flex: 2, fontWeight: 600 }}>{c.name}</div>
@@ -1300,16 +1358,17 @@ export default function App() {
           {tab === "year" && (() => {
             const allYears = Array.from(new Set(Object.keys(data.months).map((k) => k.slice(0, 4)))).sort();
             const monthsInYear = Object.entries(data.months)
-              .filter(([k]) => k.startsWith(yearKey + "-"))
-              .map(([, m]) => m);
+              .filter(([k]) => k.startsWith(yearKey + "-"));
 
-            const totalIncomeY = monthsInYear.reduce((a, m) => {
+            const totalIncomeY = monthsInYear.reduce((a, [, m]) => {
               const cr = (m.credits || []).reduce((aa, c) => aa + c.amount, 0);
               return a + (m.income || 0) + cr;
             }, 0);
-            const totalSpentY = monthsInYear.reduce((a, m) => {
+            const totalSpentY = monthsInYear.reduce((a, [k, m]) => {
               const exp = (m.expenses || []).reduce((aa, e) => aa + e.amount, 0);
-              const rec = (m.recurring || []).reduce((aa, r) => aa + r.amount, 0);
+              const rec = (m.recurring || [])
+                .filter((r) => isRecurringDue(r, k, today))
+                .reduce((aa, r) => aa + r.amount, 0);
               return a + exp + rec;
             }, 0);
             const totalSavedY = totalIncomeY - totalSpentY;
@@ -1317,9 +1376,13 @@ export default function App() {
             const avgMonthlySpend = monthsCount > 0 ? totalSpentY / monthsCount : 0;
 
             const yearCatTotals = new Map();
-            for (const m of monthsInYear) {
+            for (const [k, m] of monthsInYear) {
               for (const e of (m.expenses || [])) yearCatTotals.set(e.category, (yearCatTotals.get(e.category) || 0) + e.amount);
-              for (const r of (m.recurring || [])) yearCatTotals.set(r.category, (yearCatTotals.get(r.category) || 0) + r.amount);
+              for (const r of (m.recurring || [])) {
+                if (isRecurringDue(r, k, today)) {
+                  yearCatTotals.set(r.category, (yearCatTotals.get(r.category) || 0) + r.amount);
+                }
+              }
             }
             const yearCatBreakdown = Array.from(yearCatTotals.entries()).map(([name, value]) => {
               const cat = (data.categories || []).find((c) => c.name === name) || { color: "#9ca3af", icon: "·" };
@@ -1528,7 +1591,7 @@ function makeStyles(theme) {
     logo: { padding: "28px 24px 24px", borderBottom: `1px solid ${theme.border}` },
     nav: { padding: "16px 12px", display: "flex", flexDirection: "column", gap: 4, flex: 1 },
     navItem: { display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, border: "none", background: "transparent", color: theme.outerTextMuted, fontSize: 14, fontWeight: 500, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", textAlign: "left", width: "100%" },
-    navItemActive: { background: theme.outerAccentSoft, color: "#ffffff" },
+    navItemActive: { background: theme.outerAccentSoft, color: theme.outerText },
     badge: { background: theme.warning, color: "#fff", fontSize: 10, fontWeight: 800, borderRadius: 999, padding: "1px 7px", marginLeft: "auto" },
     sidebarIncome: { padding: "16px 20px", borderTop: "1px solid " + theme.outerBorder },
     incomeInput: { background: theme.outerBorder, border: "1px solid " + theme.outerBorder, borderRadius: 10, padding: "10px 12px", color: theme.success, fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 16, width: "100%", textAlign: "right", outline: "none", boxSizing: "border-box" },
@@ -1549,7 +1612,7 @@ function makeStyles(theme) {
     tableRow: { display: "flex", alignItems: "center", padding: "14px 16px", borderBottom: `1px solid ${theme.border}`, fontSize: 14 },
     miniRow: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${theme.border}` },
     addBtn: { background: theme.accent, color: "#fff", border: "none", borderRadius: 10, padding: "10px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" },
-    themeToggle: { background: "transparent", border: "none", color: "#ffffff", fontSize: 18, cursor: "pointer", padding: "6px 10px", marginRight: 8 },
+    themeToggle: { background: "transparent", border: "none", color: theme.outerText, fontSize: 18, cursor: "pointer", padding: "6px 10px", marginRight: 8 },
     delBtn: { background: "none", border: "none", color: theme.textFaint, cursor: "pointer", fontSize: 14, padding: "4px 8px" },
     editBtn: { background: "none", border: "none", color: theme.textMuted, cursor: "pointer", fontSize: 14, padding: "4px 8px" },
     empty: { textAlign: "center", color: theme.textFaint, padding: "60px 20px", fontSize: 14 },
@@ -1569,7 +1632,7 @@ function makeStyles(theme) {
   };
 }
 
-const s = makeStyles(THEME_LIGHT_PANEL);
+const s = makeStyles(LIGHT_THEME);
 
-const ThemeContext = createContext({ theme: THEME_LIGHT_PANEL, s });
+const ThemeContext = createContext({ theme: LIGHT_THEME, s });
 const useThemed = () => useContext(ThemeContext);
