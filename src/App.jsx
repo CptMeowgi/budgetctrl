@@ -187,13 +187,35 @@ function migrateCredits(data) {
   return { ...data, months };
 }
 
+function migrateTemplateIds(data) {
+  const template = data.recurringTemplate || [];
+  if (template.length === 0) return data;
+  const months = { ...data.months };
+  for (const key of Object.keys(months)) {
+    const m = months[key];
+    const recurring = (m.recurring || []).map((r) => {
+      if (r.templateId) return r;
+      const match = template.find((t) => t.name === r.name && t.amount === r.amount);
+      return match && match.id ? { ...r, templateId: match.id } : r;
+    });
+    months[key] = { ...m, recurring };
+  }
+  return { ...data, months };
+}
+
+function daysInMonth(monthKey) {
+  const [y, m] = monthKey.split("-").map(Number);
+  return new Date(y, m, 0).getDate();
+}
+
 function isRecurringDue(r, monthKey, today) {
   const [year, mon] = monthKey.split("-").map(Number);
   const currentY = today.getFullYear();
   const currentM = today.getMonth() + 1;
   if (year < currentY || (year === currentY && mon < currentM)) return true;
   if (year > currentY || (year === currentY && mon > currentM)) return false;
-  return Number(r.dayOfMonth || 1) <= today.getDate();
+  const effectiveDay = Math.min(Number(r.dayOfMonth || 1), daysInMonth(monthKey));
+  return effectiveDay <= today.getDate();
 }
 
 function spentByCategory(month, monthKey, today) {
@@ -240,7 +262,9 @@ function filterAndSort(arr, view) {
     out = [...out].sort((a, b) => {
       for (const { col, dir } of sorts) {
         const av = a[col], bv = b[col];
-        const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+        const cmp = (typeof av === "string" && typeof bv === "string")
+          ? av.localeCompare(bv)
+          : (av < bv ? -1 : av > bv ? 1 : 0);
         if (cmp !== 0) return dir === "asc" ? cmp : -cmp;
       }
       return 0;
@@ -295,8 +319,9 @@ function migrate(raw) {
 function ensureCurrentMonth(data) {
   const cur = currentMonthKey();
   if (data.months[cur]) return data;
-  const prev = prevMonthKey(cur);
-  const carriedIncome = data.months[prev]?.income || 0;
+  const priorKeys = Object.keys(data.months).filter((k) => k < cur).sort();
+  const lastKey = priorKeys[priorKeys.length - 1];
+  const carriedIncome = lastKey ? (data.months[lastKey].income || 0) : 0;
   return {
     ...data,
     months: {
@@ -304,7 +329,7 @@ function ensureCurrentMonth(data) {
       [cur]: {
         income: carriedIncome,
         expenses: [],
-        recurring: (data.recurringTemplate || []).map((r) => ({ ...r, id: uid() })),
+        recurring: (data.recurringTemplate || []).map((r) => ({ ...r, id: uid(), templateId: r.id })),
         upcoming: [],
         credits: [],
       },
@@ -312,11 +337,17 @@ function ensureCurrentMonth(data) {
   };
 }
 
-function categoryBreakdown(month, categories) {
+function categoryBreakdown(month, categories, monthKey, today) {
   const totals = new Map();
-  for (const item of [...(month.expenses || []), ...(month.recurring || [])]) {
-    const name = item.category || "Uncategorized";
-    totals.set(name, (totals.get(name) || 0) + item.amount);
+  for (const e of (month.expenses || [])) {
+    const name = e.category || "Uncategorized";
+    totals.set(name, (totals.get(name) || 0) + e.amount);
+  }
+  for (const r of (month.recurring || [])) {
+    if (!today || isRecurringDue(r, monthKey, today)) {
+      const name = r.category || "Uncategorized";
+      totals.set(name, (totals.get(name) || 0) + r.amount);
+    }
   }
   return Array.from(totals.entries()).map(([name, value]) => {
     const cat = categories.find((c) => c.name === name) || { color: "#9ca3af", icon: "·" };
@@ -419,14 +450,14 @@ function FormModal({ title, fields, onClose, onSave }) {
       </div>
       {(() => {
         const amountNum = parseFloat(String(vals.amount).replace(",", "."));
-        const valid = vals.name?.trim() && !isNaN(amountNum);
+        const valid = vals.name?.trim() && !isNaN(amountNum) && amountNum > 0;
         return (
           <button
             style={{ ...s.saveBtn, opacity: valid ? 1 : 0.5, cursor: valid ? "pointer" : "not-allowed" }}
             disabled={!valid}
             onClick={() => onSave({ ...vals, amount: amountNum })}
           >
-            {valid ? "Save" : "Fill in name and amount"}
+            {valid ? "Save" : "Fill in name and a positive amount"}
           </button>
         );
       })()}
@@ -684,7 +715,7 @@ export default function App() {
           return;
         }
         if (!confirm("Replace ALL current data with the contents of this backup? This cannot be undone.")) return;
-        const migrated = migrateCredits(migrateCategories(ensureCurrentMonth(migrate(parsed))));
+        const migrated = migrateTemplateIds(migrateCredits(migrateCategories(ensureCurrentMonth(migrate(parsed)))));
         save(migrated);
       } catch {
         alert("Could not read backup file. Make sure it's a valid budget-ctrl JSON export.");
@@ -701,13 +732,13 @@ export default function App() {
         const r = await window.storage.get(STORAGE_KEY);
         if (r?.value) {
           const raw = JSON.parse(r.value);
-          const migrated = migrateCredits(migrateCategories(ensureCurrentMonth(migrate(raw))));
+          const migrated = migrateTemplateIds(migrateCredits(migrateCategories(ensureCurrentMonth(migrate(raw)))));
           setData(migrated);
           if (migrated !== raw) {
             try { await window.storage.set(STORAGE_KEY, JSON.stringify(migrated)); } catch {}
           }
         } else {
-          setData(migrateCredits(migrateCategories(ensureCurrentMonth(defaultData()))));
+          setData(migrateTemplateIds(migrateCredits(migrateCategories(ensureCurrentMonth(defaultData())))));
         }
       } catch {}
       setLoaded(true);
@@ -735,14 +766,17 @@ export default function App() {
     try { await window.storage.set(STORAGE_KEY, JSON.stringify(next)); } catch {}
   }, []);
 
-  const patchCur = useCallback((patch) => {
-    const key = currentMonthKey();
-    const curMonth = data.months[key] || emptyMonth();
+  const patchMonth = useCallback((key, patch) => {
+    const m = data.months[key] || emptyMonth();
     save({
       ...data,
-      months: { ...data.months, [key]: { ...curMonth, ...patch } },
+      months: { ...data.months, [key]: { ...m, ...patch } },
     });
   }, [data, save]);
+
+  const patchCur = useCallback((patch) => {
+    patchMonth(currentMonthKey(), patch);
+  }, [patchMonth]);
 
   if (!loaded) return <div style={s.shell}><div style={{ color: "#6b7280", textAlign: "center", marginTop: 200, fontSize: 14 }}>Loading...</div></div>;
 
@@ -775,7 +809,7 @@ export default function App() {
   const unpaidCount = cur.upcoming.filter((u) => !u.paid).length;
   const totalUpcoming = totalUnpaidUpcoming;
 
-  const catBreakdown = categoryBreakdown(cur, data.categories || []);
+  const catBreakdown = categoryBreakdown(cur, data.categories || [], curKey, today);
   const catTotal = catBreakdown.reduce((a, c) => a + c.value, 0);
   const monthlyData = monthlyTotals(data);
   const spentByCat = spentByCategory(cur, curKey, today);
@@ -840,7 +874,7 @@ export default function App() {
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             <button style={s.dataLink} onClick={() => exportData(data)}>EXPORT</button>
             <button style={s.dataLink} onClick={triggerImport}>IMPORT</button>
-            <button style={s.dataLink} onClick={async () => { if (confirm("Reset all data?")) await save(migrateCredits(migrateCategories(ensureCurrentMonth(defaultData())))); }}>RESET</button>
+            <button style={s.dataLink} onClick={async () => { if (confirm("Reset all data?")) await save(migrateTemplateIds(migrateCredits(migrateCategories(ensureCurrentMonth(defaultData()))))); }}>RESET</button>
           </div>
           <input type="file" accept=".json" ref={importInputRef} onChange={onImportFile} style={{ display: "none" }} />
         </div>
@@ -1079,12 +1113,11 @@ export default function App() {
               />
               {filteredRecurring.length === 0 ? <div style={s.empty}>{recurringView.search ? `No recurring items match "${recurringView.search}".` : `No recurring payments set up. Click "+ Add Recurring" to create one.`}</div> : (
                 <>
-                  <TableHeader columns={[{ label: "NAME", flex: 2, sortKey: "name" }, { label: "CATEGORY", flex: 1.2, sortKey: "category" }, { label: "FREQUENCY", flex: 1 }, { label: "DAY", flex: 0.5, align: "center", sortKey: "dayOfMonth" }, { label: "AMOUNT", flex: 1, align: "right", sortKey: "amount" }, { label: "", flex: 0.6, align: "center" }]} sorts={recurringView.sorts} onSort={onSortRecurring} />
+                  <TableHeader columns={[{ label: "NAME", flex: 2, sortKey: "name" }, { label: "CATEGORY", flex: 1.2, sortKey: "category" }, { label: "DAY", flex: 0.5, align: "center", sortKey: "dayOfMonth" }, { label: "AMOUNT", flex: 1, align: "right", sortKey: "amount" }, { label: "", flex: 0.6, align: "center" }]} sorts={recurringView.sorts} onSort={onSortRecurring} />
                   {filteredRecurring.map((r) => (
                     <div key={r.id} style={s.tableRow}>
                       <div style={{ flex: 2, fontWeight: 600 }}>{r.name}</div>
                       <div style={{ flex: 1.2 }}><CategoryPill categoryName={r.category} categories={data.categories} /></div>
-                      <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{r.frequency}</div>
                       <div style={{ flex: 0.5, textAlign: "center", color: theme.textMuted, fontSize: 13 }}>{r.dayOfMonth || "—"}</div>
                       <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066ff" }}>{fmt(r.amount)}</div>
                       <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: 4 }}>
@@ -1100,7 +1133,7 @@ export default function App() {
                               save({
                                 ...data,
                                 months: { ...data.months, [curKey]: { ...cur, recurring: cur.recurring.filter((x) => x.id !== r.id) } },
-                                recurringTemplate: data.recurringTemplate.filter((x) => !(x.name === r.name && x.amount === r.amount)),
+                                recurringTemplate: data.recurringTemplate.filter((x) => x.id !== r.templateId),
                               });
                               setPendingDelete(null);
                             } else {
@@ -1295,7 +1328,14 @@ export default function App() {
             return (
               <>
                 <button style={{ ...s.linkBtn, marginBottom: 16, fontSize: 14 }} onClick={() => setHistoryKey(null)}>← Back to History</button>
-                <h2 style={{ fontSize: 20, fontWeight: 700, margin: "0 0 16px" }}>{monthLabel(historyKey)}</h2>
+                <h2 style={{ fontSize: 20, fontWeight: 700, margin: "0 0 12px" }}>{monthLabel(historyKey)}</h2>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+                  <span style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1.5, color: theme.textMuted, fontWeight: 600 }}>Income</span>
+                  <input type="number" value={m.income || ""}
+                    onChange={(ev) => patchMonth(historyKey, { income: +ev.target.value || 0 })}
+                    placeholder="0" style={{ ...s.input, width: 140 }} />
+                  <span style={{ fontSize: 12, color: theme.textMuted, fontWeight: 600 }}>PLN</span>
+                </div>
                 <div style={s.statsRow}>
                   <StatCard label="Income" value={fmt(effective)} accent="#10b981" sub={credits > 0 ? `+${fmt(credits)} credits` : "For this month"} icon="↑" />
                   <StatCard label="Remaining" value={fmt(rem)} accent={rem >= 0 ? "#10b981" : "#ef4444"} sub="After expenses & recurring" icon="↓" />
@@ -1303,50 +1343,131 @@ export default function App() {
                   <StatCard label="Can Invest" value={fmt(canInv)} accent="#0066ff" sub={`After ${data.savingsGoalPercent}% savings goal`} icon="↗" />
                 </div>
                 <div style={s.card}>
-                  <div style={s.cardTitle}>Expenses</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={s.cardTitle}>Expenses</div>
+                    <button style={s.linkBtn} onClick={() => setModal({ type: "expense", monthKey: historyKey })}>+ Add</button>
+                  </div>
                   {m.expenses.length === 0 ? <div style={s.emptySmall}>No expenses</div> : (
                     <>
-                      <TableHeader columns={[{ label: "NAME", flex: 2 }, { label: "CATEGORY", flex: 1.2 }, { label: "DATE", flex: 1 }, { label: "AMOUNT", flex: 1, align: "right" }]} />
+                      <TableHeader columns={[{ label: "NAME", flex: 2 }, { label: "CATEGORY", flex: 1.2 }, { label: "DATE", flex: 1 }, { label: "AMOUNT", flex: 1, align: "right" }, { label: "", flex: 0.6, align: "center" }]} />
                       {m.expenses.map((e) => (
                         <div key={e.id} style={s.tableRow}>
                           <div style={{ flex: 2, fontWeight: 600 }}>{e.name}</div>
                           <div style={{ flex: 1.2 }}><CategoryPill categoryName={e.category} categories={data.categories} /></div>
                           <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{e.date}</div>
                           <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444" }}>{fmt(e.amount)}</div>
+                          <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: 4 }}>
+                            <button style={s.editBtn} onClick={() => setModal({ type: "expense", editId: e.id, monthKey: historyKey })}>✎</button>
+                            <button
+                              style={{ ...s.delBtn, color: pendingDelete === e.id ? "#ef4444" : theme.textFaint, fontWeight: pendingDelete === e.id ? 700 : 400 }}
+                              onClick={() => {
+                                if (pendingDelete === e.id) {
+                                  patchMonth(historyKey, { expenses: m.expenses.filter((x) => x.id !== e.id) });
+                                  setPendingDelete(null);
+                                } else { setPendingDelete(e.id); }
+                              }}
+                            >✕</button>
+                          </div>
                         </div>
                       ))}
                     </>
                   )}
                 </div>
                 <div style={{ ...s.card, marginTop: 16 }}>
-                  <div style={s.cardTitle}>Recurring</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={s.cardTitle}>Recurring</div>
+                    <button style={s.linkBtn} onClick={() => setModal({ type: "recurring", monthKey: historyKey })}>+ Add</button>
+                  </div>
                   {m.recurring.length === 0 ? <div style={s.emptySmall}>No recurring</div> : (
                     <>
-                      <TableHeader columns={[{ label: "NAME", flex: 2 }, { label: "CATEGORY", flex: 1.2 }, { label: "FREQUENCY", flex: 1 }, { label: "DAY", flex: 0.5, align: "center" }, { label: "AMOUNT", flex: 1, align: "right" }]} />
+                      <TableHeader columns={[{ label: "NAME", flex: 2 }, { label: "CATEGORY", flex: 1.2 }, { label: "DAY", flex: 0.5, align: "center" }, { label: "AMOUNT", flex: 1, align: "right" }, { label: "", flex: 0.6, align: "center" }]} />
                       {m.recurring.map((r) => (
                         <div key={r.id} style={s.tableRow}>
                           <div style={{ flex: 2, fontWeight: 600 }}>{r.name}</div>
                           <div style={{ flex: 1.2 }}><CategoryPill categoryName={r.category} categories={data.categories} /></div>
-                          <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{r.frequency}</div>
-                          <div style={{ flex: 0.5, textAlign: "center", color: theme.textMuted, fontSize: 13 }}>{r.dayOfMonth || "—"}</div>
+                              <div style={{ flex: 0.5, textAlign: "center", color: theme.textMuted, fontSize: 13 }}>{r.dayOfMonth || "—"}</div>
                           <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066ff" }}>{fmt(r.amount)}</div>
+                          <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: 4 }}>
+                            <button style={s.editBtn} onClick={() => setModal({ type: "recurring", editId: r.id, monthKey: historyKey })}>✎</button>
+                            <button
+                              style={{ ...s.delBtn, color: pendingDelete === r.id ? "#ef4444" : theme.textFaint, fontWeight: pendingDelete === r.id ? 700 : 400 }}
+                              onClick={() => {
+                                if (pendingDelete === r.id) {
+                                  // Past-month deletion removes only this month's instance —
+                                  // the live template keeps governing future months.
+                                  patchMonth(historyKey, { recurring: m.recurring.filter((x) => x.id !== r.id) });
+                                  setPendingDelete(null);
+                                } else { setPendingDelete(r.id); }
+                              }}
+                            >✕</button>
+                          </div>
                         </div>
                       ))}
                     </>
                   )}
                 </div>
                 <div style={{ ...s.card, marginTop: 16 }}>
-                  <div style={s.cardTitle}>Upcoming</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={s.cardTitle}>Upcoming</div>
+                    <button style={s.linkBtn} onClick={() => setModal({ type: "upcoming", monthKey: historyKey })}>+ Add</button>
+                  </div>
                   {m.upcoming.length === 0 ? <div style={s.emptySmall}>No upcoming</div> : (
                     <>
-                      <TableHeader columns={[{ label: "NAME", flex: 2 }, { label: "CATEGORY", flex: 1.2 }, { label: "DUE DATE", flex: 1 }, { label: "PAID", flex: 0.7, align: "center" }, { label: "AMOUNT", flex: 1, align: "right" }]} />
+                      <TableHeader columns={[{ label: "NAME", flex: 2 }, { label: "CATEGORY", flex: 1.2 }, { label: "DUE DATE", flex: 1 }, { label: "PAID", flex: 0.7, align: "center" }, { label: "AMOUNT", flex: 1, align: "right" }, { label: "", flex: 0.6, align: "center" }]} />
                       {m.upcoming.map((u) => (
                         <div key={u.id} style={{ ...s.tableRow, opacity: u.paid ? 0.4 : 1 }}>
                           <div style={{ flex: 2, fontWeight: 600 }}>{u.name}</div>
                           <div style={{ flex: 1.2 }}><CategoryPill categoryName={u.category} categories={data.categories} /></div>
                           <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{u.dueDate}</div>
-                          <div style={{ flex: 0.7, textAlign: "center", color: u.paid ? "#10b981" : theme.textMuted, fontSize: 13 }}>{u.paid ? "Yes" : "No"}</div>
+                          <div style={{ flex: 0.7, textAlign: "center" }}>
+                            <input type="checkbox" checked={!!u.paid}
+                              onChange={() => patchMonth(historyKey, { upcoming: m.upcoming.map((x) => x.id === u.id ? { ...x, paid: !x.paid } : x) })}
+                              style={{ accentColor: "#10b981", width: 16, height: 16, cursor: "pointer" }} />
+                          </div>
                           <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: u.paid ? "#10b981" : "#f59e0b" }}>{fmt(u.amount)}</div>
+                          <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: 4 }}>
+                            <button style={s.editBtn} onClick={() => setModal({ type: "upcoming", editId: u.id, monthKey: historyKey })}>✎</button>
+                            <button
+                              style={{ ...s.delBtn, color: pendingDelete === u.id ? "#ef4444" : theme.textFaint, fontWeight: pendingDelete === u.id ? 700 : 400 }}
+                              onClick={() => {
+                                if (pendingDelete === u.id) {
+                                  patchMonth(historyKey, { upcoming: m.upcoming.filter((x) => x.id !== u.id) });
+                                  setPendingDelete(null);
+                                } else { setPendingDelete(u.id); }
+                              }}
+                            >✕</button>
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </div>
+                <div style={{ ...s.card, marginTop: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={s.cardTitle}>Credits</div>
+                    <button style={s.linkBtn} onClick={() => setModal({ type: "credit", monthKey: historyKey })}>+ Add</button>
+                  </div>
+                  {(m.credits || []).length === 0 ? <div style={s.emptySmall}>No credits</div> : (
+                    <>
+                      <TableHeader columns={[{ label: "NAME", flex: 2 }, { label: "SOURCE", flex: 1.2 }, { label: "DATE", flex: 1 }, { label: "AMOUNT", flex: 1, align: "right" }, { label: "", flex: 0.6, align: "center" }]} />
+                      {(m.credits || []).map((c) => (
+                        <div key={c.id} style={s.tableRow}>
+                          <div style={{ flex: 2, fontWeight: 600 }}>{c.name}</div>
+                          <div style={{ flex: 1.2, color: theme.textMuted, fontSize: 13 }}>{c.source || "Other"}</div>
+                          <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{c.date}</div>
+                          <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#10b981" }}>+{fmt(c.amount)}</div>
+                          <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: 4 }}>
+                            <button style={s.editBtn} onClick={() => setModal({ type: "credit", editId: c.id, monthKey: historyKey })}>✎</button>
+                            <button
+                              style={{ ...s.delBtn, color: pendingDelete === c.id ? "#ef4444" : theme.textFaint, fontWeight: pendingDelete === c.id ? 700 : 400 }}
+                              onClick={() => {
+                                if (pendingDelete === c.id) {
+                                  patchMonth(historyKey, { credits: (m.credits || []).filter((x) => x.id !== c.id) });
+                                  setPendingDelete(null);
+                                } else { setPendingDelete(c.id); }
+                              }}
+                            >✕</button>
+                          </div>
                         </div>
                       ))}
                     </>
@@ -1434,13 +1555,15 @@ export default function App() {
 
       {/* MODALS */}
       {modal?.type === "expense" && (() => {
-        const editing = modal.editId ? cur.expenses.find((x) => x.id === modal.editId) : null;
+        const targetKey = modal.monthKey || curKey;
+        const targetMonth = data.months[targetKey] || emptyMonth();
+        const editing = modal.editId ? targetMonth.expenses.find((x) => x.id === modal.editId) : null;
         return (
           <FormModal title={editing ? "Edit Expense" : "Add Expense"} fields={[
             { key: "name", label: "Name", placeholder: "e.g. Groceries", defaultValue: editing?.name },
             { key: "amount", label: "Amount (PLN)", type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
             { key: "category", label: "Category", type: "category", categories: data.categories, defaultValue: editing?.category },
-            { key: "date", label: "Date", type: "date", defaultValue: editing?.date || new Date().toISOString().slice(0, 10) },
+            { key: "date", label: "Date", type: "date", defaultValue: editing?.date || `${targetKey}-01` },
           ]} onClose={() => setModal(null)} onSave={(v) => {
             const { categories, category } = ensureCategory(data.categories, v.category);
             if (editing) {
@@ -1449,9 +1572,9 @@ export default function App() {
                 categories,
                 months: {
                   ...data.months,
-                  [curKey]: {
-                    ...cur,
-                    expenses: cur.expenses.map((x) => x.id === editing.id
+                  [targetKey]: {
+                    ...targetMonth,
+                    expenses: targetMonth.expenses.map((x) => x.id === editing.id
                       ? { ...x, name: v.name, amount: +v.amount, date: v.date, category: category.name }
                       : x),
                   },
@@ -1462,7 +1585,7 @@ export default function App() {
               save({
                 ...data,
                 categories,
-                months: { ...data.months, [curKey]: { ...cur, expenses: [...cur.expenses, newExp] } },
+                months: { ...data.months, [targetKey]: { ...targetMonth, expenses: [...targetMonth.expenses, newExp] } },
               });
             }
             setModal(null);
@@ -1470,13 +1593,17 @@ export default function App() {
         );
       })()}
       {modal?.type === "recurring" && (() => {
-        const editing = modal.editId ? cur.recurring.find((x) => x.id === modal.editId) : null;
+        const targetKey = modal.monthKey || curKey;
+        const targetMonth = data.months[targetKey] || emptyMonth();
+        // Editing a PAST month is a correction to history only — it must not rewrite
+        // the live template, which governs future months.
+        const touchesTemplate = targetKey === curKey;
+        const editing = modal.editId ? targetMonth.recurring.find((x) => x.id === modal.editId) : null;
         return (
           <FormModal title={editing ? "Edit Recurring Payment" : "Add Recurring Payment"} fields={[
             { key: "name", label: "Name", placeholder: "e.g. Rent", defaultValue: editing?.name },
             { key: "amount", label: "Amount (PLN)", type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
             { key: "category", label: "Category", type: "category", categories: data.categories, defaultValue: editing?.category },
-            { key: "frequency", label: "Frequency", type: "select", options: ["Monthly", "Weekly", "Yearly"], defaultValue: editing?.frequency },
             { key: "dayOfMonth", label: "Day of Month", type: "number", placeholder: "1", defaultValue: editing ? String(editing.dayOfMonth) : "" },
           ]} onClose={() => setModal(null)} onSave={(v) => {
             const { categories, category } = ensureCategory(data.categories, v.category);
@@ -1485,7 +1612,6 @@ export default function App() {
                 ...editing,
                 name: v.name,
                 amount: +v.amount,
-                frequency: v.frequency || "Monthly",
                 dayOfMonth: +v.dayOfMonth || 1,
                 category: category.name,
               };
@@ -1494,24 +1620,29 @@ export default function App() {
                 categories,
                 months: {
                   ...data.months,
-                  [curKey]: {
-                    ...cur,
-                    recurring: cur.recurring.map((x) => x.id === editing.id ? updatedItem : x),
+                  [targetKey]: {
+                    ...targetMonth,
+                    recurring: targetMonth.recurring.map((x) => x.id === editing.id ? updatedItem : x),
                   },
                 },
-                recurringTemplate: data.recurringTemplate.map((t) =>
-                  (t.name === editing.name && t.amount === editing.amount)
-                    ? { ...t, name: v.name, amount: +v.amount, frequency: v.frequency || "Monthly", dayOfMonth: +v.dayOfMonth || 1, category: category.name }
-                    : t
-                ),
+                recurringTemplate: touchesTemplate
+                  ? data.recurringTemplate.map((t) =>
+                      t.id === editing.templateId
+                        ? { ...t, name: v.name, amount: +v.amount, dayOfMonth: +v.dayOfMonth || 1, category: category.name }
+                        : t
+                    )
+                  : data.recurringTemplate,
               });
             } else {
-              const newItem = { id: uid(), name: v.name, amount: +v.amount, frequency: v.frequency || "Monthly", dayOfMonth: +v.dayOfMonth || 1, category: category.name };
+              const tid = uid();
+              const newItem = { id: uid(), templateId: tid, name: v.name, amount: +v.amount, dayOfMonth: +v.dayOfMonth || 1, category: category.name };
               save({
                 ...data,
                 categories,
-                months: { ...data.months, [curKey]: { ...cur, recurring: [...cur.recurring, newItem] } },
-                recurringTemplate: [...data.recurringTemplate, { ...newItem }],
+                months: { ...data.months, [targetKey]: { ...targetMonth, recurring: [...targetMonth.recurring, newItem] } },
+                recurringTemplate: touchesTemplate
+                  ? [...data.recurringTemplate, { id: tid, name: v.name, amount: +v.amount, dayOfMonth: +v.dayOfMonth || 1, category: category.name }]
+                  : data.recurringTemplate,
               });
             }
             setModal(null);
@@ -1519,13 +1650,15 @@ export default function App() {
         );
       })()}
       {modal?.type === "upcoming" && (() => {
-        const editing = modal.editId ? cur.upcoming.find((x) => x.id === modal.editId) : null;
+        const targetKey = modal.monthKey || curKey;
+        const targetMonth = data.months[targetKey] || emptyMonth();
+        const editing = modal.editId ? targetMonth.upcoming.find((x) => x.id === modal.editId) : null;
         return (
           <FormModal title={editing ? "Edit Upcoming Payment" : "Add Upcoming Payment"} fields={[
             { key: "name", label: "Name", placeholder: "e.g. Car Insurance", defaultValue: editing?.name },
             { key: "amount", label: "Amount (PLN)", type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
             { key: "category", label: "Category", type: "category", categories: data.categories, defaultValue: editing?.category },
-            { key: "dueDate", label: "Due Date", type: "date", defaultValue: editing?.dueDate || new Date().toISOString().slice(0, 10) },
+            { key: "dueDate", label: "Due Date", type: "date", defaultValue: editing?.dueDate || `${targetKey}-01` },
           ]} onClose={() => setModal(null)} onSave={(v) => {
             const { categories, category } = ensureCategory(data.categories, v.category);
             if (editing) {
@@ -1534,9 +1667,9 @@ export default function App() {
                 categories,
                 months: {
                   ...data.months,
-                  [curKey]: {
-                    ...cur,
-                    upcoming: cur.upcoming.map((x) => x.id === editing.id
+                  [targetKey]: {
+                    ...targetMonth,
+                    upcoming: targetMonth.upcoming.map((x) => x.id === editing.id
                       ? { ...x, name: v.name, amount: +v.amount, dueDate: v.dueDate, category: category.name }
                       : x),
                   },
@@ -1547,7 +1680,7 @@ export default function App() {
               save({
                 ...data,
                 categories,
-                months: { ...data.months, [curKey]: { ...cur, upcoming: [...cur.upcoming, newItem] } },
+                months: { ...data.months, [targetKey]: { ...targetMonth, upcoming: [...targetMonth.upcoming, newItem] } },
               });
             }
             setModal(null);
@@ -1555,25 +1688,28 @@ export default function App() {
         );
       })()}
       {modal?.type === "credit" && (() => {
-        const editing = modal.editId ? cur.credits.find((x) => x.id === modal.editId) : null;
+        const targetKey = modal.monthKey || curKey;
+        const targetMonth = data.months[targetKey] || emptyMonth();
+        const editing = modal.editId ? (targetMonth.credits || []).find((x) => x.id === modal.editId) : null;
         return (
           <FormModal title={editing ? "Edit Credit" : "Add Credit"} fields={[
             { key: "name", label: "Name", placeholder: "e.g. Amazon refund", defaultValue: editing?.name },
             { key: "amount", label: "Amount (PLN)", type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
             { key: "source", label: "Source", placeholder: "Refund, Gift, Bonus, Other", defaultValue: editing?.source },
-            { key: "date", label: "Date", type: "date", defaultValue: editing?.date || new Date().toISOString().slice(0, 10) },
+            { key: "date", label: "Date", type: "date", defaultValue: editing?.date || `${targetKey}-01` },
           ]} onClose={() => setModal(null)} onSave={(v) => {
             const amt = +v.amount;
             if (!v.name || !(amt > 0)) { setModal(null); return; }
+            const src = (v.source || "Other").trim() || "Other";
             if (editing) {
-              patchCur({
-                credits: cur.credits.map((x) => x.id === editing.id
-                  ? { ...x, name: v.name, amount: amt, date: v.date, source: (v.source || "Other").trim() || "Other" }
+              patchMonth(targetKey, {
+                credits: (targetMonth.credits || []).map((x) => x.id === editing.id
+                  ? { ...x, name: v.name, amount: amt, date: v.date, source: src }
                   : x),
               });
             } else {
-              const newCredit = { id: uid(), name: v.name, amount: amt, date: v.date, source: (v.source || "Other").trim() || "Other" };
-              patchCur({ credits: [...(cur.credits || []), newCredit] });
+              const newCredit = { id: uid(), name: v.name, amount: amt, date: v.date, source: src };
+              patchMonth(targetKey, { credits: [...(targetMonth.credits || []), newCredit] });
             }
             setModal(null);
           }} />
