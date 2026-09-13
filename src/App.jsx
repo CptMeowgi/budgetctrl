@@ -11,7 +11,7 @@ if (!window.storage) {
   };
 }
 import { useState, useEffect, useCallback, useRef, createContext, useContext, useMemo } from "react";
-import { PieChart, Pie, Cell, Tooltip as RTooltip, ResponsiveContainer, XAxis, YAxis, CartesianGrid, BarChart, Bar } from "recharts";
+import { PieChart, Pie, Cell, Tooltip as RTooltip, ResponsiveContainer, XAxis, YAxis, CartesianGrid, BarChart, Bar, AreaChart, Area } from "recharts";
 
 const THEME = {
   bg: "#f4f5f7",
@@ -66,6 +66,15 @@ const CATEGORY_COLORS = ["#ef4444", "#f59e0b", "#10b981", "#0066ff", "#8b5cf6", 
 const CATEGORY_ICONS = ["🍔", "🚗", "🛍️", "📄", "🎮", "💊", "💰", "🏠", "✈️", "🎁", "☕", "📱"];
 const UNCATEGORIZED = { name: "Uncategorized", color: "#9ca3af", icon: "·" };
 
+const DEFAULT_CREDIT_CATEGORIES = [
+  { name: "Refund", color: "#10b981", icon: "↩" },
+  { name: "Gift",   color: "#ec4899", icon: "🎁" },
+  { name: "Bonus",  color: "#f59e0b", icon: "⭐" },
+  { name: "Salary", color: "#0066ff", icon: "💼" },
+  { name: "Other",  color: "#9ca3af", icon: "·" },
+];
+const CREDIT_UNCATEGORIZED = { name: "Other", color: "#9ca3af", icon: "·" };
+
 const STORAGE_KEY = "budget-app-data";
 const TABS = [
   { id: "dashboard", label: "Dashboard", icon: "◉" },
@@ -115,8 +124,11 @@ function defaultData() {
   return {
     months: { [cur]: emptyMonth() },
     savingsGoalPercent: 20,
+    startingBalance: 0,
     recurringTemplate: [],
+    creditTemplate: [],
     categories: [{ ...UNCATEGORIZED }],
+    creditCategories: DEFAULT_CREDIT_CATEGORIES.map((c) => ({ ...c })),
   };
 }
 
@@ -150,6 +162,24 @@ function ensureCategory(categories, name) {
   if (existing) return { categories, category: existing };
   const userCats = categories.filter((c) => c.name !== "Uncategorized");
   const idx = userCats.length;
+  const color = CATEGORY_COLORS[idx % CATEGORY_COLORS.length];
+  const icon = CATEGORY_ICONS[idx % CATEGORY_ICONS.length];
+  const newCat = { name: trimmed, color, icon };
+  return { categories: [...categories, newCat], category: newCat };
+}
+
+function findCreditCategory(categories, name) {
+  const n = normalizeCatName(name).toLowerCase();
+  if (!n) return null;
+  return categories.find((c) => c.name.toLowerCase() === n) || null;
+}
+
+function ensureCreditCategory(categories, name) {
+  const trimmed = normalizeCatName(name);
+  if (!trimmed) return { categories, category: CREDIT_UNCATEGORIZED };
+  const existing = findCreditCategory(categories, trimmed);
+  if (existing) return { categories, category: existing };
+  const idx = categories.length;
   const color = CATEGORY_COLORS[idx % CATEGORY_COLORS.length];
   const icon = CATEGORY_ICONS[idx % CATEGORY_ICONS.length];
   const newCat = { name: trimmed, color, icon };
@@ -201,6 +231,24 @@ function migrateTemplateIds(data) {
     months[key] = { ...m, recurring };
   }
   return { ...data, months };
+}
+
+function migrateCreditCategories(data) {
+  const creditCategories = Array.isArray(data.creditCategories) && data.creditCategories.length
+    ? [...data.creditCategories]
+    : DEFAULT_CREDIT_CATEGORIES.map((c) => ({ ...c }));
+  const byLower = new Map(creditCategories.map((c) => [c.name.toLowerCase(), c.name]));
+  const months = { ...data.months };
+  for (const key of Object.keys(months)) {
+    const m = months[key];
+    const credits = (m.credits || []).map((c) => {
+      if (c.category) return c;
+      const mapped = byLower.get((c.source || "").trim().toLowerCase());
+      return { ...c, category: mapped || "Other" };
+    });
+    months[key] = { ...m, credits };
+  }
+  return { ...data, months, creditCategories, creditTemplate: data.creditTemplate || [] };
 }
 
 function daysInMonth(monthKey) {
@@ -331,7 +379,7 @@ function ensureCurrentMonth(data) {
         expenses: [],
         recurring: (data.recurringTemplate || []).map((r) => ({ ...r, id: uid(), templateId: r.id })),
         upcoming: [],
-        credits: [],
+        credits: (data.creditTemplate || []).map((c) => ({ ...c, id: uid(), templateId: c.id })),
       },
     },
   };
@@ -366,6 +414,24 @@ function monthlyTotals(data) {
     const credits = (m.credits || []).reduce((a, c) => a + c.amount, 0);
     return { key, label: monthLabel(key).slice(0, 3), spent: spentExpenses + spentRecurring, income: (m.income || 0) + credits };
   });
+}
+
+function cumulativeSavings(data) {
+  const cur = currentMonthKey();
+  const keys = Object.keys(data.months).filter((k) => k < cur).sort();
+  let total = data.startingBalance || 0;
+  const series = [{ key: "start", label: "Start", balance: total, delta: 0 }];
+  for (const k of keys) {
+    const m = data.months[k];
+    const income = (m.income || 0) + (m.credits || []).reduce((a, c) => a + c.amount, 0);
+    const spent = (m.expenses || []).reduce((a, e) => a + e.amount, 0)
+                + (m.recurring || []).reduce((a, r) => a + r.amount, 0)
+                + (m.upcoming || []).filter((u) => u.paid).reduce((a, u) => a + u.amount, 0);
+    const delta = income - spent;
+    total += delta;
+    series.push({ key: k, label: monthLabel(k).slice(0, 3), balance: total, delta });
+  }
+  return { total, series, monthsCounted: keys.length };
 }
 
 function Modal({ title, onClose, children }) {
@@ -509,9 +575,9 @@ function TableHeader({ columns, sorts, onSort }) {
   );
 }
 
-function CategoryPill({ categoryName, categories }) {
+function CategoryPill({ categoryName, categories, fallback }) {
   const { theme, s } = useThemed();
-  const cat = findCategory(categories, categoryName) || UNCATEGORIZED;
+  const cat = findCategory(categories, categoryName) || fallback || UNCATEGORIZED;
   return (
     <span style={{ ...s.catPill, background: `${cat.color}15`, color: cat.color }}>
       <span style={{ ...s.catDot, background: `${cat.color}25` }}>{cat.icon}</span>
@@ -591,6 +657,47 @@ function MonthlyBarChart({ data, curKey, onBarClick }) {
             ))}
           </Bar>
         </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function SavingsChart({ series }) {
+  const { theme, s } = useThemed();
+  if (!series || series.length < 2) {
+    return <div style={s.chartEmpty}>Close out a month to start tracking savings.</div>;
+  }
+  return (
+    <div style={{ width: "100%", height: 220 }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={series} margin={{ top: 10, right: 10, bottom: 0, left: 10 }}>
+          <defs>
+            <linearGradient id="savingsFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={theme.success} stopOpacity={0.35} />
+              <stop offset="100%" stopColor={theme.success} stopOpacity={0.02} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid stroke={theme.border} strokeDasharray="3 3" vertical={false} />
+          <XAxis dataKey="label" stroke={theme.textFaint} fontSize={11} tickLine={false} axisLine={false} />
+          <YAxis stroke={theme.textFaint} fontSize={11} tickLine={false} axisLine={false}
+            tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)} />
+          <RTooltip content={({ active, payload }) => {
+            if (!active || !payload?.[0]) return null;
+            const d = payload[0].payload;
+            return (
+              <div style={s.chartTooltip}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>{d.label}</div>
+                <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", color: theme.success }}>Balance: {fmt(d.balance)}</div>
+                {d.delta !== 0 && (
+                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", color: d.delta >= 0 ? theme.success : theme.danger }}>
+                    {d.delta >= 0 ? "+" : ""}{fmt(d.delta)} that month
+                  </div>
+                )}
+              </div>
+            );
+          }} />
+          <Area type="monotone" dataKey="balance" stroke={theme.success} strokeWidth={2} fill="url(#savingsFill)" />
+        </AreaChart>
       </ResponsiveContainer>
     </div>
   );
@@ -715,7 +822,7 @@ export default function App() {
           return;
         }
         if (!confirm("Replace ALL current data with the contents of this backup? This cannot be undone.")) return;
-        const migrated = migrateTemplateIds(migrateCredits(migrateCategories(ensureCurrentMonth(migrate(parsed)))));
+        const migrated = migrateCreditCategories(migrateTemplateIds(migrateCredits(migrateCategories(ensureCurrentMonth(migrate(parsed))))));
         save(migrated);
       } catch {
         alert("Could not read backup file. Make sure it's a valid budget-ctrl JSON export.");
@@ -732,13 +839,13 @@ export default function App() {
         const r = await window.storage.get(STORAGE_KEY);
         if (r?.value) {
           const raw = JSON.parse(r.value);
-          const migrated = migrateTemplateIds(migrateCredits(migrateCategories(ensureCurrentMonth(migrate(raw)))));
+          const migrated = migrateCreditCategories(migrateTemplateIds(migrateCredits(migrateCategories(ensureCurrentMonth(migrate(raw))))));
           setData(migrated);
           if (migrated !== raw) {
             try { await window.storage.set(STORAGE_KEY, JSON.stringify(migrated)); } catch {}
           }
         } else {
-          setData(migrateTemplateIds(migrateCredits(migrateCategories(ensureCurrentMonth(defaultData())))));
+          setData(migrateCreditCategories(migrateTemplateIds(migrateCredits(migrateCategories(ensureCurrentMonth(defaultData()))))));
         }
       } catch {}
       setLoaded(true);
@@ -792,7 +899,13 @@ export default function App() {
   const totalRecurringFuture = totalRecurringAll - totalRecurringPast;
   const totalUnpaidUpcoming = cur.upcoming.filter((u) => !u.paid).reduce((a, e) => a + e.amount, 0);
   const totalPaidUpcoming = cur.upcoming.filter((u) => u.paid).reduce((a, e) => a + e.amount, 0);
-  const totalCredits = (cur.credits || []).reduce((a, c) => a + c.amount, 0);
+  const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const allCredits = cur.credits || [];
+  const creditReceived = (c) => c.dayOfMonth != null
+    ? isRecurringDue(c, curKey, today)
+    : (c.date || "") <= todayISO;
+  const totalCredits = allCredits.filter(creditReceived).reduce((a, c) => a + c.amount, 0);
+  const totalCreditsPending = allCredits.filter((c) => !creditReceived(c)).reduce((a, c) => a + c.amount, 0);
   const baseIncome = cur.income;
   const effectiveIncome = baseIncome + totalCredits;
   const totalActuallySpent = totalExpenses + totalRecurringPast + totalPaidUpcoming;
@@ -812,6 +925,7 @@ export default function App() {
   const catBreakdown = categoryBreakdown(cur, data.categories || [], curKey, today);
   const catTotal = catBreakdown.reduce((a, c) => a + c.value, 0);
   const monthlyData = monthlyTotals(data);
+  const savings = cumulativeSavings(data);
   const spentByCat = spentByCategory(cur, curKey, today);
   const onSortExpenses = (col, shift) =>
     setExpensesView((v) => ({ ...v, sorts: toggleSort(v.sorts || [], col, shift) }));
@@ -863,18 +977,30 @@ export default function App() {
               placeholder="0" style={s.incomeInput} />
             <span style={{ fontSize: 12, color: theme.outerTextMuted, fontWeight: 600 }}>PLN</span>
           </div>
-          {totalCredits > 0 && (
+          {(totalCredits > 0 || totalCreditsPending > 0) && (
             <div style={{ fontSize: 11, color: "#10b981", marginTop: 6, fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums" }}>
               + {fmt(totalCredits)} credits
+              {totalCreditsPending > 0 && (
+                <span style={{ color: theme.outerTextMuted }}> · {fmt(totalCreditsPending)} pending</span>
+              )}
             </div>
           )}
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 1.5, color: theme.outerTextMuted, marginBottom: 8, fontWeight: 600 }}>Starting Balance</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input type="number" value={data.startingBalance || ""}
+                onChange={(e) => save({ ...data, startingBalance: +e.target.value || 0 })}
+                placeholder="0" style={s.incomeInput} />
+              <span style={{ fontSize: 12, color: theme.outerTextMuted, fontWeight: 600 }}>PLN</span>
+            </div>
+          </div>
         </div>
         <div style={{ padding: "12px 20px", borderTop: "1px solid " + theme.outerBorder }}>
           <div style={{ fontSize: 10, color: theme.outerTextMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>DATA</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             <button style={s.dataLink} onClick={() => exportData(data)}>EXPORT</button>
             <button style={s.dataLink} onClick={triggerImport}>IMPORT</button>
-            <button style={s.dataLink} onClick={async () => { if (confirm("Reset all data?")) await save(migrateTemplateIds(migrateCredits(migrateCategories(ensureCurrentMonth(defaultData()))))); }}>RESET</button>
+            <button style={s.dataLink} onClick={async () => { if (confirm("Reset all data?")) await save(migrateCreditCategories(migrateTemplateIds(migrateCredits(migrateCategories(ensureCurrentMonth(defaultData())))))); }}>RESET</button>
           </div>
           <input type="file" accept=".json" ref={importInputRef} onChange={onImportFile} style={{ display: "none" }} />
         </div>
@@ -899,7 +1025,7 @@ export default function App() {
             >
               {themeMode === "dark" ? "☀" : "☾"}
             </button>
-            {tab !== "dashboard" && tab !== "history" && tab !== "year" && (
+            {tab !== "dashboard" && tab !== "history" && tab !== "year" && tab !== "credits" && (
               <button style={s.addBtn} onClick={() => setModal({ type: tab === "expenses" ? "expense" : tab === "credits" ? "credit" : tab })}>
                 + Add {tab === "expenses" ? "Expense" : tab === "recurring" ? "Recurring" : tab === "credits" ? "Credit" : "Payment"}
               </button>
@@ -912,11 +1038,16 @@ export default function App() {
           {/* DASHBOARD */}
           {tab === "dashboard" && (
             <>
-              <div style={s.statsRow}>
+              <div style={{ ...s.statsRow, gridTemplateColumns: savings.monthsCounted > 0 ? "repeat(5, 1fr)" : "repeat(4, 1fr)" }}>
                 <StatCard label="Remaining" value={fmt(remaining)} accent={remaining >= 0 ? "#10b981" : "#ef4444"} sub={totalStillScheduled > 0 ? `${fmt(totalStillScheduled)} still scheduled` : "Everything's landed"} icon="↓" />
                 <StatCard label="Still to Pay" value={fmt(totalUpcoming)} accent="#f59e0b" sub={`${unpaidCount} upcoming payment${unpaidCount !== 1 ? "s" : ""}`} icon="◈" />
                 <StatCard label="Can Invest" value={fmt(canInvest)} accent="#0066ff" sub={`After ${displayPct}% savings goal`} icon="↗" />
                 <StatCard label="Total Spent" value={fmt(totalActuallySpent)} accent="#ef4444" sub={`${cur.expenses.length} one-off · ${cur.recurring.length} recurring`} icon="↻" />
+                {savings.monthsCounted > 0 && (
+                  <StatCard label="Saved So Far" value={fmt(savings.total)}
+                    accent={savings.total >= 0 ? "#10b981" : "#ef4444"}
+                    sub={`Across ${savings.monthsCounted} closed month${savings.monthsCounted !== 1 ? "s" : ""}`} icon="◆" />
+                )}
               </div>
               {/* Savings goal + income breakdown strip */}
               <div style={{ ...s.card, marginBottom: 16 }}>
@@ -1209,54 +1340,90 @@ export default function App() {
           )}
 
           {/* CREDITS */}
-          {tab === "credits" && (
-            <div style={s.card}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                <div style={s.cardTitle}>Credits</div>
-                <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#10b981", fontSize: 16 }}>Total: {fmt(totalCredits)}</div>
+          {tab === "credits" && (() => {
+            const recurringCredits = filteredCredits.filter((c) => c.dayOfMonth != null);
+            const oneOffCredits = filteredCredits.filter((c) => c.dayOfMonth == null);
+            const creditRow = (c, kind) => (
+              <div key={c.id} style={s.tableRow}>
+                <div style={{ flex: 2, fontWeight: 600 }}>{c.name}</div>
+                <div style={{ flex: 1.2 }}><CategoryPill categoryName={c.category || c.source} categories={data.creditCategories || []} fallback={CREDIT_UNCATEGORIZED} /></div>
+                {kind === "recurring"
+                  ? <div style={{ flex: 1, textAlign: "center", color: theme.textMuted, fontSize: 13 }}>{c.dayOfMonth || "—"}</div>
+                  : <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{c.date}</div>}
+                <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: creditReceived(c) ? "#10b981" : theme.textMuted }}>+{fmt(c.amount)}</div>
+                <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: 4 }}>
+                  <button style={s.editBtn} onClick={() => setModal({ type: kind === "recurring" ? "creditRecurring" : "credit", editId: c.id })}>✎</button>
+                  <button
+                    style={{ ...s.delBtn, color: pendingDelete === c.id ? "#ef4444" : theme.textFaint, fontWeight: pendingDelete === c.id ? 700 : 400 }}
+                    onClick={() => {
+                      if (pendingDelete === c.id) {
+                        if (kind === "recurring") {
+                          save({
+                            ...data,
+                            months: { ...data.months, [curKey]: { ...cur, credits: (cur.credits || []).filter((x) => x.id !== c.id) } },
+                            creditTemplate: (data.creditTemplate || []).filter((t) => t.id !== c.templateId),
+                          });
+                        } else {
+                          patchCur({ credits: (cur.credits || []).filter((x) => x.id !== c.id) });
+                        }
+                        setPendingDelete(null);
+                      } else { setPendingDelete(c.id); }
+                    }}
+                  >✕</button>
+                </div>
               </div>
-              <input
-                type="text"
-                placeholder="Search credits..."
-                value={creditsView.search}
-                onChange={(e) => setCreditsView((v) => ({ ...v, search: e.target.value }))}
-                style={s.searchInput}
-              />
-              {filteredCredits.length === 0 ? (
-                <div style={s.empty}>{creditsView.search ? `No credits match "${creditsView.search}".` : `No credits this month. Use "+ Add Credit" to log a refund, gift, or bonus.`}</div>
-              ) : (
-                <>
-                  <TableHeader columns={[{ label: "NAME", flex: 2, sortKey: "name" }, { label: "SOURCE", flex: 1.2, sortKey: "source" }, { label: "DATE", flex: 1, sortKey: "date" }, { label: "AMOUNT", flex: 1, align: "right", sortKey: "amount" }, { label: "", flex: 0.6, align: "center" }]} sorts={creditsView.sorts} onSort={onSortCredits} />
-                  {filteredCredits.map((c) => (
-                    <div key={c.id} style={s.tableRow}>
-                      <div style={{ flex: 2, fontWeight: 600 }}>{c.name}</div>
-                      <div style={{ flex: 1.2, color: theme.textMuted, fontSize: 13 }}>{c.source || "Other"}</div>
-                      <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{c.date}</div>
-                      <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#10b981" }}>+{fmt(c.amount)}</div>
-                      <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: 4 }}>
-                        <button style={s.editBtn} onClick={() => setModal({ type: "credit", editId: c.id })}>✎</button>
-                        <button
-                          style={{
-                            ...s.delBtn,
-                            color: pendingDelete === c.id ? "#ef4444" : theme.textFaint,
-                            fontWeight: pendingDelete === c.id ? 700 : 400,
-                          }}
-                          onClick={() => {
-                            if (pendingDelete === c.id) {
-                              patchCur({ credits: cur.credits.filter((x) => x.id !== c.id) });
-                              setPendingDelete(null);
-                            } else {
-                              setPendingDelete(c.id);
-                            }
-                          }}
-                        >✕</button>
-                      </div>
+            );
+            return (
+              <>
+                <div style={s.card}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <div style={s.cardTitle}>Credits</div>
+                    <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#10b981", fontSize: 16 }}>
+                      Received: {fmt(totalCredits)}
+                      {totalCreditsPending > 0 && <span style={{ color: theme.textMuted, fontSize: 13 }}> · {fmt(totalCreditsPending)} pending</span>}
                     </div>
-                  ))}
-                </>
-              )}
-            </div>
-          )}
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Search credits..."
+                    value={creditsView.search}
+                    onChange={(e) => setCreditsView((v) => ({ ...v, search: e.target.value }))}
+                    style={s.searchInput}
+                  />
+                </div>
+
+                <div style={{ ...s.card, marginTop: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={s.cardTitle}>Recurring Credits</div>
+                    <button style={s.linkBtn} onClick={() => setModal({ type: "creditRecurring" })}>+ Add Recurring</button>
+                  </div>
+                  {recurringCredits.length === 0 ? (
+                    <div style={s.emptySmall}>{creditsView.search ? "No recurring credits match your search." : "No recurring credits. Add an allowance, stipend, or retainer."}</div>
+                  ) : (
+                    <>
+                      <TableHeader columns={[{ label: "NAME", flex: 2, sortKey: "name" }, { label: "SOURCE", flex: 1.2, sortKey: "category" }, { label: "DAY", flex: 1, align: "center", sortKey: "dayOfMonth" }, { label: "AMOUNT", flex: 1, align: "right", sortKey: "amount" }, { label: "", flex: 0.6, align: "center" }]} sorts={creditsView.sorts} onSort={onSortCredits} />
+                      {recurringCredits.map((c) => creditRow(c, "recurring"))}
+                    </>
+                  )}
+                </div>
+
+                <div style={{ ...s.card, marginTop: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={s.cardTitle}>One-off Credits</div>
+                    <button style={s.linkBtn} onClick={() => setModal({ type: "credit" })}>+ Add Credit</button>
+                  </div>
+                  {oneOffCredits.length === 0 ? (
+                    <div style={s.emptySmall}>{creditsView.search ? "No one-off credits match your search." : "No one-off credits this month. Log a refund, gift, or bonus."}</div>
+                  ) : (
+                    <>
+                      <TableHeader columns={[{ label: "NAME", flex: 2, sortKey: "name" }, { label: "SOURCE", flex: 1.2, sortKey: "category" }, { label: "DATE", flex: 1, sortKey: "date" }, { label: "AMOUNT", flex: 1, align: "right", sortKey: "amount" }, { label: "", flex: 0.6, align: "center" }]} sorts={creditsView.sorts} onSort={onSortCredits} />
+                      {oneOffCredits.map((c) => creditRow(c, "oneoff"))}
+                    </>
+                  )}
+                </div>
+              </>
+            );
+          })()}
 
           {/* HISTORY - LIST */}
           {tab === "history" && historyKey === null && (
@@ -1453,7 +1620,7 @@ export default function App() {
                       {(m.credits || []).map((c) => (
                         <div key={c.id} style={s.tableRow}>
                           <div style={{ flex: 2, fontWeight: 600 }}>{c.name}</div>
-                          <div style={{ flex: 1.2, color: theme.textMuted, fontSize: 13 }}>{c.source || "Other"}</div>
+                          <div style={{ flex: 1.2 }}><CategoryPill categoryName={c.category || c.source} categories={data.creditCategories || []} fallback={CREDIT_UNCATEGORIZED} /></div>
                           <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{c.date}</div>
                           <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#10b981" }}>+{fmt(c.amount)}</div>
                           <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: 4 }}>
@@ -1516,6 +1683,56 @@ export default function App() {
             const canPrev = allYears.includes(prevYear);
             const canNext = allYears.includes(nextYear);
 
+            // 12-month Jan–Dec series (months with no data render as zero)
+            const monthBars = Array.from({ length: 12 }, (_, i) => {
+              const k = `${yearKey}-${String(i + 1).padStart(2, "0")}`;
+              const label = new Date(2000, i, 1).toLocaleDateString("en-US", { month: "short" });
+              const m = data.months[k];
+              if (!m) return { key: k, label, spent: 0, income: 0 };
+              const exp = (m.expenses || []).reduce((a, e) => a + e.amount, 0);
+              const rec = (m.recurring || []).filter((r) => isRecurringDue(r, k, today)).reduce((a, r) => a + r.amount, 0);
+              const cr = (m.credits || []).reduce((a, c) => a + c.amount, 0);
+              return { key: k, label, spent: exp + rec, income: (m.income || 0) + cr };
+            });
+
+            // Year-over-year comparison
+            const prevMonths = Object.entries(data.months).filter(([k]) => k.startsWith(prevYear + "-"));
+            const prevIncomeY = prevMonths.reduce((a, [, m]) =>
+              a + (m.income || 0) + (m.credits || []).reduce((x, c) => x + c.amount, 0), 0);
+            const prevSpentY = prevMonths.reduce((a, [k, m]) =>
+              a + (m.expenses || []).reduce((x, e) => x + e.amount, 0)
+                + (m.recurring || []).filter((r) => isRecurringDue(r, k, today)).reduce((x, r) => x + r.amount, 0), 0);
+            const yoySub = (curr, prev) => {
+              if (!(prev > 0)) return null;
+              const d = ((curr - prev) / prev) * 100;
+              return `${d >= 0 ? "↑" : "↓"} ${Math.abs(d).toFixed(0)}% vs ${prevYear}`;
+            };
+
+            // Top 5 biggest one-off expenses
+            const topExpenses = monthsInYear
+              .flatMap(([, m]) => (m.expenses || []))
+              .sort((a, b) => b.amount - a.amount)
+              .slice(0, 5);
+
+            // Income sources
+            const incomeSources = new Map();
+            let baseIncomeY = 0;
+            for (const [, m] of monthsInYear) {
+              baseIncomeY += (m.income || 0);
+              for (const c of (m.credits || [])) {
+                const name = c.category || c.source || "Other";
+                incomeSources.set(name, (incomeSources.get(name) || 0) + c.amount);
+              }
+            }
+            const incomeBreakdown = [
+              ...(baseIncomeY > 0 ? [{ name: "Base Income", value: baseIncomeY, color: "#0066ff", icon: "💼" }] : []),
+              ...Array.from(incomeSources.entries()).map(([name, value]) => {
+                const cat = (data.creditCategories || []).find((c) => c.name === name) || CREDIT_UNCATEGORIZED;
+                return { name, value, color: cat.color, icon: cat.icon };
+              }),
+            ].sort((a, b) => b.value - a.value);
+            const incomeTotal = incomeBreakdown.reduce((a, c) => a + c.value, 0);
+
             return (
               <>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 16, marginBottom: 16 }}>
@@ -1531,18 +1748,55 @@ export default function App() {
                   <>
                     <div style={s.statsRow}>
                       <StatCard label="Total Income" value={fmt(totalIncomeY)} accent="#10b981"
-                        sub={`${monthsCount} month${monthsCount !== 1 ? "s" : ""} tracked`} icon="↑" />
+                        sub={yoySub(totalIncomeY, prevIncomeY) || `${monthsCount} month${monthsCount !== 1 ? "s" : ""} tracked`} icon="↑" />
                       <StatCard label="Total Spent" value={fmt(totalSpentY)} accent="#ef4444"
-                        sub="Across the year" icon="↻" />
+                        sub={yoySub(totalSpentY, prevSpentY) || "Across the year"} icon="↻" />
                       <StatCard label="Total Saved" value={fmt(totalSavedY)}
                         accent={totalSavedY >= 0 ? "#10b981" : "#ef4444"}
                         sub={totalSavedY >= 0 ? "Income minus spent" : "Overspent"} icon="↓" />
                       <StatCard label="Avg Monthly" value={fmt(avgMonthlySpend)} accent="#0066ff"
                         sub="Spending per month" icon="◐" />
                     </div>
+
+                    <div style={{ ...s.card, marginTop: 16 }}>
+                      <div style={s.cardTitle}>Monthly Breakdown — {yearKey}</div>
+                      <MonthlyBarChart data={monthBars} curKey={curKey}
+                        onBarClick={(key) => { if (data.months[key]) { setTab("history"); setHistoryKey(key); } }} />
+                    </div>
+
+                    <div style={{ ...s.card, marginTop: 16 }}>
+                      <div style={s.cardTitle}>Savings Over Time</div>
+                      <SavingsChart series={savings.series} />
+                    </div>
+
                     <div style={{ ...s.card, marginTop: 16 }}>
                       <div style={s.cardTitle}>Category Breakdown — {yearKey}</div>
                       <CategoryDonut data={yearCatBreakdown} total={yearCatTotal} />
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 16, marginTop: 16 }}>
+                      <div style={s.card}>
+                        <div style={s.cardTitle}>Biggest Expenses — {yearKey}</div>
+                        {topExpenses.length === 0 ? (
+                          <div style={s.emptySmall}>No expenses recorded for {yearKey}.</div>
+                        ) : (
+                          <>
+                            <TableHeader columns={[{ label: "NAME", flex: 2 }, { label: "CATEGORY", flex: 1.2 }, { label: "DATE", flex: 1 }, { label: "AMOUNT", flex: 1, align: "right" }]} />
+                            {topExpenses.map((e) => (
+                              <div key={e.id} style={s.tableRow}>
+                                <div style={{ flex: 2, fontWeight: 600 }}>{e.name}</div>
+                                <div style={{ flex: 1.2 }}><CategoryPill categoryName={e.category} categories={data.categories} /></div>
+                                <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{e.date}</div>
+                                <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444" }}>{fmt(e.amount)}</div>
+                              </div>
+                            ))}
+                          </>
+                        )}
+                      </div>
+                      <div style={s.card}>
+                        <div style={s.cardTitle}>Income Sources — {yearKey}</div>
+                        <CategoryDonut data={incomeBreakdown} total={incomeTotal} />
+                      </div>
                     </div>
                   </>
                 )}
@@ -1687,6 +1941,49 @@ export default function App() {
           }} />
         );
       })()}
+      {modal?.type === "creditRecurring" && (() => {
+        const targetKey = modal.monthKey || curKey;
+        const targetMonth = data.months[targetKey] || emptyMonth();
+        const touchesTemplate = targetKey === curKey;
+        const editing = modal.editId ? (targetMonth.credits || []).find((x) => x.id === modal.editId) : null;
+        return (
+          <FormModal title={editing ? "Edit Recurring Credit" : "Add Recurring Credit"} fields={[
+            { key: "name", label: "Name", placeholder: "e.g. Allowance", defaultValue: editing?.name },
+            { key: "amount", label: "Amount (PLN)", type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
+            { key: "category", label: "Source", type: "category", categories: data.creditCategories || [], defaultValue: editing?.category },
+            { key: "dayOfMonth", label: "Day of Month", type: "number", placeholder: "1", defaultValue: editing ? String(editing.dayOfMonth) : "" },
+          ]} onClose={() => setModal(null)} onSave={(v) => {
+            const amt = +v.amount;
+            if (!v.name || !(amt > 0)) { setModal(null); return; }
+            const { categories: creditCategories, category } = ensureCreditCategory(data.creditCategories || [], v.category);
+            const day = +v.dayOfMonth || 1;
+            if (editing) {
+              const updated = { ...editing, name: v.name, amount: amt, dayOfMonth: day, category: category.name };
+              save({
+                ...data,
+                creditCategories,
+                months: { ...data.months, [targetKey]: { ...targetMonth, credits: (targetMonth.credits || []).map((x) => x.id === editing.id ? updated : x) } },
+                creditTemplate: touchesTemplate
+                  ? (data.creditTemplate || []).map((t) => t.id === editing.templateId
+                      ? { ...t, name: v.name, amount: amt, dayOfMonth: day, category: category.name } : t)
+                  : (data.creditTemplate || []),
+              });
+            } else {
+              const tid = uid();
+              const newItem = { id: uid(), templateId: tid, name: v.name, amount: amt, dayOfMonth: day, category: category.name };
+              save({
+                ...data,
+                creditCategories,
+                months: { ...data.months, [targetKey]: { ...targetMonth, credits: [...(targetMonth.credits || []), newItem] } },
+                creditTemplate: touchesTemplate
+                  ? [...(data.creditTemplate || []), { id: tid, name: v.name, amount: amt, dayOfMonth: day, category: category.name }]
+                  : (data.creditTemplate || []),
+              });
+            }
+            setModal(null);
+          }} />
+        );
+      })()}
       {modal?.type === "credit" && (() => {
         const targetKey = modal.monthKey || curKey;
         const targetMonth = data.months[targetKey] || emptyMonth();
@@ -1695,22 +1992,22 @@ export default function App() {
           <FormModal title={editing ? "Edit Credit" : "Add Credit"} fields={[
             { key: "name", label: "Name", placeholder: "e.g. Amazon refund", defaultValue: editing?.name },
             { key: "amount", label: "Amount (PLN)", type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
-            { key: "source", label: "Source", placeholder: "Refund, Gift, Bonus, Other", defaultValue: editing?.source },
+            { key: "category", label: "Source", type: "category", categories: data.creditCategories || [], defaultValue: editing?.category || editing?.source },
             { key: "date", label: "Date", type: "date", defaultValue: editing?.date || `${targetKey}-01` },
           ]} onClose={() => setModal(null)} onSave={(v) => {
             const amt = +v.amount;
             if (!v.name || !(amt > 0)) { setModal(null); return; }
-            const src = (v.source || "Other").trim() || "Other";
-            if (editing) {
-              patchMonth(targetKey, {
-                credits: (targetMonth.credits || []).map((x) => x.id === editing.id
-                  ? { ...x, name: v.name, amount: amt, date: v.date, source: src }
-                  : x),
-              });
-            } else {
-              const newCredit = { id: uid(), name: v.name, amount: amt, date: v.date, source: src };
-              patchMonth(targetKey, { credits: [...(targetMonth.credits || []), newCredit] });
-            }
+            const { categories: creditCategories, category } = ensureCreditCategory(data.creditCategories || [], v.category);
+            const nextCredits = editing
+              ? (targetMonth.credits || []).map((x) => x.id === editing.id
+                  ? { ...x, name: v.name, amount: amt, date: v.date, category: category.name }
+                  : x)
+              : [...(targetMonth.credits || []), { id: uid(), name: v.name, amount: amt, date: v.date, category: category.name }];
+            save({
+              ...data,
+              creditCategories,
+              months: { ...data.months, [targetKey]: { ...targetMonth, credits: nextCredits } },
+            });
             setModal(null);
           }} />
         );
