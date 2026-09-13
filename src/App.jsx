@@ -697,6 +697,86 @@ function RowActions({ id, onEdit, onDelete }) {
   );
 }
 
+// Column sets shared by the live tabs and the History detail view. History
+// passes no sorts/onSort, which TableHeader handles by leaving those columns
+// unclickable - so one definition serves both.
+const ENTRY_COLUMNS = {
+  expenses: [
+    { label: "NAME", flex: 2, sortKey: "name" },
+    { label: "CATEGORY", flex: 1.2, sortKey: "category" },
+    { label: "DATE", flex: 1, sortKey: "date" },
+    { label: "AMOUNT", flex: 1, align: "right", sortKey: "amount" },
+    { label: "", flex: 0.6, align: "center" },
+  ],
+  recurring: [
+    { label: "NAME", flex: 2, sortKey: "name" },
+    { label: "CATEGORY", flex: 1.2, sortKey: "category" },
+    { label: "DAY", flex: 0.5, align: "center", sortKey: "dayOfMonth" },
+    { label: "AMOUNT", flex: 1, align: "right", sortKey: "amount" },
+    { label: "", flex: 0.6, align: "center" },
+  ],
+  upcoming: [
+    { label: "", flex: 0.3 },
+    { label: "NAME", flex: 2, sortKey: "name" },
+    { label: "CATEGORY", flex: 1.2, sortKey: "category" },
+    { label: "DUE DATE", flex: 1, sortKey: "dueDate" },
+    { label: "AMOUNT", flex: 1, align: "right", sortKey: "amount" },
+    { label: "STATUS", flex: 0.7, align: "center" },
+    { label: "", flex: 0.6, align: "center" },
+  ],
+};
+
+// One row definition per entry type, used by the live tab and by History. They
+// were duplicated character-for-character apart from which period the edit and
+// delete callbacks targeted, so that is all the caller supplies.
+function ExpenseRow({ entry: e, categories, onEdit, onDelete }) {
+  const { theme, s } = useThemed();
+  return (
+    <div style={s.tableRow}>
+      <div style={{ flex: 2, fontWeight: 600 }}>{e.name}</div>
+      <div style={{ flex: 1.2 }}><CategoryPill categoryName={e.category} categories={categories} /></div>
+      <div style={{ flex: 1, color: theme.textMuted, ...TYPE.caption }}>{e.date}</div>
+      <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: theme.danger }}>{fmt(e.amount)}</div>
+      <RowActions id={e.id} onEdit={onEdit} onDelete={onDelete} />
+    </div>
+  );
+}
+
+function RecurringRow({ entry: r, categories, onEdit, onDelete }) {
+  const { theme, s } = useThemed();
+  return (
+    <div style={s.tableRow}>
+      <div style={{ flex: 2, fontWeight: 600 }}>{r.name}</div>
+      <div style={{ flex: 1.2 }}><CategoryPill categoryName={r.category} categories={categories} /></div>
+      <div style={{ flex: 0.5, textAlign: "center", color: theme.textMuted, ...TYPE.caption }}>{r.dayOfMonth || "—"}</div>
+      <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: theme.accent }}>{fmt(r.amount)}</div>
+      <RowActions id={r.id} onEdit={onEdit} onDelete={onDelete} />
+    </div>
+  );
+}
+
+function UpcomingRow({ entry: u, categories, onTogglePaid, onEdit, onDelete }) {
+  const { theme, s } = useThemed();
+  return (
+    <div style={{ ...s.tableRow, opacity: u.paid ? 0.4 : 1 }}>
+      <div style={{ flex: 0.3 }}>
+        <input type="checkbox" checked={!!u.paid} onChange={onTogglePaid}
+          style={{ accentColor: theme.success, width: 16, height: 16, cursor: "pointer" }} />
+      </div>
+      <div style={{ flex: 2, fontWeight: 600, textDecoration: u.paid ? "line-through" : "none" }}>{u.name}</div>
+      <div style={{ flex: 1.2 }}><CategoryPill categoryName={u.category} categories={categories} /></div>
+      <div style={{ flex: 1, color: theme.textMuted, ...TYPE.caption }}>{u.dueDate}</div>
+      <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: u.paid ? theme.success : theme.warning }}>{fmt(u.amount)}</div>
+      <div style={{ flex: 0.7, textAlign: "center" }}>
+        <span style={{ ...TYPE.microLegal, padding: "3px 10px", borderRadius: RADIUS.pill, fontWeight: 600,
+          background: u.paid ? "rgba(16,185,129,0.12)" : "rgba(245,158,11,0.12)",
+          color: u.paid ? theme.success : theme.warning }}>{u.paid ? "Paid" : "Pending"}</span>
+      </div>
+      <RowActions id={u.id} onEdit={onEdit} onDelete={onDelete} />
+    </div>
+  );
+}
+
 function StatCard({ label, value, accent, sub, icon }) {
   const { theme, s } = useThemed();
   return (
@@ -1819,19 +1899,11 @@ export default function App() {
               />
               {filteredExpenses.length === 0 ? <div style={s.empty}>{expensesView.search ? `No expenses match "${expensesView.search}".` : `No expenses yet. Click "+ Add Expense" to start tracking.`}</div> : (
                 <>
-                  <TableHeader columns={[{ label: "NAME", flex: 2, sortKey: "name" }, { label: "CATEGORY", flex: 1.2, sortKey: "category" }, { label: "DATE", flex: 1, sortKey: "date" }, { label: "AMOUNT", flex: 1, align: "right", sortKey: "amount" }, { label: "", flex: 0.6, align: "center" }]} sorts={expensesView.sorts} onSort={onSortExpenses} />
+                  <TableHeader columns={ENTRY_COLUMNS.expenses} sorts={expensesView.sorts} onSort={onSortExpenses} />
                   {filteredExpenses.map((e) => (
-                    <div key={e.id} style={s.tableRow}>
-                      <div style={{ flex: 2, fontWeight: 600 }}>{e.name}</div>
-                      <div style={{ flex: 1.2 }}><CategoryPill categoryName={e.category} categories={data.categories} /></div>
-                      <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{e.date}</div>
-                      <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444" }}>{fmt(e.amount)}</div>
-                      <RowActions
-                        id={e.id}
-                        onEdit={() => setModal({ type: "expense", editId: e.id })}
-                        onDelete={() => patchCur({ expenses: cur.expenses.filter((x) => x.id !== e.id) })}
-                      />
-                    </div>
+                    <ExpenseRow key={e.id} entry={e} categories={data.categories}
+                      onEdit={() => setModal({ type: "expense", editId: e.id })}
+                      onDelete={() => patchCur({ expenses: cur.expenses.filter((x) => x.id !== e.id) })} />
                   ))}
                 </>
               )}
@@ -1854,25 +1926,15 @@ export default function App() {
               />
               {filteredRecurring.length === 0 ? <div style={s.empty}>{recurringView.search ? `No recurring items match "${recurringView.search}".` : `No recurring payments set up. Click "+ Add Recurring" to create one.`}</div> : (
                 <>
-                  <TableHeader columns={[{ label: "NAME", flex: 2, sortKey: "name" }, { label: "CATEGORY", flex: 1.2, sortKey: "category" }, { label: "DAY", flex: 0.5, align: "center", sortKey: "dayOfMonth" }, { label: "AMOUNT", flex: 1, align: "right", sortKey: "amount" }, { label: "", flex: 0.6, align: "center" }]} sorts={recurringView.sorts} onSort={onSortRecurring} />
+                  <TableHeader columns={ENTRY_COLUMNS.recurring} sorts={recurringView.sorts} onSort={onSortRecurring} />
                   {filteredRecurring.map((r) => (
-                    <div key={r.id} style={s.tableRow}>
-                      <div style={{ flex: 2, fontWeight: 600 }}>{r.name}</div>
-                      <div style={{ flex: 1.2 }}><CategoryPill categoryName={r.category} categories={data.categories} /></div>
-                      <div style={{ flex: 0.5, textAlign: "center", color: theme.textMuted, fontSize: 13 }}>{r.dayOfMonth || "—"}</div>
-                      <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066cc" }}>{fmt(r.amount)}</div>
-                      <RowActions
-                        id={r.id}
-                        onEdit={() => setModal({ type: "recurring", editId: r.id })}
-                        onDelete={() => {
-                          save({
-                            ...data,
-                            months: { ...data.months, [curKey]: { ...cur, recurring: cur.recurring.filter((x) => x.id !== r.id) } },
-                            recurringTemplate: data.recurringTemplate.filter((x) => x.id !== r.templateId),
-                          });
-                        }}
-                      />
-                    </div>
+                    <RecurringRow key={r.id} entry={r} categories={data.categories}
+                      onEdit={() => setModal({ type: "recurring", editId: r.id })}
+                      onDelete={() => save({
+                        ...data,
+                        months: { ...data.months, [curKey]: { ...cur, recurring: cur.recurring.filter((x) => x.id !== r.id) } },
+                        recurringTemplate: data.recurringTemplate.filter((x) => x.id !== r.templateId),
+                      })} />
                   ))}
                 </>
               )}
@@ -1895,30 +1957,12 @@ export default function App() {
               />
               {filteredUpcoming.length === 0 ? <div style={s.empty}>{upcomingView.search ? `No upcoming items match "${upcomingView.search}".` : `No upcoming payments. Click "+ Add Payment" to schedule one.`}</div> : (
                 <>
-                  <TableHeader columns={[{ label: "", flex: 0.3 }, { label: "NAME", flex: 2, sortKey: "name" }, { label: "CATEGORY", flex: 1.2, sortKey: "category" }, { label: "DUE DATE", flex: 1, sortKey: "dueDate" }, { label: "AMOUNT", flex: 1, align: "right", sortKey: "amount" }, { label: "STATUS", flex: 0.7, align: "center" }, { label: "", flex: 0.6, align: "center" }]} sorts={upcomingView.sorts} onSort={onSortUpcoming} />
+                  <TableHeader columns={ENTRY_COLUMNS.upcoming} sorts={upcomingView.sorts} onSort={onSortUpcoming} />
                   {filteredUpcoming.map((u) => (
-                    <div key={u.id} style={{ ...s.tableRow, opacity: u.paid ? 0.4 : 1 }}>
-                      <div style={{ flex: 0.3 }}>
-                        <input type="checkbox" checked={!!u.paid}
-                          onChange={() => patchCur({ upcoming: cur.upcoming.map((x) => x.id === u.id ? { ...x, paid: !x.paid } : x) })}
-                          style={{ accentColor: "#10b981", width: 16, height: 16, cursor: "pointer" }} />
-                      </div>
-                      <div style={{ flex: 2, fontWeight: 600, textDecoration: u.paid ? "line-through" : "none" }}>{u.name}</div>
-                      <div style={{ flex: 1.2 }}><CategoryPill categoryName={u.category} categories={data.categories} /></div>
-                      <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{u.dueDate}</div>
-                      <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: u.paid ? "#10b981" : "#f59e0b" }}>{fmt(u.amount)}</div>
-                      <div style={{ flex: 0.7, textAlign: "center" }}>
-                        <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 20, fontWeight: 600,
-                          background: u.paid ? "rgba(16,185,129,0.12)" : "rgba(245,158,11,0.12)",
-                          color: u.paid ? "#10b981" : "#f59e0b"
-                        }}>{u.paid ? "Paid" : "Pending"}</span>
-                      </div>
-                      <RowActions
-                        id={u.id}
-                        onEdit={() => setModal({ type: "upcoming", editId: u.id })}
-                        onDelete={() => patchCur({ upcoming: cur.upcoming.filter((x) => x.id !== u.id) })}
-                      />
-                    </div>
+                    <UpcomingRow key={u.id} entry={u} categories={data.categories}
+                      onTogglePaid={() => patchCur({ upcoming: cur.upcoming.map((x) => x.id === u.id ? { ...x, paid: !x.paid } : x) })}
+                      onEdit={() => setModal({ type: "upcoming", editId: u.id })}
+                      onDelete={() => patchCur({ upcoming: cur.upcoming.filter((x) => x.id !== u.id) })} />
                   ))}
                 </>
               )}
@@ -2107,17 +2151,9 @@ export default function App() {
                     <>
                       <TableHeader columns={[{ label: "NAME", flex: 2 }, { label: "CATEGORY", flex: 1.2 }, { label: "DATE", flex: 1 }, { label: "AMOUNT", flex: 1, align: "right" }, { label: "", flex: 0.6, align: "center" }]} />
                       {m.expenses.map((e) => (
-                        <div key={e.id} style={s.tableRow}>
-                          <div style={{ flex: 2, fontWeight: 600 }}>{e.name}</div>
-                          <div style={{ flex: 1.2 }}><CategoryPill categoryName={e.category} categories={data.categories} /></div>
-                          <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{e.date}</div>
-                          <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444" }}>{fmt(e.amount)}</div>
-                          <RowActions
-                            id={e.id}
-                            onEdit={() => setModal({ type: "expense", editId: e.id, monthKey: historyKey })}
-                            onDelete={() => patchMonth(historyKey, { expenses: m.expenses.filter((x) => x.id !== e.id) })}
-                          />
-                        </div>
+                        <ExpenseRow key={e.id} entry={e} categories={data.categories}
+                          onEdit={() => setModal({ type: "expense", editId: e.id, monthKey: historyKey })}
+                          onDelete={() => patchMonth(historyKey, { expenses: m.expenses.filter((x) => x.id !== e.id) })} />
                       ))}
                     </>
                   )}
@@ -2129,23 +2165,13 @@ export default function App() {
                   </div>
                   {m.recurring.length === 0 ? <div style={s.emptySmall}>No recurring</div> : (
                     <>
-                      <TableHeader columns={[{ label: "NAME", flex: 2 }, { label: "CATEGORY", flex: 1.2 }, { label: "DAY", flex: 0.5, align: "center" }, { label: "AMOUNT", flex: 1, align: "right" }, { label: "", flex: 0.6, align: "center" }]} />
+                      <TableHeader columns={ENTRY_COLUMNS.recurring} />
                       {m.recurring.map((r) => (
-                        <div key={r.id} style={s.tableRow}>
-                          <div style={{ flex: 2, fontWeight: 600 }}>{r.name}</div>
-                          <div style={{ flex: 1.2 }}><CategoryPill categoryName={r.category} categories={data.categories} /></div>
-                              <div style={{ flex: 0.5, textAlign: "center", color: theme.textMuted, fontSize: 13 }}>{r.dayOfMonth || "—"}</div>
-                          <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066cc" }}>{fmt(r.amount)}</div>
-                          <RowActions
-                            id={r.id}
-                            onEdit={() => setModal({ type: "recurring", editId: r.id, monthKey: historyKey })}
-                            onDelete={() => {
-                              // Past-month deletion removes only this month's instance —
-                              // the live template keeps governing future months.
-                              patchMonth(historyKey, { recurring: m.recurring.filter((x) => x.id !== r.id) });
-                            }}
-                          />
-                        </div>
+                        <RecurringRow key={r.id} entry={r} categories={data.categories}
+                          onEdit={() => setModal({ type: "recurring", editId: r.id, monthKey: historyKey })}
+                          // Past-period deletion removes only this period's instance -
+                          // the live template keeps governing future periods.
+                          onDelete={() => patchMonth(historyKey, { recurring: m.recurring.filter((x) => x.id !== r.id) })} />
                       ))}
                     </>
                   )}
@@ -2157,24 +2183,12 @@ export default function App() {
                   </div>
                   {m.upcoming.length === 0 ? <div style={s.emptySmall}>No upcoming</div> : (
                     <>
-                      <TableHeader columns={[{ label: "NAME", flex: 2 }, { label: "CATEGORY", flex: 1.2 }, { label: "DUE DATE", flex: 1 }, { label: "PAID", flex: 0.7, align: "center" }, { label: "AMOUNT", flex: 1, align: "right" }, { label: "", flex: 0.6, align: "center" }]} />
+                      <TableHeader columns={ENTRY_COLUMNS.upcoming} />
                       {m.upcoming.map((u) => (
-                        <div key={u.id} style={{ ...s.tableRow, opacity: u.paid ? 0.4 : 1 }}>
-                          <div style={{ flex: 2, fontWeight: 600 }}>{u.name}</div>
-                          <div style={{ flex: 1.2 }}><CategoryPill categoryName={u.category} categories={data.categories} /></div>
-                          <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{u.dueDate}</div>
-                          <div style={{ flex: 0.7, textAlign: "center" }}>
-                            <input type="checkbox" checked={!!u.paid}
-                              onChange={() => patchMonth(historyKey, { upcoming: m.upcoming.map((x) => x.id === u.id ? { ...x, paid: !x.paid } : x) })}
-                              style={{ accentColor: "#10b981", width: 16, height: 16, cursor: "pointer" }} />
-                          </div>
-                          <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: u.paid ? "#10b981" : "#f59e0b" }}>{fmt(u.amount)}</div>
-                          <RowActions
-                            id={u.id}
-                            onEdit={() => setModal({ type: "upcoming", editId: u.id, monthKey: historyKey })}
-                            onDelete={() => patchMonth(historyKey, { upcoming: m.upcoming.filter((x) => x.id !== u.id) })}
-                          />
-                        </div>
+                        <UpcomingRow key={u.id} entry={u} categories={data.categories}
+                          onTogglePaid={() => patchMonth(historyKey, { upcoming: m.upcoming.map((x) => x.id === u.id ? { ...x, paid: !x.paid } : x) })}
+                          onEdit={() => setModal({ type: "upcoming", editId: u.id, monthKey: historyKey })}
+                          onDelete={() => patchMonth(historyKey, { upcoming: m.upcoming.filter((x) => x.id !== u.id) })} />
                       ))}
                     </>
                   )}
