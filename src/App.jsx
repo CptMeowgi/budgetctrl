@@ -112,6 +112,16 @@ const DEFAULT_CREDIT_CATEGORIES = [
 const CREDIT_UNCATEGORIZED = { name: "Other", color: "#9ca3af", icon: "·" };
 
 const STORAGE_KEY = "budget-app-data";
+// Which tabs offer an "+ Add" CTA, what it is called, and which modal it opens.
+// Previously three parallel inline ternaries in the header that had to be kept
+// in sync by hand.
+const ADD_LABELS = {
+  expenses: "Expense",
+  recurring: "Recurring",
+  upcoming: "Payment",
+};
+const MODAL_FOR_TAB = { expenses: "expense" };
+
 const TABS = [
   { id: "dashboard", label: "Dashboard", icon: "◉" },
   { id: "expenses", label: "Expenses", icon: "↗" },
@@ -144,12 +154,6 @@ function currentMonthKey() {
 function monthLabel(key) {
   const [y, m] = key.split("-").map(Number);
   return new Date(y, m - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
-}
-
-function prevMonthKey(key) {
-  const [y, m] = key.split("-").map(Number);
-  const d = new Date(y, m - 2, 1);
-  return monthKey(d);
 }
 
 function emptyMonth() {
@@ -398,13 +402,14 @@ function rebucketData(data, newCutoff) {
 
 function spentByCategory(month, monthKey, today, cutoffDay) {
   const totals = new Map();
-  for (const e of (month.expenses || [])) {
-    totals.set(e.category, (totals.get(e.category) || 0) + e.amount);
-  }
+  const add = (name, amount) => {
+    const key = name || UNCATEGORIZED.name;
+    totals.set(key, (totals.get(key) || 0) + amount);
+  };
+  for (const e of (month.expenses || [])) add(e.category, e.amount);
   for (const r of (month.recurring || [])) {
-    if (!today || isRecurringDue(r, monthKey, today, cutoffDay)) {
-      totals.set(r.category, (totals.get(r.category) || 0) + r.amount);
-    }
+    // Recurring only counts once its day has passed, matching the Remaining card.
+    if (!today || isRecurringDue(r, monthKey, today, cutoffDay)) add(r.category, r.amount);
   }
   return totals;
 }
@@ -529,18 +534,11 @@ function ensureCurrentMonth(data) {
   };
 }
 
+// The donut's view of spentByCategory: same totals, decorated and ranked. These
+// were two separate aggregations that had already drifted once - only one of
+// them bucketed uncategorised entries under the Uncategorized name.
 function categoryBreakdown(month, categories, monthKey, today, cutoffDay) {
-  const totals = new Map();
-  for (const e of (month.expenses || [])) {
-    const name = e.category || "Uncategorized";
-    totals.set(name, (totals.get(name) || 0) + e.amount);
-  }
-  for (const r of (month.recurring || [])) {
-    if (!today || isRecurringDue(r, monthKey, today, cutoffDay)) {
-      const name = r.category || "Uncategorized";
-      totals.set(name, (totals.get(name) || 0) + r.amount);
-    }
-  }
+  const totals = spentByCategory(month, monthKey, today, cutoffDay);
   return Array.from(totals.entries()).map(([name, value]) => {
     const cat = categories.find((c) => c.name === name) || { color: "#9ca3af", icon: "·" };
     return { name, value, color: cat.color, icon: cat.icon };
@@ -580,7 +578,7 @@ function cumulativeSavings(data) {
 }
 
 function Modal({ title, onClose, children }) {
-  const { theme, s } = useThemed();
+  const { s } = useThemed();
   return (
     <div style={s.overlay} onClick={onClose}>
       <div style={s.modal} onClick={(e) => e.stopPropagation()}>
@@ -595,7 +593,7 @@ function Modal({ title, onClose, children }) {
 }
 
 function CategoryPicker({ value, onChange, categories }) {
-  const { theme, s } = useThemed();
+  const { s } = useThemed();
   const [open, setOpen] = useState(false);
   const suggestions = categories.filter((c) => {
     if (c.name === "Uncategorized") return false;
@@ -673,6 +671,29 @@ function FormModal({ title, fields, onClose, onSave }) {
         );
       })()}
     </Modal>
+  );
+}
+
+// Two-step delete needs one armed id across the whole tree; passing it plus its
+// setter into every row was two extra props on eight call sites.
+const DeleteArmContext = createContext({ armedId: null, arm: () => {} });
+
+// The trailing edit/delete cell on every entry row. Previously eight
+// near-identical copies. onDelete stays a callback because the action really
+// does differ per row - deleting a recurring item also drops its template.
+function RowActions({ id, onEdit, onDelete }) {
+  const { theme, s } = useThemed();
+  const { armedId, arm } = useContext(DeleteArmContext);
+  const armed = armedId === id;
+  return (
+    <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: SPACE.xxs }}>
+      <button style={s.editBtn} onClick={onEdit} title="Edit">✎</button>
+      <button
+        style={{ ...s.delBtn, color: armed ? theme.danger : theme.textFaint, fontWeight: armed ? 700 : 400 }}
+        title={armed ? "Click again to confirm" : "Delete"}
+        onClick={() => { if (armed) { onDelete(); arm(null); } else arm(id); }}
+      >✕</button>
+    </div>
   );
 }
 
@@ -813,7 +834,7 @@ function readSentMarker() {
 }
 
 function writeSentMarker(v) {
-  try { localStorage.setItem(REMINDER_SENT_KEY, JSON.stringify(v)); } catch {}
+  try { localStorage.setItem(REMINDER_SENT_KEY, JSON.stringify(v)); } catch { /* private mode or quota: a repeated reminder beats a crash */ }
 }
 
 function useReminders(data, loaded, setTodayKey) {
@@ -862,7 +883,7 @@ function useReminders(data, loaded, setTodayKey) {
         const { title, body } = buildDigest(bills);
         await n.sendNotification({ title, body });
         writeSentMarker({ date: today, sig });
-      } catch {}
+      } catch { /* Tauri API unavailable (browser dev server) */ }
     };
 
     const startup = setTimeout(tick, REMINDER_STARTUP_DELAY_MS);
@@ -936,7 +957,7 @@ function SettingsModal({ data, onClose, onChangeReminders }) {
       const a = await import("@tauri-apps/plugin-autostart");
       if (autostart) { await a.disable(); setAutostart(false); }
       else { await a.enable(); setAutostart(true); }
-    } catch {}
+    } catch { /* Tauri API unavailable (browser dev server) */ }
   };
 
   const group = { fontSize: 10, textTransform: "uppercase", letterSpacing: 1.2, color: theme.textMuted, fontWeight: 600, marginBottom: 2 };
@@ -1001,7 +1022,7 @@ function WindowControls() {
         unlisten = await w.onResized(async () => {
           if (alive) setMaximized(await w.isMaximized());
         });
-      } catch {}
+      } catch { /* Tauri API unavailable (browser dev server) */ }
     })();
     return () => { alive = false; if (unlisten) unlisten(); };
   }, []);
@@ -1014,7 +1035,7 @@ function WindowControls() {
       if (name === "minimize") await w.minimize();
       else if (name === "toggle") await w.toggleMaximize();
       else if (name === "close") await w.close();
-    } catch {}
+    } catch { /* Tauri API unavailable (browser dev server) */ }
   };
 
   const btn = (id, action, title, path) => {
@@ -1071,7 +1092,7 @@ function InfoHint({ text }) {
 }
 
 function CategoryPill({ categoryName, categories, fallback }) {
-  const { theme, s } = useThemed();
+  const { s } = useThemed();
   const cat = findCategory(categories, categoryName) || fallback || UNCATEGORIZED;
   return (
     <span style={{ ...s.catPill, background: `${cat.color}15`, color: cat.color }}>
@@ -1363,12 +1384,12 @@ export default function App() {
           const migrated = hydrate(migrate(raw));
           setData(migrated);
           if (migrated !== raw) {
-            try { await window.storage.set(STORAGE_KEY, JSON.stringify(migrated)); } catch {}
+            try { await window.storage.set(STORAGE_KEY, JSON.stringify(migrated)); } catch { /* migration re-runs next load if this fails */ }
           }
         } else {
           setData(hydrate(defaultData()));
         }
-      } catch {}
+      } catch { /* Tauri API unavailable (browser dev server) */ }
       setLoaded(true);
     })();
   }, []);
@@ -1380,7 +1401,7 @@ export default function App() {
   }, [pendingDelete]);
 
   useEffect(() => {
-    try { localStorage.setItem("themeMode", themeMode); } catch {}
+    try { localStorage.setItem("themeMode", themeMode); } catch { /* theme falls back to light next launch */ }
   }, [themeMode]);
 
   const themedValue = useMemo(() => {
@@ -1391,7 +1412,7 @@ export default function App() {
 
   const save = useCallback(async (next) => {
     setData(next);
-    try { await window.storage.set(STORAGE_KEY, JSON.stringify(next)); } catch {}
+    try { await window.storage.set(STORAGE_KEY, JSON.stringify(next)); } catch { /* in-memory state still updated; surfaced on next load */ }
   }, []);
 
   const patchMonth = useCallback((key, patch) => {
@@ -1413,6 +1434,8 @@ export default function App() {
   const patchCur = useCallback((patch) => {
     patchMonth(currentPeriodKey(data.cutoffDay || 1), patch);
   }, [patchMonth, data.cutoffDay]);
+
+  const deleteArm = useMemo(() => ({ armedId: pendingDelete, arm: setPendingDelete }), [pendingDelete]);
 
   useReminders(data, loaded, setTodayKey);
 
@@ -1501,6 +1524,7 @@ export default function App() {
 
   return (
     <ThemeContext.Provider value={themedValue}>
+    <DeleteArmContext.Provider value={deleteArm}>
     <div style={s.shell}>
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,600;0,700&display=swap" rel="stylesheet" />
       <style>{`
@@ -1589,7 +1613,7 @@ export default function App() {
 
       {/* MAIN */}
       <main style={s.main}>
-        <header data-tauri-drag-region style={{ ...s.topbar, position: "relative", paddingRight: 104 }}>
+        <header data-tauri-drag-region style={{ ...s.topbar, position: "relative", paddingTop: isTauri ? 44 : SPACE.lg, paddingRight: SPACE.md }}>
           <WindowControls />
           {/* The whole bar drags; interactive children opt out via app-region: no-drag */}
           <div data-tauri-drag-region style={{ flex: 1, alignSelf: "stretch", display: "flex", flexDirection: "column", justifyContent: "center" }}>
@@ -1603,10 +1627,14 @@ export default function App() {
               )}
             </div>
           </div>
-          {/* Theme + settings sit flush against the right edge. Under Tauri they
-              drop below the 32px window-control strip, so the close button can
-              never steal their top edge. */}
-          <div style={{ position: "absolute", right: 14, top: isTauri ? 42 : 24, display: "flex", alignItems: "center", gap: 2 }}>
+          {/* One right-hand group in normal flow: the Add CTA plus the two icon
+              controls, sharing a baseline and ending flush at the edge. */}
+          <div style={{ display: "flex", alignItems: "center", gap: SPACE.xs, flexShrink: 0 }}>
+            {ADD_LABELS[tab] && (
+              <button style={s.addBtn} onClick={() => setModal({ type: MODAL_FOR_TAB[tab] || tab })}>
+                + Add {ADD_LABELS[tab]}
+              </button>
+            )}
             <button
               className="icon-btn"
               style={s.themeToggle}
@@ -1616,13 +1644,6 @@ export default function App() {
               {themeMode === "dark" ? "☀" : "☾"}
             </button>
             <button className="icon-btn" style={s.themeToggle} onClick={() => setSettingsOpen(true)} title="Settings">⚙</button>
-          </div>
-          <div style={{ display: "flex", alignItems: "center" }}>
-            {tab !== "dashboard" && tab !== "history" && tab !== "year" && tab !== "credits" && tab !== "savings" && (
-              <button style={s.addBtn} onClick={() => setModal({ type: tab === "expenses" ? "expense" : tab === "credits" ? "credit" : tab })}>
-                + Add {tab === "expenses" ? "Expense" : tab === "recurring" ? "Recurring" : tab === "credits" ? "Credit" : "Payment"}
-              </button>
-            )}
           </div>
         </header>
 
@@ -1805,24 +1826,11 @@ export default function App() {
                       <div style={{ flex: 1.2 }}><CategoryPill categoryName={e.category} categories={data.categories} /></div>
                       <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{e.date}</div>
                       <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444" }}>{fmt(e.amount)}</div>
-                      <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: 4 }}>
-                        <button style={s.editBtn} onClick={() => setModal({ type: "expense", editId: e.id })}>✎</button>
-                        <button
-                          style={{
-                            ...s.delBtn,
-                            color: pendingDelete === e.id ? "#ef4444" : theme.textFaint,
-                            fontWeight: pendingDelete === e.id ? 700 : 400,
-                          }}
-                          onClick={() => {
-                            if (pendingDelete === e.id) {
-                              patchCur({ expenses: cur.expenses.filter((x) => x.id !== e.id) });
-                              setPendingDelete(null);
-                            } else {
-                              setPendingDelete(e.id);
-                            }
-                          }}
-                        >✕</button>
-                      </div>
+                      <RowActions
+                        id={e.id}
+                        onEdit={() => setModal({ type: "expense", editId: e.id })}
+                        onDelete={() => patchCur({ expenses: cur.expenses.filter((x) => x.id !== e.id) })}
+                      />
                     </div>
                   ))}
                 </>
@@ -1853,28 +1861,17 @@ export default function App() {
                       <div style={{ flex: 1.2 }}><CategoryPill categoryName={r.category} categories={data.categories} /></div>
                       <div style={{ flex: 0.5, textAlign: "center", color: theme.textMuted, fontSize: 13 }}>{r.dayOfMonth || "—"}</div>
                       <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066cc" }}>{fmt(r.amount)}</div>
-                      <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: 4 }}>
-                        <button style={s.editBtn} onClick={() => setModal({ type: "recurring", editId: r.id })}>✎</button>
-                        <button
-                          style={{
-                            ...s.delBtn,
-                            color: pendingDelete === r.id ? "#ef4444" : theme.textFaint,
-                            fontWeight: pendingDelete === r.id ? 700 : 400,
-                          }}
-                          onClick={() => {
-                            if (pendingDelete === r.id) {
-                              save({
-                                ...data,
-                                months: { ...data.months, [curKey]: { ...cur, recurring: cur.recurring.filter((x) => x.id !== r.id) } },
-                                recurringTemplate: data.recurringTemplate.filter((x) => x.id !== r.templateId),
-                              });
-                              setPendingDelete(null);
-                            } else {
-                              setPendingDelete(r.id);
-                            }
-                          }}
-                        >✕</button>
-                      </div>
+                      <RowActions
+                        id={r.id}
+                        onEdit={() => setModal({ type: "recurring", editId: r.id })}
+                        onDelete={() => {
+                          save({
+                            ...data,
+                            months: { ...data.months, [curKey]: { ...cur, recurring: cur.recurring.filter((x) => x.id !== r.id) } },
+                            recurringTemplate: data.recurringTemplate.filter((x) => x.id !== r.templateId),
+                          });
+                        }}
+                      />
                     </div>
                   ))}
                 </>
@@ -1916,24 +1913,11 @@ export default function App() {
                           color: u.paid ? "#10b981" : "#f59e0b"
                         }}>{u.paid ? "Paid" : "Pending"}</span>
                       </div>
-                      <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: 4 }}>
-                        <button style={s.editBtn} onClick={() => setModal({ type: "upcoming", editId: u.id })}>✎</button>
-                        <button
-                          style={{
-                            ...s.delBtn,
-                            color: pendingDelete === u.id ? "#ef4444" : theme.textFaint,
-                            fontWeight: pendingDelete === u.id ? 700 : 400,
-                          }}
-                          onClick={() => {
-                            if (pendingDelete === u.id) {
-                              patchCur({ upcoming: cur.upcoming.filter((x) => x.id !== u.id) });
-                              setPendingDelete(null);
-                            } else {
-                              setPendingDelete(u.id);
-                            }
-                          }}
-                        >✕</button>
-                      </div>
+                      <RowActions
+                        id={u.id}
+                        onEdit={() => setModal({ type: "upcoming", editId: u.id })}
+                        onDelete={() => patchCur({ upcoming: cur.upcoming.filter((x) => x.id !== u.id) })}
+                      />
                     </div>
                   ))}
                 </>
@@ -1953,26 +1937,21 @@ export default function App() {
                   ? <div style={{ flex: 1, textAlign: "center", color: theme.textMuted, fontSize: 13 }}>{c.dayOfMonth || "—"}</div>
                   : <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{c.date}</div>}
                 <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: creditReceived(c) ? "#10b981" : theme.textMuted }}>+{fmt(c.amount)}</div>
-                <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: 4 }}>
-                  <button style={s.editBtn} onClick={() => setModal({ type: kind === "recurring" ? "creditRecurring" : "credit", editId: c.id })}>✎</button>
-                  <button
-                    style={{ ...s.delBtn, color: pendingDelete === c.id ? "#ef4444" : theme.textFaint, fontWeight: pendingDelete === c.id ? 700 : 400 }}
-                    onClick={() => {
-                      if (pendingDelete === c.id) {
-                        if (kind === "recurring") {
-                          save({
-                            ...data,
-                            months: { ...data.months, [curKey]: { ...cur, credits: (cur.credits || []).filter((x) => x.id !== c.id) } },
-                            creditTemplate: (data.creditTemplate || []).filter((t) => t.id !== c.templateId),
-                          });
-                        } else {
-                          patchCur({ credits: (cur.credits || []).filter((x) => x.id !== c.id) });
-                        }
-                        setPendingDelete(null);
-                      } else { setPendingDelete(c.id); }
-                    }}
-                  >✕</button>
-                </div>
+                <RowActions
+                  id={c.id}
+                  onEdit={() => setModal({ type: kind === "recurring" ? "creditRecurring" : "credit", editId: c.id })}
+                  onDelete={() => {
+                    if (kind === "recurring") {
+                      save({
+                        ...data,
+                        months: { ...data.months, [curKey]: { ...cur, credits: (cur.credits || []).filter((x) => x.id !== c.id) } },
+                        creditTemplate: (data.creditTemplate || []).filter((t) => t.id !== c.templateId),
+                      });
+                    } else {
+                      patchCur({ credits: (cur.credits || []).filter((x) => x.id !== c.id) });
+                    }
+                  }}
+                />
               </div>
             );
             return (
@@ -2133,18 +2112,11 @@ export default function App() {
                           <div style={{ flex: 1.2 }}><CategoryPill categoryName={e.category} categories={data.categories} /></div>
                           <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{e.date}</div>
                           <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444" }}>{fmt(e.amount)}</div>
-                          <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: 4 }}>
-                            <button style={s.editBtn} onClick={() => setModal({ type: "expense", editId: e.id, monthKey: historyKey })}>✎</button>
-                            <button
-                              style={{ ...s.delBtn, color: pendingDelete === e.id ? "#ef4444" : theme.textFaint, fontWeight: pendingDelete === e.id ? 700 : 400 }}
-                              onClick={() => {
-                                if (pendingDelete === e.id) {
-                                  patchMonth(historyKey, { expenses: m.expenses.filter((x) => x.id !== e.id) });
-                                  setPendingDelete(null);
-                                } else { setPendingDelete(e.id); }
-                              }}
-                            >✕</button>
-                          </div>
+                          <RowActions
+                            id={e.id}
+                            onEdit={() => setModal({ type: "expense", editId: e.id, monthKey: historyKey })}
+                            onDelete={() => patchMonth(historyKey, { expenses: m.expenses.filter((x) => x.id !== e.id) })}
+                          />
                         </div>
                       ))}
                     </>
@@ -2164,20 +2136,15 @@ export default function App() {
                           <div style={{ flex: 1.2 }}><CategoryPill categoryName={r.category} categories={data.categories} /></div>
                               <div style={{ flex: 0.5, textAlign: "center", color: theme.textMuted, fontSize: 13 }}>{r.dayOfMonth || "—"}</div>
                           <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066cc" }}>{fmt(r.amount)}</div>
-                          <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: 4 }}>
-                            <button style={s.editBtn} onClick={() => setModal({ type: "recurring", editId: r.id, monthKey: historyKey })}>✎</button>
-                            <button
-                              style={{ ...s.delBtn, color: pendingDelete === r.id ? "#ef4444" : theme.textFaint, fontWeight: pendingDelete === r.id ? 700 : 400 }}
-                              onClick={() => {
-                                if (pendingDelete === r.id) {
-                                  // Past-month deletion removes only this month's instance —
-                                  // the live template keeps governing future months.
-                                  patchMonth(historyKey, { recurring: m.recurring.filter((x) => x.id !== r.id) });
-                                  setPendingDelete(null);
-                                } else { setPendingDelete(r.id); }
-                              }}
-                            >✕</button>
-                          </div>
+                          <RowActions
+                            id={r.id}
+                            onEdit={() => setModal({ type: "recurring", editId: r.id, monthKey: historyKey })}
+                            onDelete={() => {
+                              // Past-month deletion removes only this month's instance —
+                              // the live template keeps governing future months.
+                              patchMonth(historyKey, { recurring: m.recurring.filter((x) => x.id !== r.id) });
+                            }}
+                          />
                         </div>
                       ))}
                     </>
@@ -2202,18 +2169,11 @@ export default function App() {
                               style={{ accentColor: "#10b981", width: 16, height: 16, cursor: "pointer" }} />
                           </div>
                           <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: u.paid ? "#10b981" : "#f59e0b" }}>{fmt(u.amount)}</div>
-                          <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: 4 }}>
-                            <button style={s.editBtn} onClick={() => setModal({ type: "upcoming", editId: u.id, monthKey: historyKey })}>✎</button>
-                            <button
-                              style={{ ...s.delBtn, color: pendingDelete === u.id ? "#ef4444" : theme.textFaint, fontWeight: pendingDelete === u.id ? 700 : 400 }}
-                              onClick={() => {
-                                if (pendingDelete === u.id) {
-                                  patchMonth(historyKey, { upcoming: m.upcoming.filter((x) => x.id !== u.id) });
-                                  setPendingDelete(null);
-                                } else { setPendingDelete(u.id); }
-                              }}
-                            >✕</button>
-                          </div>
+                          <RowActions
+                            id={u.id}
+                            onEdit={() => setModal({ type: "upcoming", editId: u.id, monthKey: historyKey })}
+                            onDelete={() => patchMonth(historyKey, { upcoming: m.upcoming.filter((x) => x.id !== u.id) })}
+                          />
                         </div>
                       ))}
                     </>
@@ -2233,18 +2193,11 @@ export default function App() {
                           <div style={{ flex: 1.2 }}><CategoryPill categoryName={c.category || c.source} categories={data.creditCategories || []} fallback={CREDIT_UNCATEGORIZED} /></div>
                           <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{c.date}</div>
                           <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#10b981" }}>+{fmt(c.amount)}</div>
-                          <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: 4 }}>
-                            <button style={s.editBtn} onClick={() => setModal({ type: "credit", editId: c.id, monthKey: historyKey })}>✎</button>
-                            <button
-                              style={{ ...s.delBtn, color: pendingDelete === c.id ? "#ef4444" : theme.textFaint, fontWeight: pendingDelete === c.id ? 700 : 400 }}
-                              onClick={() => {
-                                if (pendingDelete === c.id) {
-                                  patchMonth(historyKey, { credits: (m.credits || []).filter((x) => x.id !== c.id) });
-                                  setPendingDelete(null);
-                                } else { setPendingDelete(c.id); }
-                              }}
-                            >✕</button>
-                          </div>
+                          <RowActions
+                            id={c.id}
+                            onEdit={() => setModal({ type: "credit", editId: c.id, monthKey: historyKey })}
+                            onDelete={() => patchMonth(historyKey, { credits: (m.credits || []).filter((x) => x.id !== c.id) })}
+                          />
                         </div>
                       ))}
                     </>
@@ -2716,6 +2669,7 @@ export default function App() {
         />
       )}
     </div>
+    </DeleteArmContext.Provider>
     </ThemeContext.Provider>
   );
 }
