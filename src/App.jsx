@@ -13,56 +13,92 @@ if (!window.storage) {
 import { useState, useEffect, useCallback, useRef, createContext, useContext, useMemo } from "react";
 import { PieChart, Pie, Cell, Tooltip as RTooltip, ResponsiveContainer, XAxis, YAxis, CartesianGrid, BarChart, Bar, AreaChart, Area } from "recharts";
 
+// ---- Apple design tokens -------------------------------------------------
+// Transcribed from the Apple DESIGN.md spec. Kept as tokens rather than inlined
+// so the scale is enforced instead of approximated per component.
+
+// SF Pro where the platform has it (macOS/iOS), DM Sans elsewhere - the app
+// already loads DM Sans and SF Pro is not licensable for web delivery.
+const FONT = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'DM Sans', 'Segoe UI', sans-serif";
+
+// Weight ladder is 300/400/600/700. 500 is deliberately absent from the spec.
+const TYPE = {
+  displayLarge:  { fontSize: 40, fontWeight: 600, lineHeight: 1.10, letterSpacing: "0" },
+  displayMedium: { fontSize: 34, fontWeight: 600, lineHeight: 1.15, letterSpacing: "-0.374px" },
+  lead:          { fontSize: 28, fontWeight: 400, lineHeight: 1.14, letterSpacing: "0.196px" },
+  leadAiry:      { fontSize: 24, fontWeight: 300, lineHeight: 1.5,  letterSpacing: "0" },
+  tagline:       { fontSize: 21, fontWeight: 600, lineHeight: 1.19, letterSpacing: "0.231px" },
+  bodyStrong:    { fontSize: 17, fontWeight: 600, lineHeight: 1.24, letterSpacing: "-0.374px" },
+  body:          { fontSize: 17, fontWeight: 400, lineHeight: 1.47, letterSpacing: "-0.374px" },
+  caption:       { fontSize: 14, fontWeight: 400, lineHeight: 1.43, letterSpacing: "-0.224px" },
+  captionStrong: { fontSize: 14, fontWeight: 600, lineHeight: 1.29, letterSpacing: "-0.224px" },
+  buttonLarge:   { fontSize: 18, fontWeight: 300, lineHeight: 1.0,  letterSpacing: "0" },
+  buttonUtility: { fontSize: 14, fontWeight: 400, lineHeight: 1.29, letterSpacing: "-0.224px" },
+  finePrint:     { fontSize: 12, fontWeight: 400, lineHeight: 1.0,  letterSpacing: "-0.12px" },
+  microLegal:    { fontSize: 10, fontWeight: 400, lineHeight: 1.3,  letterSpacing: "-0.08px" },
+  navLink:       { fontSize: 12, fontWeight: 400, lineHeight: 1.0,  letterSpacing: "-0.12px" },
+};
+
+const RADIUS = { none: 0, xs: 5, sm: 8, md: 11, lg: 18, pill: 9999 };
+const SPACE = { xxs: 4, xs: 8, sm: 12, md: 17, lg: 24, xl: 32, xxl: 48, section: 80 };
+
+// The spec allows exactly one drop shadow, reserved for floating surfaces.
+// Cards get a hairline border instead - alternating surfaces act as dividers.
+const ELEVATION = "rgba(0, 0, 0, 0.22) 3px 5px 30px 0";
+const FOCUS_BLUE = "#0071e3";
+const CHIP_GRAY = "rgba(210, 210, 215, 0.64)";
+
 const THEME = {
-  bg: "#f4f5f7",
-  surface: "#ffffff",
-  border: "#e5e7eb",
-  text: "#0c0d12",
-  textMuted: "#6b7280",
-  textFaint: "#9ca3af",
-  accent: "#0066ff",
-  accentSoft: "rgba(0,102,255,0.08)",
+  bg: "#f5f5f7",          // Parchment
+  surface: "#ffffff",     // Pure White
+  border: "#e0e0e0",      // Hairline
+  text: "#1d1d1f",        // Near-Black Ink
+  textMuted: "#333333",   // Ink Muted 80
+  textFaint: "#7a7a7a",   // Ink Muted 48
+  accent: "#0066cc",      // Action Blue - the single accent
+  accentSoft: "rgba(0,102,204,0.08)",
   success: "#10b981",
   danger: "#ef4444",
   warning: "#f59e0b",
-  shadowCard: "0 1px 2px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.06)",
-  // Phase 1b — outer dark frame
-  outerBg: "#0c0d12",
-  outerText: "#e5e7eb",
-  outerTextMuted: "#9ca3af",
-  outerBorder: "#1f2028",
-  outerAccentSoft: "rgba(0,102,255,0.15)",
+  shadowCard: "none",
+  outerBg: "#000000",
+  outerText: "#ffffff",
+  outerTextMuted: "#cccccc",
+  outerBorder: "#2a2a2c",
+  outerAccentSoft: "rgba(41,151,255,0.15)",
 };
 
 // Full light theme — inner panel light AND outer frame light.
 const LIGHT_THEME = {
   ...THEME,
   outerBg: "#ffffff",
-  outerText: "#0c0d12",
-  outerTextMuted: "#6b7280",
-  outerBorder: "#e5e7eb",
-  outerAccentSoft: "rgba(0,102,255,0.08)",
+  outerText: "#1d1d1f",
+  outerTextMuted: "#7a7a7a",
+  outerBorder: "#e0e0e0",
+  outerAccentSoft: "rgba(0,102,204,0.08)",
 };
 
 // Full dark theme — everything dark.
 const DARK_THEME = {
   ...LIGHT_THEME,
-  outerBg: "#0c0d12",
-  outerText: "#e5e7eb",
-  outerTextMuted: "#9ca3af",
-  outerBorder: "#1f2028",
-  outerAccentSoft: "rgba(0,102,255,0.15)",
-  bg: "#1a1b22",
-  surface: "#25262d",
-  border: "#2f3038",
-  text: "#e5e7eb",
-  textMuted: "#9ca3af",
-  textFaint: "#6b7280",
-  shadowCard: "0 1px 2px rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.4)",
-  accentSoft: "rgba(0,102,255,0.18)",
+  // Global-nav black frame, near-black tiles for content and cards.
+  outerBg: "#000000",
+  outerText: "#ffffff",
+  outerTextMuted: "#cccccc",
+  outerBorder: "#2a2a2c",
+  outerAccentSoft: "rgba(41,151,255,0.18)",
+  bg: "#1d1d1f",
+  surface: "#272729",     // Near-Black Tile 1
+  border: "#3a3a3c",
+  text: "#ffffff",
+  textMuted: "#cccccc",   // Body Muted
+  textFaint: "#8a8a8e",
+  accent: "#2997ff",      // Sky Link Blue, for links on dark surfaces
+  accentSoft: "rgba(41,151,255,0.18)",
+  shadowCard: "none",
 };
 
-const CATEGORY_COLORS = ["#ef4444", "#f59e0b", "#10b981", "#0066ff", "#8b5cf6", "#ec4899", "#14b8a6", "#f97316"];
+const CATEGORY_COLORS = ["#ef4444", "#f59e0b", "#10b981", "#0066cc", "#8b5cf6", "#ec4899", "#14b8a6", "#f97316"];
 const CATEGORY_ICONS = ["🍔", "🚗", "🛍️", "📄", "🎮", "💊", "💰", "🏠", "✈️", "🎁", "☕", "📱"];
 const UNCATEGORIZED = { name: "Uncategorized", color: "#9ca3af", icon: "·" };
 
@@ -70,7 +106,7 @@ const DEFAULT_CREDIT_CATEGORIES = [
   { name: "Refund", color: "#10b981", icon: "↩" },
   { name: "Gift",   color: "#ec4899", icon: "🎁" },
   { name: "Bonus",  color: "#f59e0b", icon: "⭐" },
-  { name: "Salary", color: "#0066ff", icon: "💼" },
+  { name: "Salary", color: "#0066cc", icon: "💼" },
   { name: "Other",  color: "#9ca3af", icon: "·" },
 ];
 const CREDIT_UNCATEGORIZED = { name: "Other", color: "#9ca3af", icon: "·" };
@@ -645,11 +681,11 @@ function StatCard({ label, value, accent, sub, icon }) {
   return (
     <div style={{ ...s.statCard, borderTop: `3px solid ${accent}` }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1.5, color: theme.textMuted, fontWeight: 600 }}>{label}</div>
+        <div style={{ ...TYPE.finePrint, textTransform: "uppercase", letterSpacing: "0.8px", color: theme.textFaint, fontWeight: 600 }}>{label}</div>
         <div style={{ fontSize: 20, opacity: 0.3 }}>{icon}</div>
       </div>
-      <div style={{ fontSize: 28, fontWeight: 800, color: accent, fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", margin: "8px 0 4px" }}>{value}</div>
-      {sub && <div style={{ fontSize: 12, color: theme.textMuted }}>{sub}</div>}
+      <div style={{ ...TYPE.lead, fontWeight: 600, color: accent, fontFamily: FONT, fontVariantNumeric: "tabular-nums", margin: "12px 0 4px" }}>{value}</div>
+      {sub && <div style={{ ...TYPE.finePrint, lineHeight: 1.4, color: theme.textFaint }}>{sub}</div>}
     </div>
   );
 }
@@ -1064,7 +1100,7 @@ function CategoryDonut({ data, total }) {
             return (
               <div style={s.chartTooltip}>
                 <div style={{ fontWeight: 700, marginBottom: 2 }}>{d.icon} {d.name}</div>
-                <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums" }}>{fmt(d.value)} · {pct}%</div>
+                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums" }}>{fmt(d.value)} · {pct}%</div>
               </div>
             );
           }} />
@@ -1072,7 +1108,7 @@ function CategoryDonut({ data, total }) {
       </ResponsiveContainer>
       <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", textAlign: "center", pointerEvents: "none" }}>
         <div style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>Total</div>
-        <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", color: theme.text }}>{fmt(total)}</div>
+        <div style={{ fontSize: 18, fontWeight: 700, fontFamily: FONT, fontVariantNumeric: "tabular-nums", color: theme.text }}>{fmt(total)}</div>
       </div>
     </div>
   );
@@ -1097,8 +1133,8 @@ function MonthlyBarChart({ data, curKey, onBarClick }) {
             return (
               <div style={s.chartTooltip}>
                 <div style={{ fontWeight: 700, marginBottom: 4 }}>{d.key}</div>
-                <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", color: theme.danger }}>Spent: {fmt(d.spent)}</div>
-                <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", color: theme.textMuted }}>Income: {fmt(d.income)}</div>
+                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", color: theme.danger }}>Spent: {fmt(d.spent)}</div>
+                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", color: theme.textMuted }}>Income: {fmt(d.income)}</div>
               </div>
             );
           }} />
@@ -1146,9 +1182,9 @@ function SavingsChart({ series }) {
             return (
               <div style={s.chartTooltip}>
                 <div style={{ fontWeight: 700, marginBottom: 4 }}>{d.label}</div>
-                <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", color: theme.success }}>Balance: {fmt(d.balance)}</div>
+                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", color: theme.success }}>Balance: {fmt(d.balance)}</div>
                 {d.delta !== 0 && (
-                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", color: d.delta >= 0 ? theme.success : theme.danger }}>
+                  <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", color: d.delta >= 0 ? theme.success : theme.danger }}>
                     {d.delta >= 0 ? "+" : ""}{fmt(d.delta)} that month
                   </div>
                 )}
@@ -1214,7 +1250,7 @@ function CategoryBudgets({ categories, spent, average, onSetCap }) {
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 {!isEditing && (
-                  <span style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontSize: 12, color: theme.textMuted }}>
+                  <span style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontSize: 12, color: theme.textMuted }}>
                     {fmt(r.sp)} / {r.cap != null ? fmt(r.cap) : "—"}
                   </span>
                 )}
@@ -1436,7 +1472,7 @@ export default function App() {
   return (
     <ThemeContext.Provider value={themedValue}>
     <div style={s.shell}>
-      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800&display=swap" rel="stylesheet" />
+      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,600;0,700&display=swap" rel="stylesheet" />
       <style>{`
         *[data-tauri-drag-region] { app-region: drag; -webkit-app-region: drag; }
         *[data-tauri-drag-region] button,
@@ -1452,12 +1488,20 @@ export default function App() {
         ::-webkit-scrollbar-thumb { background: ${theme.border}; border-radius: 5px; }
         ::-webkit-scrollbar-thumb:hover { background: ${theme.textFaint}; }
         ::-webkit-scrollbar-corner { background: transparent; }
+
+        /* Interaction states. Active compresses to 0.95, focus is a 2px ring in
+           Focus Blue; both are spec'd for every button. */
+        button, input, select, textarea { font-family: inherit; }
+        button { transition: transform .12s ease, background-color .2s ease, color .2s ease, opacity .2s ease; }
+        button:active:not(:disabled) { transform: scale(0.95); }
+        :focus-visible { outline: 2px solid ${FOCUS_BLUE}; outline-offset: 2px; }
+        .icon-btn:hover { background: ${CHIP_GRAY} !important; }
       `}</style>
 
       {/* SIDEBAR */}
       <aside style={s.sidebar}>
         <div data-tauri-drag-region style={s.logo}>
-          <div data-tauri-drag-region style={{ fontSize: 18, fontWeight: 800, letterSpacing: -0.5, color: theme.outerText }}>BUDGET</div>
+          <div data-tauri-drag-region style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.5, color: theme.outerText }}>BUDGET</div>
           <div data-tauri-drag-region style={{ fontSize: 10, letterSpacing: 3, color: theme.accent, fontWeight: 700 }}>CTRL</div>
         </div>
         <nav style={s.nav}>
@@ -1476,10 +1520,10 @@ export default function App() {
             <input type="number" value={cur.income || ""}
               onChange={(e) => patchCur({ income: +e.target.value || 0 })}
               placeholder="0" style={s.incomeInput} />
-            <span style={{ fontSize: 12, color: theme.outerTextMuted, fontWeight: 600 }}>PLN</span>
+            <span style={{ ...TYPE.finePrint, color: theme.outerTextMuted, fontWeight: 600 }}>PLN</span>
           </div>
           {(totalCredits > 0 || totalCreditsPending > 0) && (
-            <div style={{ fontSize: 11, color: "#10b981", marginTop: 6, fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums" }}>
+            <div style={{ fontSize: 11, color: "#10b981", marginTop: 6, fontFamily: FONT, fontVariantNumeric: "tabular-nums" }}>
               + {fmt(totalCredits)} credits
               {totalCreditsPending > 0 && (
                 <span style={{ color: theme.outerTextMuted }}> · {fmt(totalCreditsPending)} pending</span>
@@ -1492,7 +1536,7 @@ export default function App() {
               <input type="number" min={1} max={28} value={cutoffDay}
                 onChange={(e) => onChangeCutoff(+e.target.value)}
                 style={s.incomeInput} />
-              <span style={{ fontSize: 12, color: theme.outerTextMuted, fontWeight: 600 }}>day</span>
+              <span style={{ ...TYPE.finePrint, color: theme.outerTextMuted, fontWeight: 600 }}>day</span>
             </div>
             <div style={{ fontSize: 10, color: theme.outerTextMuted, marginTop: 4 }}>1–28 · e.g. payday</div>
           </div>
@@ -1514,10 +1558,10 @@ export default function App() {
           <WindowControls />
           {/* The whole bar drags; interactive children opt out via app-region: no-drag */}
           <div data-tauri-drag-region style={{ flex: 1, alignSelf: "stretch", display: "flex", flexDirection: "column", justifyContent: "center" }}>
-            <h1 data-tauri-drag-region style={{ fontSize: 24, fontWeight: 800, margin: 0, letterSpacing: -0.5, color: theme.outerText }}>
+            <h1 data-tauri-drag-region style={{ ...TYPE.tagline, margin: 0, color: theme.outerText }}>
               {TABS.find((t) => t.id === tab)?.label}
             </h1>
-            <div data-tauri-drag-region style={{ fontSize: 12, color: theme.outerTextMuted, marginTop: 2 }}>
+            <div data-tauri-drag-region style={{ ...TYPE.navLink, color: theme.outerTextMuted, marginTop: 6 }}>
               {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
               {cutoffDay > 1 && (
                 <span style={{ color: theme.outerTextMuted }}> · period {periodLabel(curKey, cutoffDay).range}</span>
@@ -1529,13 +1573,14 @@ export default function App() {
               never steal their top edge. */}
           <div style={{ position: "absolute", right: 14, top: isTauri ? 42 : 24, display: "flex", alignItems: "center", gap: 2 }}>
             <button
+              className="icon-btn"
               style={s.themeToggle}
               onClick={() => setThemeMode((m) => m === "dark" ? "light" : "dark")}
               title={themeMode === "dark" ? "Switch to light panel" : "Switch to dark panel"}
             >
               {themeMode === "dark" ? "☀" : "☾"}
             </button>
-            <button style={s.themeToggle} onClick={() => setSettingsOpen(true)} title="Settings">⚙</button>
+            <button className="icon-btn" style={s.themeToggle} onClick={() => setSettingsOpen(true)} title="Settings">⚙</button>
           </div>
           <div style={{ display: "flex", alignItems: "center" }}>
             {tab !== "dashboard" && tab !== "history" && tab !== "year" && tab !== "credits" && tab !== "savings" && (
@@ -1551,10 +1596,14 @@ export default function App() {
           {/* DASHBOARD */}
           {tab === "dashboard" && (
             <>
-              <div style={{ ...s.statsRow, gridTemplateColumns: savings.monthsCounted > 0 ? "repeat(5, 1fr)" : "repeat(4, 1fr)" }}>
+              {/* Column count is left to statsRow's auto-fit. Pinning it to
+                  repeat(5, 1fr) overflowed the row, because a bare 1fr is
+                  minmax(auto, 1fr) and the largest currency value refused to
+                  shrink below its own content width. */}
+              <div style={s.statsRow}>
                 <StatCard label="Remaining" value={fmt(remaining)} accent={remaining >= 0 ? "#10b981" : "#ef4444"} sub={totalStillScheduled > 0 ? `${fmt(totalStillScheduled)} still scheduled` : "Everything's landed"} icon="↓" />
                 <StatCard label="Still to Pay" value={fmt(totalUpcoming)} accent="#f59e0b" sub={`${unpaidCount} upcoming payment${unpaidCount !== 1 ? "s" : ""}`} icon="◈" />
-                <StatCard label="Can Invest" value={fmt(canInvest)} accent="#0066ff" sub={`After ${displayPct}% savings goal`} icon="↗" />
+                <StatCard label="Can Invest" value={fmt(canInvest)} accent="#0066cc" sub={`After ${displayPct}% savings goal`} icon="↗" />
                 <StatCard label="Total Spent" value={fmt(totalActuallySpent)} accent="#ef4444" sub={`${cur.expenses.length} one-off · ${cur.recurring.length} recurring`} icon="↻" />
                 {savings.monthsCounted > 0 && (
                   <StatCard label="Saved So Far" value={fmt(savings.total)}
@@ -1571,10 +1620,10 @@ export default function App() {
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <input type="number" min={0} max={maxSavingsPct} value={displayPct}
                           onChange={(e) => save({ ...data, savingsGoalPercent: Math.max(0, Math.min(maxSavingsPct, +e.target.value || 0)) })}
-                          style={{ ...s.input, width: 90, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 18 }} />
-                        <span style={{ fontSize: 18, fontWeight: 700, color: "#0066ff" }}>%</span>
+                          style={{ ...s.input, width: 90, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 18 }} />
+                        <span style={{ fontSize: 18, fontWeight: 700, color: "#0066cc" }}>%</span>
                       </div>
-                      <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066ff", fontSize: 18, textAlign: "right" }}>
+                      <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066cc", fontSize: 18, textAlign: "right" }}>
                         <div style={{ fontSize: 12, color: theme.textMuted, fontWeight: 400 }}>{fmt(savingsTarget)}</div>
                         {maxSavingsPct < 50 && (
                           <div style={{ fontSize: 11, color: theme.textFaint, fontWeight: 400, marginTop: 2 }}>max {maxSavingsPct}%</div>
@@ -1590,7 +1639,7 @@ export default function App() {
                           {[
                             { pct: (totalActuallySpent / effectiveIncome) * 100, color: "#ef4444" },
                             { pct: (totalStillScheduled / effectiveIncome) * 100, color: "#f59e0b" },
-                            { pct: (savingsTarget / effectiveIncome) * 100, color: "#0066ff" },
+                            { pct: (savingsTarget / effectiveIncome) * 100, color: "#0066cc" },
                             { pct: (canInvest / effectiveIncome) * 100, color: "#10b981" },
                           ].filter((x) => x.pct > 0 && isFinite(x.pct)).map((seg, i) => (
                             <div key={i} style={{ height: "100%", background: seg.color, width: `${Math.min(seg.pct, 100)}%`, transition: "width .3s" }} />
@@ -1600,13 +1649,13 @@ export default function App() {
                           {[
                             { color: "#ef4444", label: "Spent", val: totalActuallySpent },
                             { color: "#f59e0b", label: "Upcoming", val: totalStillScheduled },
-                            { color: "#0066ff", label: "Savings", val: savingsTarget },
+                            { color: "#0066cc", label: "Savings", val: savingsTarget },
                             { color: "#10b981", label: "Investable", val: canInvest },
                           ].map((l) => (
                             <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
                               <div style={{ width: 10, height: 10, borderRadius: 3, background: l.color }} />
                               <span style={{ color: theme.textFaint }}>{l.label}</span>
-                              <span style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 600, color: theme.text }}>{fmt(l.val)}</span>
+                              <span style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 600, color: theme.text }}>{fmt(l.val)}</span>
                             </div>
                           ))}
                         </div>
@@ -1659,7 +1708,7 @@ export default function App() {
                   ) : cur.expenses.slice(-4).reverse().map((e) => (
                     <div key={e.id} style={s.miniRow}>
                       <div><div style={{ fontWeight: 600, fontSize: 13 }}>{e.name}</div><div style={{ fontSize: 11, color: theme.textMuted }}>{e.date}</div></div>
-                      <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444", fontSize: 13 }}>{fmt(e.amount)}</div>
+                      <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444", fontSize: 13 }}>{fmt(e.amount)}</div>
                     </div>
                   ))}
                 </div>
@@ -1673,7 +1722,7 @@ export default function App() {
                   ) : cur.upcoming.filter((u) => !u.paid).slice(0, 4).map((u) => (
                     <div key={u.id} style={s.miniRow}>
                       <div><div style={{ fontWeight: 600, fontSize: 13 }}>{u.name}</div><div style={{ fontSize: 11, color: theme.textMuted }}>Due {u.dueDate}</div></div>
-                      <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#f59e0b", fontSize: 13 }}>{fmt(u.amount)}</div>
+                      <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#f59e0b", fontSize: 13 }}>{fmt(u.amount)}</div>
                     </div>
                   ))}
                 </div>
@@ -1689,7 +1738,7 @@ export default function App() {
                           <div style={{ fontWeight: 600, fontSize: 13 }}>{c.name}</div>
                           <div style={{ fontSize: 11, color: theme.textMuted }}>{c.source} · {c.date}</div>
                         </div>
-                        <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#10b981", fontSize: 13 }}>+{fmt(c.amount)}</div>
+                        <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#10b981", fontSize: 13 }}>+{fmt(c.amount)}</div>
                       </div>
                     ))}
                   </div>
@@ -1703,7 +1752,7 @@ export default function App() {
             <div style={s.card}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                 <div style={s.cardTitle}>All Expenses</div>
-                <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444", fontSize: 16 }}>Total: {fmt(totalExpenses)}</div>
+                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444", fontSize: 16 }}>Total: {fmt(totalExpenses)}</div>
               </div>
               <input
                 type="text"
@@ -1720,7 +1769,7 @@ export default function App() {
                       <div style={{ flex: 2, fontWeight: 600 }}>{e.name}</div>
                       <div style={{ flex: 1.2 }}><CategoryPill categoryName={e.category} categories={data.categories} /></div>
                       <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{e.date}</div>
-                      <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444" }}>{fmt(e.amount)}</div>
+                      <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444" }}>{fmt(e.amount)}</div>
                       <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: 4 }}>
                         <button style={s.editBtn} onClick={() => setModal({ type: "expense", editId: e.id })}>✎</button>
                         <button
@@ -1751,7 +1800,7 @@ export default function App() {
             <div style={s.card}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                 <div style={s.cardTitle}>Recurring Payments</div>
-                <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066ff", fontSize: 16 }}>Monthly: {fmt(totalRecurringAll)}</div>
+                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066cc", fontSize: 16 }}>Monthly: {fmt(totalRecurringAll)}</div>
               </div>
               <input
                 type="text"
@@ -1768,7 +1817,7 @@ export default function App() {
                       <div style={{ flex: 2, fontWeight: 600 }}>{r.name}</div>
                       <div style={{ flex: 1.2 }}><CategoryPill categoryName={r.category} categories={data.categories} /></div>
                       <div style={{ flex: 0.5, textAlign: "center", color: theme.textMuted, fontSize: 13 }}>{r.dayOfMonth || "—"}</div>
-                      <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066ff" }}>{fmt(r.amount)}</div>
+                      <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066cc" }}>{fmt(r.amount)}</div>
                       <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: 4 }}>
                         <button style={s.editBtn} onClick={() => setModal({ type: "recurring", editId: r.id })}>✎</button>
                         <button
@@ -1803,7 +1852,7 @@ export default function App() {
             <div style={s.card}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                 <div style={s.cardTitle}>Upcoming Payments</div>
-                <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#f59e0b", fontSize: 16 }}>Owed: {fmt(totalUpcoming)}</div>
+                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#f59e0b", fontSize: 16 }}>Owed: {fmt(totalUpcoming)}</div>
               </div>
               <input
                 type="text"
@@ -1825,7 +1874,7 @@ export default function App() {
                       <div style={{ flex: 2, fontWeight: 600, textDecoration: u.paid ? "line-through" : "none" }}>{u.name}</div>
                       <div style={{ flex: 1.2 }}><CategoryPill categoryName={u.category} categories={data.categories} /></div>
                       <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{u.dueDate}</div>
-                      <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: u.paid ? "#10b981" : "#f59e0b" }}>{fmt(u.amount)}</div>
+                      <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: u.paid ? "#10b981" : "#f59e0b" }}>{fmt(u.amount)}</div>
                       <div style={{ flex: 0.7, textAlign: "center" }}>
                         <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 20, fontWeight: 600,
                           background: u.paid ? "rgba(16,185,129,0.12)" : "rgba(245,158,11,0.12)",
@@ -1868,7 +1917,7 @@ export default function App() {
                 {kind === "recurring"
                   ? <div style={{ flex: 1, textAlign: "center", color: theme.textMuted, fontSize: 13 }}>{c.dayOfMonth || "—"}</div>
                   : <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{c.date}</div>}
-                <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: creditReceived(c) ? "#10b981" : theme.textMuted }}>+{fmt(c.amount)}</div>
+                <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: creditReceived(c) ? "#10b981" : theme.textMuted }}>+{fmt(c.amount)}</div>
                 <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: 4 }}>
                   <button style={s.editBtn} onClick={() => setModal({ type: kind === "recurring" ? "creditRecurring" : "credit", editId: c.id })}>✎</button>
                   <button
@@ -1896,7 +1945,7 @@ export default function App() {
                 <div style={s.card}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                     <div style={s.cardTitle}>Credits</div>
-                    <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#10b981", fontSize: 16 }}>
+                    <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#10b981", fontSize: 16 }}>
                       Received: {fmt(totalCredits)}
                       {totalCreditsPending > 0 && <span style={{ color: theme.textMuted, fontSize: 13 }}> · {fmt(totalCreditsPending)} pending</span>}
                     </div>
@@ -1968,7 +2017,7 @@ export default function App() {
                           background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 12, padding: 20,
                           textAlign: "left", cursor: "pointer", display: "grid",
                           gridTemplateColumns: "1.5fr 1fr 1fr 1fr 8px", gap: 16, alignItems: "center",
-                          color: theme.text, fontFamily: "'DM Sans', sans-serif",
+                          color: theme.text, fontFamily: FONT,
                         }}>
                           <div>
                             <div style={{ fontWeight: 700, fontSize: 16 }}>{periodLabel(k, cutoffDay).primary}</div>
@@ -1978,18 +2027,18 @@ export default function App() {
                           </div>
                           <div>
                             <div style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>Income</div>
-                            <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>{fmt(m.income)}</div>
+                            <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>{fmt(m.income)}</div>
                             {credits > 0 && (
-                              <div style={{ fontSize: 10, color: "#10b981", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums" }}>+{fmt(credits)}</div>
+                              <div style={{ fontSize: 10, color: "#10b981", fontFamily: FONT, fontVariantNumeric: "tabular-nums" }}>+{fmt(credits)}</div>
                             )}
                           </div>
                           <div>
                             <div style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>Spent</div>
-                            <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444" }}>{fmt(spent)}</div>
+                            <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444" }}>{fmt(spent)}</div>
                           </div>
                           <div>
                             <div style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>Remaining</div>
-                            <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color }}>{fmt(rem)}</div>
+                            <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color }}>{fmt(rem)}</div>
                           </div>
                           <div style={{ width: 8, height: 40, background: color, borderRadius: 4 }} />
                         </button>
@@ -2033,7 +2082,7 @@ export default function App() {
                   <StatCard label="Income" value={fmt(effective)} accent="#10b981" sub={credits > 0 ? `+${fmt(credits)} credits` : "For this month"} icon="↑" />
                   <StatCard label="Remaining" value={fmt(rem)} accent={rem >= 0 ? "#10b981" : "#ef4444"} sub="After expenses & recurring" icon="↓" />
                   <StatCard label="Total Spent" value={fmt(spent + rec)} accent="#ef4444" sub={`${m.expenses.length} one-off · ${m.recurring.length} recurring`} icon="↻" />
-                  <StatCard label="Can Invest" value={fmt(canInv)} accent="#0066ff" sub={`After ${data.savingsGoalPercent}% savings goal`} icon="↗" />
+                  <StatCard label="Can Invest" value={fmt(canInv)} accent="#0066cc" sub={`After ${data.savingsGoalPercent}% savings goal`} icon="↗" />
                 </div>
                 <div style={s.card}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -2048,7 +2097,7 @@ export default function App() {
                           <div style={{ flex: 2, fontWeight: 600 }}>{e.name}</div>
                           <div style={{ flex: 1.2 }}><CategoryPill categoryName={e.category} categories={data.categories} /></div>
                           <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{e.date}</div>
-                          <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444" }}>{fmt(e.amount)}</div>
+                          <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444" }}>{fmt(e.amount)}</div>
                           <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: 4 }}>
                             <button style={s.editBtn} onClick={() => setModal({ type: "expense", editId: e.id, monthKey: historyKey })}>✎</button>
                             <button
@@ -2079,7 +2128,7 @@ export default function App() {
                           <div style={{ flex: 2, fontWeight: 600 }}>{r.name}</div>
                           <div style={{ flex: 1.2 }}><CategoryPill categoryName={r.category} categories={data.categories} /></div>
                               <div style={{ flex: 0.5, textAlign: "center", color: theme.textMuted, fontSize: 13 }}>{r.dayOfMonth || "—"}</div>
-                          <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066ff" }}>{fmt(r.amount)}</div>
+                          <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066cc" }}>{fmt(r.amount)}</div>
                           <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: 4 }}>
                             <button style={s.editBtn} onClick={() => setModal({ type: "recurring", editId: r.id, monthKey: historyKey })}>✎</button>
                             <button
@@ -2117,7 +2166,7 @@ export default function App() {
                               onChange={() => patchMonth(historyKey, { upcoming: m.upcoming.map((x) => x.id === u.id ? { ...x, paid: !x.paid } : x) })}
                               style={{ accentColor: "#10b981", width: 16, height: 16, cursor: "pointer" }} />
                           </div>
-                          <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: u.paid ? "#10b981" : "#f59e0b" }}>{fmt(u.amount)}</div>
+                          <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: u.paid ? "#10b981" : "#f59e0b" }}>{fmt(u.amount)}</div>
                           <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: 4 }}>
                             <button style={s.editBtn} onClick={() => setModal({ type: "upcoming", editId: u.id, monthKey: historyKey })}>✎</button>
                             <button
@@ -2148,7 +2197,7 @@ export default function App() {
                           <div style={{ flex: 2, fontWeight: 600 }}>{c.name}</div>
                           <div style={{ flex: 1.2 }}><CategoryPill categoryName={c.category || c.source} categories={data.creditCategories || []} fallback={CREDIT_UNCATEGORIZED} /></div>
                           <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{c.date}</div>
-                          <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#10b981" }}>+{fmt(c.amount)}</div>
+                          <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#10b981" }}>+{fmt(c.amount)}</div>
                           <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: 4 }}>
                             <button style={s.editBtn} onClick={() => setModal({ type: "credit", editId: c.id, monthKey: historyKey })}>✎</button>
                             <button
@@ -2204,10 +2253,16 @@ export default function App() {
             }).sort((a, b) => b.value - a.value);
             const yearCatTotal = yearCatBreakdown.reduce((a, c) => a + c.value, 0);
 
-            const prevYear = String(Number(yearKey) - 1);
-            const nextYear = String(Number(yearKey) + 1);
-            const canPrev = allYears.includes(prevYear);
-            const canNext = allYears.includes(nextYear);
+            // Navigation steps between years that actually hold data, rather than
+            // +/- 1 calendar year. Stepping into an empty year showed a page of
+            // zeroes, and a gap year used to dead-end the button entirely.
+            const earlierYears = allYears.filter((y) => y < yearKey);
+            const laterYears = allYears.filter((y) => y > yearKey);
+            const prevYear = earlierYears.length ? earlierYears[earlierYears.length - 1] : null;
+            const nextYear = laterYears.length ? laterYears[0] : null;
+            // Year-over-year always compares against the real preceding calendar
+            // year, which is a different question from "where can I navigate".
+            const compareYear = String(Number(yearKey) - 1);
 
             // 12-month Jan–Dec series (months with no data render as zero)
             const monthBars = Array.from({ length: 12 }, (_, i) => {
@@ -2222,7 +2277,7 @@ export default function App() {
             });
 
             // Year-over-year comparison
-            const prevMonths = Object.entries(data.months).filter(([k]) => k.startsWith(prevYear + "-"));
+            const prevMonths = Object.entries(data.months).filter(([k]) => k.startsWith(compareYear + "-"));
             const prevIncomeY = prevMonths.reduce((a, [, m]) =>
               a + (m.income || 0) + (m.credits || []).reduce((x, c) => x + c.amount, 0), 0);
             const prevSpentY = prevMonths.reduce((a, [k, m]) =>
@@ -2231,7 +2286,7 @@ export default function App() {
             const yoySub = (curr, prev) => {
               if (!(prev > 0)) return null;
               const d = ((curr - prev) / prev) * 100;
-              return `${d >= 0 ? "↑" : "↓"} ${Math.abs(d).toFixed(0)}% vs ${prevYear}`;
+              return `${d >= 0 ? "↑" : "↓"} ${Math.abs(d).toFixed(0)}% vs ${compareYear}`;
             };
 
             // Top 5 biggest one-off expenses
@@ -2251,7 +2306,7 @@ export default function App() {
               }
             }
             const incomeBreakdown = [
-              ...(baseIncomeY > 0 ? [{ name: "Base Income", value: baseIncomeY, color: "#0066ff", icon: "💼" }] : []),
+              ...(baseIncomeY > 0 ? [{ name: "Base Income", value: baseIncomeY, color: "#0066cc", icon: "💼" }] : []),
               ...Array.from(incomeSources.entries()).map(([name, value]) => {
                 const cat = (data.creditCategories || []).find((c) => c.name === name) || CREDIT_UNCATEGORIZED;
                 return { name, value, color: cat.color, icon: cat.icon };
@@ -2261,12 +2316,14 @@ export default function App() {
 
             return (
               <>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 16, marginBottom: 16 }}>
-                  <button style={{ ...s.linkBtn, color: canPrev ? theme.accent : theme.textFaint, cursor: canPrev ? "pointer" : "default" }}
-                    disabled={!canPrev} onClick={() => setYearKey(prevYear)}>← {prevYear}</button>
-                  <h2 style={{ fontSize: 24, fontWeight: 800, margin: 0 }}>{yearKey}</h2>
-                  <button style={{ ...s.linkBtn, color: canNext ? theme.accent : theme.textFaint, cursor: canNext ? "pointer" : "default" }}
-                    disabled={!canNext} onClick={() => setYearKey(nextYear)}>{nextYear} →</button>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: SPACE.md, marginBottom: SPACE.md }}>
+                  <div style={{ justifySelf: "end" }}>
+                    {prevYear && <button style={s.linkBtn} onClick={() => setYearKey(prevYear)}>← {prevYear}</button>}
+                  </div>
+                  <h2 style={{ ...TYPE.displayMedium, margin: 0 }}>{yearKey}</h2>
+                  <div style={{ justifySelf: "start" }}>
+                    {nextYear && <button style={s.linkBtn} onClick={() => setYearKey(nextYear)}>{nextYear} →</button>}
+                  </div>
                 </div>
                 {monthsCount === 0 ? (
                   <div style={s.empty}>No data for {yearKey}.</div>
@@ -2280,7 +2337,7 @@ export default function App() {
                       <StatCard label="Total Saved" value={fmt(totalSavedY)}
                         accent={totalSavedY >= 0 ? "#10b981" : "#ef4444"}
                         sub={totalSavedY >= 0 ? "Income minus spent" : "Overspent"} icon="↓" />
-                      <StatCard label="Avg Monthly" value={fmt(avgMonthlySpend)} accent="#0066ff"
+                      <StatCard label="Avg Monthly" value={fmt(avgMonthlySpend)} accent="#0066cc"
                         sub="Spending per month" icon="◐" />
                     </div>
 
@@ -2308,7 +2365,7 @@ export default function App() {
                                 <div style={{ flex: 2, fontWeight: 600 }}>{e.name}</div>
                                 <div style={{ flex: 1.2 }}><CategoryPill categoryName={e.category} categories={data.categories} /></div>
                                 <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{e.date}</div>
-                                <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444" }}>{fmt(e.amount)}</div>
+                                <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444" }}>{fmt(e.amount)}</div>
                               </div>
                             ))}
                           </>
@@ -2330,7 +2387,7 @@ export default function App() {
             <>
               <div style={s.card}>
                 <div style={s.cardTitle}>Saved So Far</div>
-                <div style={{ fontSize: 40, fontWeight: 800, fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums",
+                <div style={{ fontSize: 40, fontWeight: 700, fontFamily: FONT, fontVariantNumeric: "tabular-nums",
                               color: savings.total >= 0 ? "#10b981" : "#ef4444", margin: "12px 0 4px" }}>
                   {fmt(savings.total)}
                 </div>
@@ -2371,10 +2428,10 @@ export default function App() {
                     {savings.series.slice(1).map((row) => (
                       <div key={row.key} style={s.tableRow}>
                         <div style={{ flex: 2, fontWeight: 600 }}>{periodLabel(row.key, cutoffDay).primary}</div>
-                        <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", color: theme.textMuted }}>{fmt(row.income)}</div>
-                        <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", color: theme.textMuted }}>{fmt(row.spent)}</div>
-                        <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: row.delta >= 0 ? "#10b981" : "#ef4444" }}>{row.delta >= 0 ? "+" : ""}{fmt(row.delta)}</div>
-                        <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>{fmt(row.balance)}</div>
+                        <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", color: theme.textMuted }}>{fmt(row.income)}</div>
+                        <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", color: theme.textMuted }}>{fmt(row.spent)}</div>
+                        <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: row.delta >= 0 ? "#10b981" : "#ef4444" }}>{row.delta >= 0 ? "+" : ""}{fmt(row.delta)}</div>
+                        <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>{fmt(row.balance)}</div>
                       </div>
                     ))}
                   </>
@@ -2605,50 +2662,53 @@ export default function App() {
 }
 
 function makeStyles(theme) {
+  const hairline = `1px solid ${theme.border}`;
   return {
-    shell: { display: "flex", height: "100vh", background: theme.outerBg, color: theme.text, fontFamily: "'DM Sans', sans-serif", overflow: "hidden" },
+    shell: { display: "flex", height: "100vh", background: theme.outerBg, color: theme.text, fontFamily: FONT, overflow: "hidden" },
     sidebar: { width: 240, minWidth: 240, background: theme.outerBg, borderRight: "none", display: "flex", flexDirection: "column", height: "100vh", overflowY: "auto", overflowX: "hidden" },
-    logo: { padding: "20px 24px 16px", borderBottom: `1px solid ${theme.border}`, flexShrink: 0 },
-    nav: { padding: "12px 12px", display: "flex", flexDirection: "column", gap: 3, flex: "1 0 auto" },
-    navItem: { display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", borderRadius: 10, border: "none", background: "transparent", color: theme.outerTextMuted, fontSize: 14, fontWeight: 500, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", textAlign: "left", width: "100%", flexShrink: 0 },
-    navItemActive: { background: theme.outerAccentSoft, color: theme.outerText },
-    badge: { background: theme.warning, color: "#fff", fontSize: 10, fontWeight: 800, borderRadius: 999, padding: "1px 7px", marginLeft: "auto" },
-    sidebarIncome: { padding: "14px 20px", borderTop: "1px solid " + theme.outerBorder, flexShrink: 0 },
-    incomeInput: { background: theme.outerBorder, border: "1px solid " + theme.outerBorder, borderRadius: 10, padding: "10px 12px", color: theme.success, fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 16, width: "100%", textAlign: "right", outline: "none", boxSizing: "border-box" },
+    logo: { padding: `${SPACE.lg}px ${SPACE.lg}px ${SPACE.md}px`, borderBottom: `1px solid ${theme.outerBorder}`, flexShrink: 0 },
+    nav: { padding: `${SPACE.sm}px ${SPACE.sm}px`, display: "flex", flexDirection: "column", gap: SPACE.xxs, flex: "1 0 auto" },
+    navItem: { display: "flex", alignItems: "center", gap: SPACE.sm, padding: `${SPACE.xs}px ${SPACE.md}px`, borderRadius: RADIUS.md, border: "none", background: "transparent", color: theme.outerTextMuted, ...TYPE.caption, cursor: "pointer", fontFamily: FONT, textAlign: "left", width: "100%", flexShrink: 0, minHeight: 44, boxSizing: "border-box" },
+    navItemActive: { background: theme.outerAccentSoft, color: theme.outerText, fontWeight: 600 },
+    badge: { background: theme.warning, color: "#fff", ...TYPE.microLegal, fontWeight: 600, borderRadius: RADIUS.pill, padding: "2px 8px", marginLeft: "auto" },
+    sidebarIncome: { padding: `${SPACE.md}px ${SPACE.lg}px`, borderTop: `1px solid ${theme.outerBorder}`, flexShrink: 0 },
+    incomeInput: { background: "transparent", border: `1px solid ${theme.outerBorder}`, borderRadius: RADIUS.md, padding: `${SPACE.xs}px ${SPACE.sm}px`, color: theme.success, fontFamily: FONT, fontVariantNumeric: "tabular-nums", ...TYPE.bodyStrong, width: "100%", textAlign: "right", outline: "none", boxSizing: "border-box" },
     main: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: theme.outerBg },
-    topbar: { padding: "24px 36px 20px", borderBottom: "none", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0, background: theme.outerBg },
-    content: { flex: 1, overflow: "auto", background: theme.bg, borderRadius: 20, margin: "0 16px 16px 0", padding: 32 },
-    contentInner: { maxWidth: 1400, margin: "0 auto" },
-    statsRow: { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 16, marginBottom: 24 },
-    statCard: { background: theme.surface, borderRadius: 16, padding: 20, border: `1px solid ${theme.border}`, boxShadow: theme.shadowCard },
-    dashGrid: { display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)", gap: 16 },
-    card: { background: theme.surface, borderRadius: 16, padding: 24, border: `1px solid ${theme.border}`, boxShadow: theme.shadowCard },
-    cardTitle: { fontSize: 12, textTransform: "uppercase", letterSpacing: 1.2, color: theme.textMuted, fontWeight: 700 },
-    linkBtn: { background: "none", border: "none", color: theme.accent, fontSize: 13, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", fontWeight: 600 },
-    searchInput: { width: "100%", boxSizing: "border-box", background: "transparent", border: `1px solid ${theme.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 13, color: theme.text, outline: "none", marginBottom: 12, fontFamily: "'DM Sans', sans-serif" },
-    dataLink: { background: "none", border: "none", color: theme.outerTextMuted, fontSize: 11, textTransform: "uppercase", letterSpacing: 1, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, padding: "6px 0", textAlign: "left" },
-    breakdownBar: { display: "flex", height: 12, borderRadius: 999, overflow: "hidden", background: theme.bg, marginTop: 12 },
-    tableHeader: { display: "flex", padding: "12px 16px", borderBottom: `1px solid ${theme.border}`, marginTop: 16, fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: theme.textFaint, fontWeight: 700 },
-    tableRow: { display: "flex", alignItems: "center", padding: "14px 16px", borderBottom: `1px solid ${theme.border}`, fontSize: 14 },
-    miniRow: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${theme.border}` },
-    addBtn: { background: theme.accent, color: "#fff", border: "none", borderRadius: 10, padding: "10px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" },
-    themeToggle: { background: "transparent", border: "none", color: theme.outerText, fontSize: 18, cursor: "pointer", padding: "6px 8px", lineHeight: 1 },
-    delBtn: { background: "none", border: "none", color: theme.textFaint, cursor: "pointer", fontSize: 14, padding: "4px 8px" },
-    editBtn: { background: "none", border: "none", color: theme.textMuted, cursor: "pointer", fontSize: 14, padding: "4px 8px" },
-    empty: { textAlign: "center", color: theme.textFaint, padding: "60px 20px", fontSize: 14 },
-    emptySmall: { textAlign: "center", color: theme.textFaint, padding: "24px 0", fontSize: 13 },
-    overlay: { position: "fixed", inset: 0, background: "rgba(12,13,18,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 },
-    modal: { background: theme.surface, borderRadius: 16, padding: 28, width: "100%", maxWidth: 460, border: `1px solid ${theme.border}`, boxShadow: "0 20px 40px rgba(0,0,0,0.12)" },
-    modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
-    closeBtn: { background: "none", border: "none", color: theme.textFaint, fontSize: 20, cursor: "pointer" },
-    input: { width: "100%", background: theme.bg, border: `1px solid ${theme.border}`, borderRadius: 10, padding: "11px 14px", color: theme.text, fontSize: 14, outline: "none", boxSizing: "border-box", fontFamily: "'DM Sans', sans-serif" },
-    saveBtn: { width: "100%", background: theme.accent, color: "#fff", border: "none", borderRadius: 10, padding: "13px", fontWeight: 700, fontSize: 14, cursor: "pointer", marginTop: 8, fontFamily: "'DM Sans', sans-serif" },
-    catPill: { display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px 4px 4px", borderRadius: 999, fontSize: 12, fontWeight: 600 },
+    topbar: { padding: `${SPACE.lg}px ${SPACE.xl}px ${SPACE.md}px`, borderBottom: "none", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0, background: theme.outerBg },
+    content: { flex: 1, overflow: "auto", background: theme.bg, borderRadius: RADIUS.lg, margin: `0 ${SPACE.md}px ${SPACE.md}px 0`, padding: SPACE.xl },
+    contentInner: { maxWidth: 1440, margin: "0 auto" },
+    // auto-fit, not a fixed 4: the row carries a 5th card once there are closed
+    // months, which overflowed the grid and clipped off the right edge.
+    statsRow: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: SPACE.md, marginBottom: SPACE.lg },
+    statCard: { background: theme.surface, borderRadius: RADIUS.lg, padding: SPACE.lg, border: hairline, boxShadow: "none" },
+    dashGrid: { display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)", gap: SPACE.md },
+    card: { background: theme.surface, borderRadius: RADIUS.lg, padding: SPACE.lg, border: hairline, boxShadow: "none" },
+    cardTitle: { ...TYPE.finePrint, textTransform: "uppercase", letterSpacing: "0.8px", color: theme.textFaint, fontWeight: 600 },
+    linkBtn: { background: "none", border: "none", color: theme.accent, ...TYPE.buttonUtility, cursor: "pointer", fontFamily: FONT, padding: `${SPACE.xs}px 0` },
+    searchInput: { width: "100%", boxSizing: "border-box", height: 44, background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: RADIUS.pill, padding: `0 ${SPACE.lg}px`, ...TYPE.caption, color: theme.text, outline: "none", marginBottom: SPACE.sm, fontFamily: FONT },
+    dataLink: { background: "none", border: "none", color: theme.outerTextMuted, ...TYPE.finePrint, textTransform: "uppercase", letterSpacing: "0.6px", cursor: "pointer", fontFamily: FONT, fontWeight: 400, padding: `${SPACE.xs}px 0`, textAlign: "left" },
+    breakdownBar: { display: "flex", height: SPACE.sm, borderRadius: RADIUS.pill, overflow: "hidden", background: theme.bg, marginTop: SPACE.sm },
+    tableHeader: { display: "flex", padding: `${SPACE.sm}px ${SPACE.md}px`, borderBottom: hairline, marginTop: SPACE.md, ...TYPE.finePrint, textTransform: "uppercase", letterSpacing: "0.6px", color: theme.textFaint, fontWeight: 600 },
+    tableRow: { display: "flex", alignItems: "center", padding: `${SPACE.md}px ${SPACE.md}px`, borderBottom: hairline, ...TYPE.caption },
+    miniRow: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: `${SPACE.sm}px 0`, borderBottom: hairline },
+    addBtn: { background: theme.accent, color: "#fff", border: "none", borderRadius: RADIUS.pill, padding: "11px 22px", ...TYPE.caption, fontWeight: 600, cursor: "pointer", fontFamily: FONT },
+    themeToggle: { background: "transparent", border: "none", color: theme.outerText, fontSize: 17, cursor: "pointer", width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1, padding: 0 },
+    delBtn: { background: "none", border: "none", color: theme.textFaint, cursor: "pointer", ...TYPE.caption, padding: `${SPACE.xxs}px ${SPACE.xs}px` },
+    editBtn: { background: "none", border: "none", color: theme.textMuted, cursor: "pointer", ...TYPE.caption, padding: `${SPACE.xxs}px ${SPACE.xs}px` },
+    empty: { textAlign: "center", color: theme.textFaint, padding: `${SPACE.xxl}px ${SPACE.lg}px`, ...TYPE.body },
+    emptySmall: { textAlign: "center", color: theme.textFaint, padding: `${SPACE.lg}px 0`, ...TYPE.caption },
+    overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.32)", backdropFilter: "saturate(180%) blur(20px)", WebkitBackdropFilter: "saturate(180%) blur(20px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 },
+    modal: { background: theme.surface, borderRadius: RADIUS.lg, padding: SPACE.xl, width: "100%", maxWidth: 460, border: hairline, boxShadow: ELEVATION },
+    modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: SPACE.xs },
+    closeBtn: { background: "none", border: "none", color: theme.textFaint, fontSize: 20, cursor: "pointer", width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 },
+    input: { width: "100%", background: theme.bg, border: `1px solid ${theme.border}`, borderRadius: RADIUS.md, padding: `${SPACE.sm}px ${SPACE.md}px`, color: theme.text, ...TYPE.caption, outline: "none", boxSizing: "border-box", fontFamily: FONT, minHeight: 44 },
+    saveBtn: { width: "100%", background: theme.accent, color: "#fff", border: "none", borderRadius: RADIUS.pill, padding: "14px 28px", ...TYPE.buttonLarge, cursor: "pointer", marginTop: SPACE.xs, fontFamily: FONT },
+    catPill: { display: "inline-flex", alignItems: "center", gap: SPACE.xs, padding: `${SPACE.xxs}px ${SPACE.sm}px ${SPACE.xxs}px ${SPACE.xxs}px`, borderRadius: RADIUS.pill, ...TYPE.finePrint, fontWeight: 600 },
     catDot: { width: 22, height: 22, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 },
-    suggestBox: { position: "absolute", top: "100%", left: 0, right: 0, background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 10, boxShadow: theme.shadowCard, zIndex: 10, maxHeight: 200, overflow: "auto", marginTop: 4 },
-    suggestItem: { display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", cursor: "pointer", fontSize: 14 },
-    chartEmpty: { textAlign: "center", color: theme.textFaint, padding: "80px 20px", fontSize: 13 },
-    chartTooltip: { background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 10, padding: "10px 14px", fontSize: 13, color: theme.text, boxShadow: theme.shadowCard },
+    suggestBox: { position: "absolute", top: "100%", left: 0, right: 0, background: theme.surface, border: hairline, borderRadius: RADIUS.md, boxShadow: ELEVATION, zIndex: 10, maxHeight: 200, overflow: "auto", marginTop: SPACE.xxs },
+    suggestItem: { display: "flex", alignItems: "center", gap: SPACE.sm, padding: `${SPACE.sm}px ${SPACE.sm}px`, cursor: "pointer", ...TYPE.caption },
+    chartEmpty: { textAlign: "center", color: theme.textFaint, padding: `${SPACE.xxl}px ${SPACE.lg}px`, ...TYPE.caption },
+    chartTooltip: { background: theme.surface, border: hairline, borderRadius: RADIUS.md, padding: `${SPACE.sm}px ${SPACE.md}px`, ...TYPE.caption, color: theme.text, boxShadow: ELEVATION },
   };
 }
 
