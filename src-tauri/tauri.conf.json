@@ -16,11 +16,12 @@
         "width": 1280,
         "height": 800,
         "minWidth": 1024,
-        "minHeight": 700,
+        "minHeight": 560,
         "resizable": true,
         "center": true,
         "fullscreen": false,
-        "decorations": false
+        "decorations": false,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows"
       }
     ],
     "security": {

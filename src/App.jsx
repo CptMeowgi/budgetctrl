@@ -258,6 +258,18 @@ function migrateCutoff(data) {
   return { ...data, cutoffDay: (cd >= 1 && cd <= 28) ? cd : 1 };
 }
 
+function migrateReminders(data) {
+  const r = data.reminders || {};
+  const lead = Number(r.leadDays);
+  return {
+    ...data,
+    reminders: {
+      enabled: r.enabled !== false,
+      leadDays: (lead >= 0 && lead <= 30) ? lead : 3,
+    },
+  };
+}
+
 function daysInCalMonth(year, month1) {
   return new Date(year, month1, 0).getDate();
 }
@@ -444,6 +456,20 @@ function migrate(raw) {
     savingsGoalPercent: Number(raw.savingsGoalPercent) || 20,
     recurringTemplate: oldRecurring.map((r) => ({ ...r })),
   };
+}
+
+// Single hydration pipeline. Every entry point - load, import, reset - goes
+// through here so a new migrator is added in exactly one place. This used to be
+// a six-deep nest repeated at four call sites, and extending it dropped a
+// closing paren on all four.
+function hydrate(data) {
+  return migrateReminders(
+    migrateCreditCategories(
+      migrateTemplateIds(
+        migrateCredits(
+          migrateCategories(
+            ensureCurrentMonth(
+              migrateCutoff(data)))))));
 }
 
 function ensureCurrentMonth(data) {
@@ -663,6 +689,256 @@ const isTauri = typeof window !== "undefined" && !!window.__TAURI_INTERNALS__;
 async function getAppWindow() {
   const { getCurrentWindow } = await import("@tauri-apps/api/window");
   return getCurrentWindow();
+}
+
+/* ---- Bill reminders ------------------------------------------------------
+   The checker runs here, in the webview, rather than in Rust. Closing the
+   window only hides it, so this keeps ticking in the tray, and it reuses the
+   period math above instead of reimplementing cutoff-day arithmetic in a
+   second language where it would drift silently. */
+
+const REMINDER_SENT_KEY = "budget-ctrl-reminders-sent";
+const REMINDER_INTERVAL_MS = 30 * 60 * 1000;
+const REMINDER_STARTUP_DELAY_MS = 10 * 1000;
+// Past this, an unpaid item is abandoned data rather than a bill to chase.
+const OVERDUE_GRACE_DAYS = 30;
+
+// Local-calendar day. Never toISOString() here - that shifts to UTC and lands
+// on the wrong day for anyone east of Greenwich.
+function isoDay(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function startOfDay(d) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function daysBetween(from, to) {
+  return Math.round((startOfDay(to) - startOfDay(from)) / 86400000);
+}
+
+function collectDueBills(data, now, leadDays) {
+  const cutoffDay = data.cutoffDay || 1;
+  const key = periodKeyFor(now, cutoffDay);
+  const out = [];
+
+  for (const r of (data.months?.[key]?.recurring || [])) {
+    if (r.dayOfMonth == null) continue;
+    const inDays = daysBetween(now, recurringDateInPeriod(r.dayOfMonth, key, cutoffDay));
+    // Recurring items carry no paid flag - they count as spent once the day
+    // passes - so only the run-up to the date is worth announcing.
+    if (inDays >= 0 && inDays <= leadDays) {
+      out.push({ id: `r-${r.id}-${key}`, name: r.name, amount: r.amount || 0, inDays });
+    }
+  }
+
+  // Unpaid one-offs are scanned across every period, not just the current one:
+  // an item left unpaid last month stays filed under last month, and that is
+  // precisely the case most worth surfacing.
+  for (const m of Object.values(data.months || {})) {
+    for (const u of (m.upcoming || [])) {
+      if (u.paid) continue;
+      const due = new Date(u.dueDate);
+      if (isNaN(due.getTime())) continue;
+      const inDays = daysBetween(now, due);
+      if (inDays <= leadDays && inDays >= -OVERDUE_GRACE_DAYS) {
+        out.push({ id: `u-${u.id}`, name: u.name, amount: u.amount || 0, inDays });
+      }
+    }
+  }
+
+  return out.sort((a, b) => a.inDays - b.inDays);
+}
+
+function whenLabel(inDays) {
+  if (inDays < 0) return `${-inDays}d overdue`;
+  if (inDays === 0) return "due today";
+  if (inDays === 1) return "due tomorrow";
+  return `due in ${inDays}d`;
+}
+
+function buildDigest(bills) {
+  if (bills.length === 1) {
+    const b = bills[0];
+    return { title: `${b.name} — ${whenLabel(b.inDays)}`, body: fmt(b.amount) };
+  }
+  const total = bills.reduce((a, b) => a + b.amount, 0);
+  const overdue = bills.filter((b) => b.inDays < 0).length;
+  const names = bills.slice(0, 3).map((b) => b.name).join(", ");
+  const more = bills.length > 3 ? ` +${bills.length - 3} more` : "";
+  return {
+    title: `${bills.length} bills due${overdue ? ` · ${overdue} overdue` : ""}`,
+    body: `${fmt(total)} — ${names}${more}`,
+  };
+}
+
+function readSentMarker() {
+  try { return JSON.parse(localStorage.getItem(REMINDER_SENT_KEY) || "{}"); } catch { return {}; }
+}
+
+function writeSentMarker(v) {
+  try { localStorage.setItem(REMINDER_SENT_KEY, JSON.stringify(v)); } catch {}
+}
+
+function useReminders(data, loaded, setTodayKey) {
+  // Read through a ref so the interval is installed once instead of being torn
+  // down and restarted on every keystroke that edits the budget.
+  const dataRef = useRef(data);
+  dataRef.current = data;
+
+  // Rollover watch, deliberately outside the Tauri guard: an app parked in the
+  // tray can go days without re-rendering, leaving the header date and the
+  // active period stale. setState bails out when the value is unchanged, so
+  // this is free on every tick but the one that crosses midnight.
+  useEffect(() => {
+    const iv = setInterval(() => setTodayKey(isoDay(new Date())), 60 * 1000);
+    return () => clearInterval(iv);
+  }, [setTodayKey]);
+
+  useEffect(() => {
+    if (!loaded || !isTauri) return;
+    let alive = true;
+
+    const tick = async () => {
+      if (!alive) return;
+      const d = dataRef.current;
+      const rem = d.reminders || {};
+      if (rem.enabled === false) return;
+      const leadDays = Number.isFinite(rem.leadDays) ? rem.leadDays : 3;
+
+      // new Date() per tick, never a render-time value - this process outlives
+      // its renders by days.
+      const now = new Date();
+      const bills = collectDueBills(d, now, leadDays);
+      if (!bills.length) return;
+
+      // Fire once a day, and again if the set itself changes mid-day.
+      const sig = bills.map((b) => b.id).join("|");
+      const today = isoDay(now);
+      const sent = readSentMarker();
+      if (sent.date === today && sent.sig === sig) return;
+
+      try {
+        const n = await import("@tauri-apps/plugin-notification");
+        let granted = await n.isPermissionGranted();
+        if (!granted) granted = (await n.requestPermission()) === "granted";
+        if (!granted || !alive) return;
+        const { title, body } = buildDigest(bills);
+        await n.sendNotification({ title, body });
+        writeSentMarker({ date: today, sig });
+      } catch {}
+    };
+
+    const startup = setTimeout(tick, REMINDER_STARTUP_DELAY_MS);
+    const iv = setInterval(tick, REMINDER_INTERVAL_MS);
+    window.addEventListener("focus", tick);
+    return () => {
+      alive = false;
+      clearTimeout(startup);
+      clearInterval(iv);
+      window.removeEventListener("focus", tick);
+    };
+  }, [loaded]);
+}
+
+function Switch({ checked, onChange }) {
+  const { theme } = useThemed();
+  return (
+    <button
+      onClick={() => onChange(!checked)}
+      style={{
+        width: 40, height: 22, borderRadius: 11, border: "none", padding: 0,
+        cursor: "pointer", flexShrink: 0, position: "relative",
+        background: checked ? theme.accent : theme.border,
+        transition: "background .15s",
+      }}
+    >
+      <span style={{
+        position: "absolute", top: 3, left: checked ? 21 : 3,
+        width: 16, height: 16, borderRadius: "50%", background: "#fff",
+        transition: "left .15s", boxShadow: "0 1px 2px rgba(0,0,0,0.25)",
+      }} />
+    </button>
+  );
+}
+
+function SettingRow({ label, hint, children }) {
+  const { theme } = useThemed();
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "10px 0" }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 14, color: theme.text }}>{label}</div>
+        {hint && <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 3 }}>{hint}</div>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function SettingsModal({ data, onClose, onChangeReminders }) {
+  const { theme, s } = useThemed();
+  const rem = data.reminders || { enabled: true, leadDays: 3 };
+  // null until the plugin answers; the real registry entry is the source of
+  // truth, so this is never persisted into `data` where it could desync.
+  const [autostart, setAutostart] = useState(null);
+
+  useEffect(() => {
+    if (!isTauri) return;
+    let alive = true;
+    (async () => {
+      try {
+        const a = await import("@tauri-apps/plugin-autostart");
+        const on = await a.isEnabled();
+        if (alive) setAutostart(on);
+      } catch { if (alive) setAutostart(false); }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const toggleAutostart = async () => {
+    try {
+      const a = await import("@tauri-apps/plugin-autostart");
+      if (autostart) { await a.disable(); setAutostart(false); }
+      else { await a.enable(); setAutostart(true); }
+    } catch {}
+  };
+
+  const group = { fontSize: 10, textTransform: "uppercase", letterSpacing: 1.2, color: theme.textMuted, fontWeight: 600, marginBottom: 2 };
+  const divider = { borderTop: `1px solid ${theme.border}`, margin: "6px 0" };
+
+  return (
+    <Modal title="Settings" onClose={onClose}>
+      <div style={group}>Reminders</div>
+      <SettingRow
+        label="Remind me about due bills"
+        hint={isTauri ? "Closing the window keeps Budget Ctrl running in the tray." : "Desktop app only."}
+      >
+        <Switch checked={rem.enabled} onChange={(v) => onChangeReminders({ ...rem, enabled: v })} />
+      </SettingRow>
+      {rem.enabled && (
+        <SettingRow label="Days of notice" hint="How far ahead of the due date to warn you.">
+          <input
+            type="number" min={0} max={30} value={rem.leadDays}
+            onChange={(e) => {
+              const n = Math.max(0, Math.min(30, Math.floor(+e.target.value) || 0));
+              onChangeReminders({ ...rem, leadDays: n });
+            }}
+            style={{ ...s.input, width: 72, textAlign: "center" }}
+          />
+        </SettingRow>
+      )}
+
+      {isTauri && (
+        <>
+          <div style={divider} />
+          <div style={group}>Startup</div>
+          <SettingRow label="Start with Windows" hint="Launches hidden in the tray, so reminders work from boot.">
+            <Switch checked={!!autostart} onChange={toggleAutostart} />
+          </SettingRow>
+        </>
+      )}
+    </Modal>
+  );
 }
 
 const WIN_GLYPHS = {
@@ -988,6 +1264,10 @@ export default function App() {
   const [themeMode, setThemeMode] = useState(() => {
     try { return localStorage.getItem("themeMode") || "light"; } catch { return "light"; }
   });
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  // Bumped by the reminder tick when the calendar date rolls over; `today`
+  // below is keyed to it so a long-lived tray session doesn't show a stale date.
+  const [todayKey, setTodayKey] = useState(() => isoDay(new Date()));
   const [expensesView, setExpensesView] = useState({ search: "", sorts: [] });
   const [recurringView, setRecurringView] = useState({ search: "", sorts: [] });
   const [upcomingView, setUpcomingView] = useState({ search: "", sorts: [] });
@@ -1005,7 +1285,7 @@ export default function App() {
           return;
         }
         if (!confirm("Replace ALL current data with the contents of this backup? This cannot be undone.")) return;
-        const migrated = migrateCreditCategories(migrateTemplateIds(migrateCredits(migrateCategories(ensureCurrentMonth(migrateCutoff(migrate(parsed)))))));
+        const migrated = hydrate(migrate(parsed));
         save(migrated);
       } catch {
         alert("Could not read backup file. Make sure it's a valid budget-ctrl JSON export.");
@@ -1022,13 +1302,13 @@ export default function App() {
         const r = await window.storage.get(STORAGE_KEY);
         if (r?.value) {
           const raw = JSON.parse(r.value);
-          const migrated = migrateCreditCategories(migrateTemplateIds(migrateCredits(migrateCategories(ensureCurrentMonth(migrateCutoff(migrate(raw)))))));
+          const migrated = hydrate(migrate(raw));
           setData(migrated);
           if (migrated !== raw) {
             try { await window.storage.set(STORAGE_KEY, JSON.stringify(migrated)); } catch {}
           }
         } else {
-          setData(migrateCreditCategories(migrateTemplateIds(migrateCredits(migrateCategories(ensureCurrentMonth(migrateCutoff(defaultData())))))));
+          setData(hydrate(defaultData()));
         }
       } catch {}
       setLoaded(true);
@@ -1068,13 +1348,20 @@ export default function App() {
     patchMonth(currentPeriodKey(data.cutoffDay || 1), patch);
   }, [patchMonth, data.cutoffDay]);
 
+  useReminders(data, loaded, setTodayKey);
+
+  // Derived from todayKey rather than recomputed per render: stable within a
+  // day, and guaranteed to refresh when the tick above crosses midnight. Local
+  // midnight is also the right value for the day-granularity comparisons in
+  // isRecurringDue, which treat period bounds as whole days.
+  const today = useMemo(() => new Date(`${todayKey}T00:00:00`), [todayKey]);
+
   if (!loaded) return <div style={s.shell}><div style={{ color: "#6b7280", textAlign: "center", marginTop: 200, fontSize: 14 }}>Loading...</div></div>;
 
   const cutoffDay = data.cutoffDay || 1;
   const curKey = currentPeriodKey(cutoffDay);
   const cur = data.months[curKey] || emptyMonth();
 
-  const today = new Date();
   const totalExpenses = cur.expenses.reduce((a, e) => a + e.amount, 0);
   const totalRecurringAll = cur.recurring.reduce((a, e) => a + e.amount, 0);
   const totalRecurringPast = cur.recurring
@@ -1150,6 +1437,22 @@ export default function App() {
     <ThemeContext.Provider value={themedValue}>
     <div style={s.shell}>
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800&display=swap" rel="stylesheet" />
+      <style>{`
+        *[data-tauri-drag-region] { app-region: drag; -webkit-app-region: drag; }
+        *[data-tauri-drag-region] button,
+        *[data-tauri-drag-region] input,
+        *[data-tauri-drag-region] select,
+        *[data-tauri-drag-region] a { app-region: no-drag; -webkit-app-region: no-drag; }
+
+        /* Scrollbars follow the theme. color-scheme also darkens the number-input
+           spinners and any other native control the panels render. */
+        :root { color-scheme: ${themeMode === "dark" ? "dark" : "light"}; }
+        ::-webkit-scrollbar { width: 10px; height: 10px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: ${theme.border}; border-radius: 5px; }
+        ::-webkit-scrollbar-thumb:hover { background: ${theme.textFaint}; }
+        ::-webkit-scrollbar-corner { background: transparent; }
+      `}</style>
 
       {/* SIDEBAR */}
       <aside style={s.sidebar}>
@@ -1194,12 +1497,12 @@ export default function App() {
             <div style={{ fontSize: 10, color: theme.outerTextMuted, marginTop: 4 }}>1–28 · e.g. payday</div>
           </div>
         </div>
-        <div style={{ padding: "12px 20px", borderTop: "1px solid " + theme.outerBorder }}>
+        <div style={{ padding: "12px 20px 16px", borderTop: "1px solid " + theme.outerBorder, flexShrink: 0 }}>
           <div style={{ fontSize: 10, color: theme.outerTextMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>DATA</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             <button style={s.dataLink} onClick={() => exportData(data)}>EXPORT</button>
             <button style={s.dataLink} onClick={triggerImport}>IMPORT</button>
-            <button style={s.dataLink} onClick={async () => { if (confirm("Reset all data?")) await save(migrateCreditCategories(migrateTemplateIds(migrateCredits(migrateCategories(ensureCurrentMonth(migrateCutoff(defaultData()))))))); }}>RESET</button>
+            <button style={s.dataLink} onClick={async () => { if (confirm("Reset all data?")) await save(hydrate(defaultData())); }}>RESET</button>
           </div>
           <input type="file" accept=".json" ref={importInputRef} onChange={onImportFile} style={{ display: "none" }} />
         </div>
@@ -1207,10 +1510,10 @@ export default function App() {
 
       {/* MAIN */}
       <main style={s.main}>
-        <header style={{ ...s.topbar, position: "relative", paddingRight: isTauri ? 150 : undefined }}>
+        <header data-tauri-drag-region style={{ ...s.topbar, position: "relative", paddingRight: 104 }}>
           <WindowControls />
-          {/* Drag region: text-only, so it never swallows button clicks */}
-          <div data-tauri-drag-region style={{ flex: 1, cursor: isTauri ? "default" : undefined }}>
+          {/* The whole bar drags; interactive children opt out via app-region: no-drag */}
+          <div data-tauri-drag-region style={{ flex: 1, alignSelf: "stretch", display: "flex", flexDirection: "column", justifyContent: "center" }}>
             <h1 data-tauri-drag-region style={{ fontSize: 24, fontWeight: 800, margin: 0, letterSpacing: -0.5, color: theme.outerText }}>
               {TABS.find((t) => t.id === tab)?.label}
             </h1>
@@ -1221,7 +1524,10 @@ export default function App() {
               )}
             </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center" }}>
+          {/* Theme + settings sit flush against the right edge. Under Tauri they
+              drop below the 32px window-control strip, so the close button can
+              never steal their top edge. */}
+          <div style={{ position: "absolute", right: 14, top: isTauri ? 42 : 24, display: "flex", alignItems: "center", gap: 2 }}>
             <button
               style={s.themeToggle}
               onClick={() => setThemeMode((m) => m === "dark" ? "light" : "dark")}
@@ -1229,6 +1535,9 @@ export default function App() {
             >
               {themeMode === "dark" ? "☀" : "☾"}
             </button>
+            <button style={s.themeToggle} onClick={() => setSettingsOpen(true)} title="Settings">⚙</button>
+          </div>
+          <div style={{ display: "flex", alignItems: "center" }}>
             {tab !== "dashboard" && tab !== "history" && tab !== "year" && tab !== "credits" && tab !== "savings" && (
               <button style={s.addBtn} onClick={() => setModal({ type: tab === "expenses" ? "expense" : tab === "credits" ? "credit" : tab })}>
                 + Add {tab === "expenses" ? "Expense" : tab === "recurring" ? "Recurring" : tab === "credits" ? "Credit" : "Payment"}
@@ -1953,10 +2262,10 @@ export default function App() {
             return (
               <>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 16, marginBottom: 16 }}>
-                  <button style={{ ...s.linkBtn, opacity: canPrev ? 1 : 0.3, cursor: canPrev ? "pointer" : "default" }}
+                  <button style={{ ...s.linkBtn, color: canPrev ? theme.accent : theme.textFaint, cursor: canPrev ? "pointer" : "default" }}
                     disabled={!canPrev} onClick={() => setYearKey(prevYear)}>← {prevYear}</button>
                   <h2 style={{ fontSize: 24, fontWeight: 800, margin: 0 }}>{yearKey}</h2>
-                  <button style={{ ...s.linkBtn, opacity: canNext ? 1 : 0.3, cursor: canNext ? "pointer" : "default" }}
+                  <button style={{ ...s.linkBtn, color: canNext ? theme.accent : theme.textFaint, cursor: canNext ? "pointer" : "default" }}
                     disabled={!canNext} onClick={() => setYearKey(nextYear)}>{nextYear} →</button>
                 </div>
                 {monthsCount === 0 ? (
@@ -2282,6 +2591,14 @@ export default function App() {
           }} />
         );
       })()}
+
+      {settingsOpen && (
+        <SettingsModal
+          data={data}
+          onClose={() => setSettingsOpen(false)}
+          onChangeReminders={(reminders) => save({ ...data, reminders })}
+        />
+      )}
     </div>
     </ThemeContext.Provider>
   );
@@ -2290,13 +2607,13 @@ export default function App() {
 function makeStyles(theme) {
   return {
     shell: { display: "flex", height: "100vh", background: theme.outerBg, color: theme.text, fontFamily: "'DM Sans', sans-serif", overflow: "hidden" },
-    sidebar: { width: 240, minWidth: 240, background: theme.outerBg, borderRight: "none", display: "flex", flexDirection: "column", height: "100vh" },
-    logo: { padding: "28px 24px 24px", borderBottom: `1px solid ${theme.border}` },
-    nav: { padding: "16px 12px", display: "flex", flexDirection: "column", gap: 4, flex: 1 },
-    navItem: { display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, border: "none", background: "transparent", color: theme.outerTextMuted, fontSize: 14, fontWeight: 500, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", textAlign: "left", width: "100%" },
+    sidebar: { width: 240, minWidth: 240, background: theme.outerBg, borderRight: "none", display: "flex", flexDirection: "column", height: "100vh", overflowY: "auto", overflowX: "hidden" },
+    logo: { padding: "20px 24px 16px", borderBottom: `1px solid ${theme.border}`, flexShrink: 0 },
+    nav: { padding: "12px 12px", display: "flex", flexDirection: "column", gap: 3, flex: "1 0 auto" },
+    navItem: { display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", borderRadius: 10, border: "none", background: "transparent", color: theme.outerTextMuted, fontSize: 14, fontWeight: 500, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", textAlign: "left", width: "100%", flexShrink: 0 },
     navItemActive: { background: theme.outerAccentSoft, color: theme.outerText },
     badge: { background: theme.warning, color: "#fff", fontSize: 10, fontWeight: 800, borderRadius: 999, padding: "1px 7px", marginLeft: "auto" },
-    sidebarIncome: { padding: "16px 20px", borderTop: "1px solid " + theme.outerBorder },
+    sidebarIncome: { padding: "14px 20px", borderTop: "1px solid " + theme.outerBorder, flexShrink: 0 },
     incomeInput: { background: theme.outerBorder, border: "1px solid " + theme.outerBorder, borderRadius: 10, padding: "10px 12px", color: theme.success, fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 16, width: "100%", textAlign: "right", outline: "none", boxSizing: "border-box" },
     main: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: theme.outerBg },
     topbar: { padding: "24px 36px 20px", borderBottom: "none", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0, background: theme.outerBg },
@@ -2308,14 +2625,14 @@ function makeStyles(theme) {
     card: { background: theme.surface, borderRadius: 16, padding: 24, border: `1px solid ${theme.border}`, boxShadow: theme.shadowCard },
     cardTitle: { fontSize: 12, textTransform: "uppercase", letterSpacing: 1.2, color: theme.textMuted, fontWeight: 700 },
     linkBtn: { background: "none", border: "none", color: theme.accent, fontSize: 13, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", fontWeight: 600 },
-    searchInput: { width: "100%", background: "transparent", border: `1px solid ${theme.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 13, color: theme.text, outline: "none", marginBottom: 12, fontFamily: "'DM Sans', sans-serif" },
+    searchInput: { width: "100%", boxSizing: "border-box", background: "transparent", border: `1px solid ${theme.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 13, color: theme.text, outline: "none", marginBottom: 12, fontFamily: "'DM Sans', sans-serif" },
     dataLink: { background: "none", border: "none", color: theme.outerTextMuted, fontSize: 11, textTransform: "uppercase", letterSpacing: 1, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, padding: "6px 0", textAlign: "left" },
     breakdownBar: { display: "flex", height: 12, borderRadius: 999, overflow: "hidden", background: theme.bg, marginTop: 12 },
     tableHeader: { display: "flex", padding: "12px 16px", borderBottom: `1px solid ${theme.border}`, marginTop: 16, fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: theme.textFaint, fontWeight: 700 },
     tableRow: { display: "flex", alignItems: "center", padding: "14px 16px", borderBottom: `1px solid ${theme.border}`, fontSize: 14 },
     miniRow: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${theme.border}` },
     addBtn: { background: theme.accent, color: "#fff", border: "none", borderRadius: 10, padding: "10px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" },
-    themeToggle: { background: "transparent", border: "none", color: theme.outerText, fontSize: 18, cursor: "pointer", padding: "6px 10px", marginRight: 8 },
+    themeToggle: { background: "transparent", border: "none", color: theme.outerText, fontSize: 18, cursor: "pointer", padding: "6px 8px", lineHeight: 1 },
     delBtn: { background: "none", border: "none", color: theme.textFaint, cursor: "pointer", fontSize: 14, padding: "4px 8px" },
     editBtn: { background: "none", border: "none", color: theme.textMuted, cursor: "pointer", fontSize: 14, padding: "4px 8px" },
     empty: { textAlign: "center", color: theme.textFaint, padding: "60px 20px", fontSize: 14 },
