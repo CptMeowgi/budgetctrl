@@ -84,6 +84,7 @@ const TABS = [
   { id: "credits", label: "Credits", icon: "+" },
   { id: "history", label: "History", icon: "◷" },
   { id: "year", label: "Year", icon: "▦" },
+  { id: "savings", label: "Savings", icon: "◆" },
 ];
 
 function uid() {
@@ -125,6 +126,7 @@ function defaultData() {
     months: { [cur]: emptyMonth() },
     savingsGoalPercent: 20,
     startingBalance: 0,
+    cutoffDay: 1,
     recurringTemplate: [],
     creditTemplate: [],
     categories: [{ ...UNCATEGORIZED }],
@@ -251,28 +253,108 @@ function migrateCreditCategories(data) {
   return { ...data, months, creditCategories, creditTemplate: data.creditTemplate || [] };
 }
 
-function daysInMonth(monthKey) {
-  const [y, m] = monthKey.split("-").map(Number);
-  return new Date(y, m, 0).getDate();
+function migrateCutoff(data) {
+  const cd = Number(data.cutoffDay);
+  return { ...data, cutoffDay: (cd >= 1 && cd <= 28) ? cd : 1 };
 }
 
-function isRecurringDue(r, monthKey, today) {
-  const [year, mon] = monthKey.split("-").map(Number);
-  const currentY = today.getFullYear();
-  const currentM = today.getMonth() + 1;
-  if (year < currentY || (year === currentY && mon < currentM)) return true;
-  if (year > currentY || (year === currentY && mon > currentM)) return false;
-  const effectiveDay = Math.min(Number(r.dayOfMonth || 1), daysInMonth(monthKey));
-  return effectiveDay <= today.getDate();
+function daysInCalMonth(year, month1) {
+  return new Date(year, month1, 0).getDate();
 }
 
-function spentByCategory(month, monthKey, today) {
+// A budget period is keyed by the calendar month it STARTS in. With a cutoff of
+// 10, period "2026-09" runs 10 Sep - 9 Oct. Cutoff 1 collapses to calendar months.
+function periodKeyFor(date, cutoffDay) {
+  const d = date instanceof Date ? date : new Date(date);
+  if (isNaN(d.getTime())) return null;
+  let y = d.getFullYear();
+  let m = d.getMonth();
+  if (cutoffDay > 1 && d.getDate() < cutoffDay) {
+    m -= 1;
+    if (m < 0) { m = 11; y -= 1; }
+  }
+  return `${y}-${String(m + 1).padStart(2, "0")}`;
+}
+
+function currentPeriodKey(cutoffDay) {
+  return periodKeyFor(new Date(), cutoffDay || 1);
+}
+
+function periodRange(periodKey, cutoffDay) {
+  const [y, m] = periodKey.split("-").map(Number);
+  const cd = cutoffDay || 1;
+  const start = new Date(y, m - 1, Math.min(cd, daysInCalMonth(y, m)));
+  const nextY = m === 12 ? y + 1 : y;
+  const nextM = m === 12 ? 1 : m + 1;
+  const endExclusive = new Date(nextY, nextM - 1, Math.min(cd, daysInCalMonth(nextY, nextM)));
+  return { start, end: new Date(endExclusive.getTime() - 86400000) };
+}
+
+function periodLabel(periodKey, cutoffDay) {
+  const primary = monthLabel(periodKey);
+  if (!cutoffDay || cutoffDay <= 1) return { primary, range: null };
+  const { start, end } = periodRange(periodKey, cutoffDay);
+  const short = (d) => d.toLocaleDateString("en-US", { day: "numeric", month: "short" });
+  return { primary, range: `${short(start)} – ${short(end)}` };
+}
+
+// Resolves which actual date inside the period a given dayOfMonth lands on.
+// With cutoff 10 and period 2026-09: day 15 -> 15 Sep; day 5 -> 5 Oct.
+function recurringDateInPeriod(dayOfMonth, periodKey, cutoffDay) {
+  const { start, end } = periodRange(periodKey, cutoffDay);
+  const day = Number(dayOfMonth || 1);
+  const tryIn = (y, m1) => new Date(y, m1 - 1, Math.min(day, daysInCalMonth(y, m1)));
+  let c = tryIn(start.getFullYear(), start.getMonth() + 1);
+  if (c >= start && c <= end) return c;
+  c = tryIn(end.getFullYear(), end.getMonth() + 1);
+  if (c >= start && c <= end) return c;
+  return start;
+}
+
+function isRecurringDue(r, periodKey, today, cutoffDay) {
+  const { start, end } = periodRange(periodKey, cutoffDay || 1);
+  if (today > end) return true;
+  if (today < start) return false;
+  return today >= recurringDateInPeriod(r.dayOfMonth, periodKey, cutoffDay || 1);
+}
+
+function countRebucketMoves(data, newCutoff) {
+  let moves = 0;
+  for (const [k, m] of Object.entries(data.months)) {
+    for (const e of (m.expenses || [])) if ((periodKeyFor(e.date, newCutoff) || k) !== k) moves++;
+    for (const c of (m.credits || [])) if (c.dayOfMonth == null && (periodKeyFor(c.date, newCutoff) || k) !== k) moves++;
+    for (const u of (m.upcoming || [])) if ((periodKeyFor(u.dueDate, newCutoff) || k) !== k) moves++;
+  }
+  return moves;
+}
+
+function rebucketData(data, newCutoff) {
+  const out = {};
+  const ensure = (k) => {
+    if (!out[k]) out[k] = { income: 0, expenses: [], recurring: [], upcoming: [], credits: [] };
+    return out[k];
+  };
+  for (const [k, m] of Object.entries(data.months)) {
+    const home = ensure(k);
+    home.income = m.income || 0;
+    home.recurring = [...home.recurring, ...(m.recurring || [])];
+    for (const e of (m.expenses || [])) ensure(periodKeyFor(e.date, newCutoff) || k).expenses.push(e);
+    for (const c of (m.credits || [])) {
+      if (c.dayOfMonth != null) home.credits.push(c);
+      else ensure(periodKeyFor(c.date, newCutoff) || k).credits.push(c);
+    }
+    for (const u of (m.upcoming || [])) ensure(periodKeyFor(u.dueDate, newCutoff) || k).upcoming.push(u);
+  }
+  return { ...data, months: out };
+}
+
+function spentByCategory(month, monthKey, today, cutoffDay) {
   const totals = new Map();
   for (const e of (month.expenses || [])) {
     totals.set(e.category, (totals.get(e.category) || 0) + e.amount);
   }
   for (const r of (month.recurring || [])) {
-    if (!today || isRecurringDue(r, monthKey, today)) {
+    if (!today || isRecurringDue(r, monthKey, today, cutoffDay)) {
       totals.set(r.category, (totals.get(r.category) || 0) + r.amount);
     }
   }
@@ -365,7 +447,7 @@ function migrate(raw) {
 }
 
 function ensureCurrentMonth(data) {
-  const cur = currentMonthKey();
+  const cur = currentPeriodKey(data.cutoffDay || 1);
   if (data.months[cur]) return data;
   const priorKeys = Object.keys(data.months).filter((k) => k < cur).sort();
   const lastKey = priorKeys[priorKeys.length - 1];
@@ -385,14 +467,14 @@ function ensureCurrentMonth(data) {
   };
 }
 
-function categoryBreakdown(month, categories, monthKey, today) {
+function categoryBreakdown(month, categories, monthKey, today, cutoffDay) {
   const totals = new Map();
   for (const e of (month.expenses || [])) {
     const name = e.category || "Uncategorized";
     totals.set(name, (totals.get(name) || 0) + e.amount);
   }
   for (const r of (month.recurring || [])) {
-    if (!today || isRecurringDue(r, monthKey, today)) {
+    if (!today || isRecurringDue(r, monthKey, today, cutoffDay)) {
       const name = r.category || "Uncategorized";
       totals.set(name, (totals.get(name) || 0) + r.amount);
     }
@@ -405,11 +487,12 @@ function categoryBreakdown(month, categories, monthKey, today) {
 
 function monthlyTotals(data) {
   const today = new Date();
+  const cutoffDay = data.cutoffDay || 1;
   return Object.keys(data.months).sort().map((key) => {
     const m = data.months[key];
     const spentExpenses = (m.expenses || []).reduce((a, e) => a + e.amount, 0);
     const spentRecurring = (m.recurring || [])
-      .filter((r) => isRecurringDue(r, key, today))
+      .filter((r) => isRecurringDue(r, key, today, cutoffDay))
       .reduce((a, e) => a + e.amount, 0);
     const credits = (m.credits || []).reduce((a, c) => a + c.amount, 0);
     return { key, label: monthLabel(key).slice(0, 3), spent: spentExpenses + spentRecurring, income: (m.income || 0) + credits };
@@ -417,10 +500,10 @@ function monthlyTotals(data) {
 }
 
 function cumulativeSavings(data) {
-  const cur = currentMonthKey();
+  const cur = currentPeriodKey(data.cutoffDay || 1);
   const keys = Object.keys(data.months).filter((k) => k < cur).sort();
   let total = data.startingBalance || 0;
-  const series = [{ key: "start", label: "Start", balance: total, delta: 0 }];
+  const series = [{ key: "start", label: "Start", balance: total, delta: 0, income: 0, spent: 0 }];
   for (const k of keys) {
     const m = data.months[k];
     const income = (m.income || 0) + (m.credits || []).reduce((a, c) => a + c.amount, 0);
@@ -429,7 +512,7 @@ function cumulativeSavings(data) {
                 + (m.upcoming || []).filter((u) => u.paid).reduce((a, u) => a + u.amount, 0);
     const delta = income - spent;
     total += delta;
-    series.push({ key: k, label: monthLabel(k).slice(0, 3), balance: total, delta });
+    series.push({ key: k, label: monthLabel(k).slice(0, 3), balance: total, delta, income, spent });
   }
   return { total, series, monthsCounted: keys.length };
 }
@@ -572,6 +655,26 @@ function TableHeader({ columns, sorts, onSort }) {
         );
       })}
     </div>
+  );
+}
+
+function InfoHint({ text }) {
+  const { theme } = useThemed();
+  const [open, setOpen] = useState(false);
+  return (
+    <span style={{ position: "relative", display: "inline-flex" }}>
+      <button onClick={() => setOpen((o) => !o)} onBlur={() => setTimeout(() => setOpen(false), 150)}
+        style={{ width: 16, height: 16, borderRadius: "50%", border: `1px solid ${theme.textFaint}`,
+                 background: "transparent", color: theme.textFaint, fontSize: 10, lineHeight: 1,
+                 cursor: "pointer", padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>?</button>
+      {open && (
+        <span style={{ position: "absolute", top: 22, left: 0, zIndex: 20, width: 260,
+                       background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 10,
+                       padding: "10px 12px", fontSize: 12, color: theme.textMuted,
+                       boxShadow: theme.shadowCard, lineHeight: 1.5, fontWeight: 400,
+                       textTransform: "none", letterSpacing: 0 }}>{text}</span>
+      )}
+    </span>
   );
 }
 
@@ -822,7 +925,7 @@ export default function App() {
           return;
         }
         if (!confirm("Replace ALL current data with the contents of this backup? This cannot be undone.")) return;
-        const migrated = migrateCreditCategories(migrateTemplateIds(migrateCredits(migrateCategories(ensureCurrentMonth(migrate(parsed))))));
+        const migrated = migrateCreditCategories(migrateTemplateIds(migrateCredits(migrateCategories(ensureCurrentMonth(migrateCutoff(migrate(parsed)))))));
         save(migrated);
       } catch {
         alert("Could not read backup file. Make sure it's a valid budget-ctrl JSON export.");
@@ -839,13 +942,13 @@ export default function App() {
         const r = await window.storage.get(STORAGE_KEY);
         if (r?.value) {
           const raw = JSON.parse(r.value);
-          const migrated = migrateCreditCategories(migrateTemplateIds(migrateCredits(migrateCategories(ensureCurrentMonth(migrate(raw))))));
+          const migrated = migrateCreditCategories(migrateTemplateIds(migrateCredits(migrateCategories(ensureCurrentMonth(migrateCutoff(migrate(raw)))))));
           setData(migrated);
           if (migrated !== raw) {
             try { await window.storage.set(STORAGE_KEY, JSON.stringify(migrated)); } catch {}
           }
         } else {
-          setData(migrateCreditCategories(migrateTemplateIds(migrateCredits(migrateCategories(ensureCurrentMonth(defaultData()))))));
+          setData(migrateCreditCategories(migrateTemplateIds(migrateCredits(migrateCategories(ensureCurrentMonth(migrateCutoff(defaultData())))))));
         }
       } catch {}
       setLoaded(true);
@@ -882,19 +985,20 @@ export default function App() {
   }, [data, save]);
 
   const patchCur = useCallback((patch) => {
-    patchMonth(currentMonthKey(), patch);
-  }, [patchMonth]);
+    patchMonth(currentPeriodKey(data.cutoffDay || 1), patch);
+  }, [patchMonth, data.cutoffDay]);
 
   if (!loaded) return <div style={s.shell}><div style={{ color: "#6b7280", textAlign: "center", marginTop: 200, fontSize: 14 }}>Loading...</div></div>;
 
-  const curKey = currentMonthKey();
+  const cutoffDay = data.cutoffDay || 1;
+  const curKey = currentPeriodKey(cutoffDay);
   const cur = data.months[curKey] || emptyMonth();
 
   const today = new Date();
   const totalExpenses = cur.expenses.reduce((a, e) => a + e.amount, 0);
   const totalRecurringAll = cur.recurring.reduce((a, e) => a + e.amount, 0);
   const totalRecurringPast = cur.recurring
-    .filter((r) => isRecurringDue(r, curKey, today))
+    .filter((r) => isRecurringDue(r, curKey, today, cutoffDay))
     .reduce((a, e) => a + e.amount, 0);
   const totalRecurringFuture = totalRecurringAll - totalRecurringPast;
   const totalUnpaidUpcoming = cur.upcoming.filter((u) => !u.paid).reduce((a, e) => a + e.amount, 0);
@@ -902,7 +1006,7 @@ export default function App() {
   const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
   const allCredits = cur.credits || [];
   const creditReceived = (c) => c.dayOfMonth != null
-    ? isRecurringDue(c, curKey, today)
+    ? isRecurringDue(c, curKey, today, cutoffDay)
     : (c.date || "") <= todayISO;
   const totalCredits = allCredits.filter(creditReceived).reduce((a, c) => a + c.amount, 0);
   const totalCreditsPending = allCredits.filter((c) => !creditReceived(c)).reduce((a, c) => a + c.amount, 0);
@@ -922,11 +1026,11 @@ export default function App() {
   const unpaidCount = cur.upcoming.filter((u) => !u.paid).length;
   const totalUpcoming = totalUnpaidUpcoming;
 
-  const catBreakdown = categoryBreakdown(cur, data.categories || [], curKey, today);
+  const catBreakdown = categoryBreakdown(cur, data.categories || [], curKey, today, cutoffDay);
   const catTotal = catBreakdown.reduce((a, c) => a + c.value, 0);
   const monthlyData = monthlyTotals(data);
   const savings = cumulativeSavings(data);
-  const spentByCat = spentByCategory(cur, curKey, today);
+  const spentByCat = spentByCategory(cur, curKey, today, cutoffDay);
   const onSortExpenses = (col, shift) =>
     setExpensesView((v) => ({ ...v, sorts: toggleSort(v.sorts || [], col, shift) }));
   const filteredExpenses = filterAndSort(cur.expenses, expensesView);
@@ -939,6 +1043,20 @@ export default function App() {
   const onSortCredits = (col, shift) =>
     setCreditsView((v) => ({ ...v, sorts: toggleSort(v.sorts || [], col, shift) }));
   const filteredCredits = filterAndSort(cur.credits || [], creditsView);
+  const onChangeCutoff = (next) => {
+    const clamped = Math.max(1, Math.min(28, next || 1));
+    if (clamped === cutoffDay) return;
+    const moves = countRebucketMoves(data, clamped);
+    if (moves === 0) { save({ ...data, cutoffDay: clamped }); return; }
+    const ok = confirm(
+      `Re-bucket ${moves} ${moves === 1 ? "entry" : "entries"} to match the new cutoff?\n\n` +
+      `Expenses, one-off credits and upcoming payments will move to the period their date falls in. ` +
+      `Recurring items and income stay where they are.\n\n` +
+      `Choose Cancel to change the cutoff without moving anything.`
+    );
+    save(ok ? { ...rebucketData(data, clamped), cutoffDay: clamped } : { ...data, cutoffDay: clamped });
+  };
+
   const onSetCap = (name, newCap) => {
     save({
       ...data,
@@ -986,13 +1104,14 @@ export default function App() {
             </div>
           )}
           <div style={{ marginTop: 14 }}>
-            <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 1.5, color: theme.outerTextMuted, marginBottom: 8, fontWeight: 600 }}>Starting Balance</div>
+            <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 1.5, color: theme.outerTextMuted, marginBottom: 8, fontWeight: 600 }}>Month Starts On</div>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <input type="number" value={data.startingBalance || ""}
-                onChange={(e) => save({ ...data, startingBalance: +e.target.value || 0 })}
-                placeholder="0" style={s.incomeInput} />
-              <span style={{ fontSize: 12, color: theme.outerTextMuted, fontWeight: 600 }}>PLN</span>
+              <input type="number" min={1} max={28} value={cutoffDay}
+                onChange={(e) => onChangeCutoff(+e.target.value)}
+                style={s.incomeInput} />
+              <span style={{ fontSize: 12, color: theme.outerTextMuted, fontWeight: 600 }}>day</span>
             </div>
+            <div style={{ fontSize: 10, color: theme.outerTextMuted, marginTop: 4 }}>1–28 · e.g. payday</div>
           </div>
         </div>
         <div style={{ padding: "12px 20px", borderTop: "1px solid " + theme.outerBorder }}>
@@ -1000,7 +1119,7 @@ export default function App() {
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             <button style={s.dataLink} onClick={() => exportData(data)}>EXPORT</button>
             <button style={s.dataLink} onClick={triggerImport}>IMPORT</button>
-            <button style={s.dataLink} onClick={async () => { if (confirm("Reset all data?")) await save(migrateCreditCategories(migrateTemplateIds(migrateCredits(migrateCategories(ensureCurrentMonth(defaultData())))))); }}>RESET</button>
+            <button style={s.dataLink} onClick={async () => { if (confirm("Reset all data?")) await save(migrateCreditCategories(migrateTemplateIds(migrateCredits(migrateCategories(ensureCurrentMonth(migrateCutoff(defaultData()))))))); }}>RESET</button>
           </div>
           <input type="file" accept=".json" ref={importInputRef} onChange={onImportFile} style={{ display: "none" }} />
         </div>
@@ -1015,6 +1134,9 @@ export default function App() {
             </h1>
             <div style={{ fontSize: 12, color: theme.outerTextMuted, marginTop: 2 }}>
               {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+              {cutoffDay > 1 && (
+                <span style={{ color: theme.outerTextMuted }}> · period {periodLabel(curKey, cutoffDay).range}</span>
+              )}
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center" }}>
@@ -1025,7 +1147,7 @@ export default function App() {
             >
               {themeMode === "dark" ? "☀" : "☾"}
             </button>
-            {tab !== "dashboard" && tab !== "history" && tab !== "year" && tab !== "credits" && (
+            {tab !== "dashboard" && tab !== "history" && tab !== "year" && tab !== "credits" && tab !== "savings" && (
               <button style={s.addBtn} onClick={() => setModal({ type: tab === "expenses" ? "expense" : tab === "credits" ? "credit" : tab })}>
                 + Add {tab === "expenses" ? "Expense" : tab === "recurring" ? "Recurring" : tab === "credits" ? "Credit" : "Payment"}
               </button>
@@ -1055,12 +1177,17 @@ export default function App() {
                   <div>
                     <div style={s.cardTitle}>Savings Goal</div>
                     <div style={{ display: "flex", alignItems: "center", gap: 20, marginTop: 12 }}>
-                      <input type="range" min={0} max={maxSavingsPct} value={displayPct}
-                        onChange={(e) => save({ ...data, savingsGoalPercent: +e.target.value })}
-                        style={{ flex: 1, accentColor: "#0066ff" }} />
-                      <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066ff", fontSize: 18, minWidth: 100, textAlign: "right" }}>
-                        {displayPct}%
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <input type="number" min={0} max={maxSavingsPct} value={displayPct}
+                          onChange={(e) => save({ ...data, savingsGoalPercent: Math.max(0, Math.min(maxSavingsPct, +e.target.value || 0)) })}
+                          style={{ ...s.input, width: 90, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 18 }} />
+                        <span style={{ fontSize: 18, fontWeight: 700, color: "#0066ff" }}>%</span>
+                      </div>
+                      <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066ff", fontSize: 18, textAlign: "right" }}>
                         <div style={{ fontSize: 12, color: theme.textMuted, fontWeight: 400 }}>{fmt(savingsTarget)}</div>
+                        {maxSavingsPct < 50 && (
+                          <div style={{ fontSize: 11, color: theme.textFaint, fontWeight: 400, marginTop: 2 }}>max {maxSavingsPct}%</div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1452,7 +1579,12 @@ export default function App() {
                           gridTemplateColumns: "1.5fr 1fr 1fr 1fr 8px", gap: 16, alignItems: "center",
                           color: theme.text, fontFamily: "'DM Sans', sans-serif",
                         }}>
-                          <div style={{ fontWeight: 700, fontSize: 16 }}>{monthLabel(k)}</div>
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: 16 }}>{periodLabel(k, cutoffDay).primary}</div>
+                            {periodLabel(k, cutoffDay).range && (
+                              <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 2 }}>{periodLabel(k, cutoffDay).range}</div>
+                            )}
+                          </div>
                           <div>
                             <div style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>Income</div>
                             <div style={{ fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>{fmt(m.income)}</div>
@@ -1495,7 +1627,10 @@ export default function App() {
             return (
               <>
                 <button style={{ ...s.linkBtn, marginBottom: 16, fontSize: 14 }} onClick={() => setHistoryKey(null)}>← Back to History</button>
-                <h2 style={{ fontSize: 20, fontWeight: 700, margin: "0 0 12px" }}>{monthLabel(historyKey)}</h2>
+                <h2 style={{ fontSize: 20, fontWeight: 700, margin: "0 0 4px" }}>{periodLabel(historyKey, cutoffDay).primary}</h2>
+                {periodLabel(historyKey, cutoffDay).range && (
+                  <div style={{ fontSize: 12, color: theme.textMuted, marginBottom: 12 }}>{periodLabel(historyKey, cutoffDay).range}</div>
+                )}
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
                   <span style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1.5, color: theme.textMuted, fontWeight: 600 }}>Income</span>
                   <input type="number" value={m.income || ""}
@@ -1655,7 +1790,7 @@ export default function App() {
             const totalSpentY = monthsInYear.reduce((a, [k, m]) => {
               const exp = (m.expenses || []).reduce((aa, e) => aa + e.amount, 0);
               const rec = (m.recurring || [])
-                .filter((r) => isRecurringDue(r, k, today))
+                .filter((r) => isRecurringDue(r, k, today, cutoffDay))
                 .reduce((aa, r) => aa + r.amount, 0);
               return a + exp + rec;
             }, 0);
@@ -1667,7 +1802,7 @@ export default function App() {
             for (const [k, m] of monthsInYear) {
               for (const e of (m.expenses || [])) yearCatTotals.set(e.category, (yearCatTotals.get(e.category) || 0) + e.amount);
               for (const r of (m.recurring || [])) {
-                if (isRecurringDue(r, k, today)) {
+                if (isRecurringDue(r, k, today, cutoffDay)) {
                   yearCatTotals.set(r.category, (yearCatTotals.get(r.category) || 0) + r.amount);
                 }
               }
@@ -1690,7 +1825,7 @@ export default function App() {
               const m = data.months[k];
               if (!m) return { key: k, label, spent: 0, income: 0 };
               const exp = (m.expenses || []).reduce((a, e) => a + e.amount, 0);
-              const rec = (m.recurring || []).filter((r) => isRecurringDue(r, k, today)).reduce((a, r) => a + r.amount, 0);
+              const rec = (m.recurring || []).filter((r) => isRecurringDue(r, k, today, cutoffDay)).reduce((a, r) => a + r.amount, 0);
               const cr = (m.credits || []).reduce((a, c) => a + c.amount, 0);
               return { key: k, label, spent: exp + rec, income: (m.income || 0) + cr };
             });
@@ -1701,7 +1836,7 @@ export default function App() {
               a + (m.income || 0) + (m.credits || []).reduce((x, c) => x + c.amount, 0), 0);
             const prevSpentY = prevMonths.reduce((a, [k, m]) =>
               a + (m.expenses || []).reduce((x, e) => x + e.amount, 0)
-                + (m.recurring || []).filter((r) => isRecurringDue(r, k, today)).reduce((x, r) => x + r.amount, 0), 0);
+                + (m.recurring || []).filter((r) => isRecurringDue(r, k, today, cutoffDay)).reduce((x, r) => x + r.amount, 0), 0);
             const yoySub = (curr, prev) => {
               if (!(prev > 0)) return null;
               const d = ((curr - prev) / prev) * 100;
@@ -1765,11 +1900,6 @@ export default function App() {
                     </div>
 
                     <div style={{ ...s.card, marginTop: 16 }}>
-                      <div style={s.cardTitle}>Savings Over Time</div>
-                      <SavingsChart series={savings.series} />
-                    </div>
-
-                    <div style={{ ...s.card, marginTop: 16 }}>
                       <div style={s.cardTitle}>Category Breakdown — {yearKey}</div>
                       <CategoryDonut data={yearCatBreakdown} total={yearCatTotal} />
                     </div>
@@ -1803,6 +1933,64 @@ export default function App() {
               </>
             );
           })()}
+
+          {/* SAVINGS */}
+          {tab === "savings" && (
+            <>
+              <div style={s.card}>
+                <div style={s.cardTitle}>Saved So Far</div>
+                <div style={{ fontSize: 40, fontWeight: 800, fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums",
+                              color: savings.total >= 0 ? "#10b981" : "#ef4444", margin: "12px 0 4px" }}>
+                  {fmt(savings.total)}
+                </div>
+                <div style={{ fontSize: 12, color: theme.textMuted }}>
+                  Across {savings.monthsCounted} closed period{savings.monthsCounted !== 1 ? "s" : ""}
+                </div>
+              </div>
+
+              <div style={{ ...s.card, marginTop: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={s.cardTitle}>Starting Balance</div>
+                  <InfoHint text="Money you'd already saved before you started using Budget Ctrl. Everything after this is calculated from your closed periods — this just sets where the count begins." />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }}>
+                  <input type="number" value={data.startingBalance || ""}
+                    onChange={(e) => save({ ...data, startingBalance: +e.target.value || 0 })}
+                    placeholder="0" style={{ ...s.input, width: 180 }} />
+                  <span style={{ fontSize: 12, color: theme.textMuted, fontWeight: 600 }}>PLN</span>
+                </div>
+              </div>
+
+              <div style={{ ...s.card, marginTop: 16 }}>
+                <div style={s.cardTitle}>Savings Over Time</div>
+                <SavingsChart series={savings.series} />
+              </div>
+
+              <div style={{ ...s.card, marginTop: 16 }}>
+                <div style={s.cardTitle}>Period by Period</div>
+                {savings.series.length < 2 ? (
+                  <div style={s.emptySmall}>Close out a period to start tracking savings.</div>
+                ) : (
+                  <>
+                    <TableHeader columns={[
+                      { label: "PERIOD", flex: 2 }, { label: "INCOME", flex: 1, align: "right" },
+                      { label: "SPENT", flex: 1, align: "right" }, { label: "CHANGE", flex: 1, align: "right" },
+                      { label: "BALANCE", flex: 1, align: "right" },
+                    ]} />
+                    {savings.series.slice(1).map((row) => (
+                      <div key={row.key} style={s.tableRow}>
+                        <div style={{ flex: 2, fontWeight: 600 }}>{periodLabel(row.key, cutoffDay).primary}</div>
+                        <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", color: theme.textMuted }}>{fmt(row.income)}</div>
+                        <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", color: theme.textMuted }}>{fmt(row.spent)}</div>
+                        <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: row.delta >= 0 ? "#10b981" : "#ef4444" }}>{row.delta >= 0 ? "+" : ""}{fmt(row.delta)}</div>
+                        <div style={{ flex: 1, textAlign: "right", fontFamily: "'DM Sans', sans-serif", fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>{fmt(row.balance)}</div>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+            </>
+          )}
         </div>
         </div>
       </main>
