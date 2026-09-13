@@ -574,7 +574,7 @@ function cumulativeSavings(data) {
                 + (m.upcoming || []).filter((u) => u.paid).reduce((a, u) => a + u.amount, 0);
     const delta = income - spent;
     total += delta;
-    series.push({ key: k, label: monthLabel(k).slice(0, 3), balance: total, delta, income, spent });
+    series.push({ key: k, label: monthLabel(k).slice(0, 3), balance: total, delta, income, spent, editedAt: m.editedAt || null });
   }
   return { total, series, monthsCounted: keys.length };
 }
@@ -1157,6 +1157,28 @@ function MonthlyBarChart({ data, curKey, onBarClick }) {
   );
 }
 
+// A number that edits in place. Reads as plain text until hovered or focused,
+// so the table stays legible but the value is obviously reachable.
+function InlineNumber({ value, onChange, title }) {
+  const { theme } = useThemed();
+  return (
+    <input
+      type="number"
+      className="inline-edit"
+      title={title}
+      value={value || ""}
+      placeholder="0"
+      onChange={(e) => onChange(+e.target.value || 0)}
+      style={{
+        width: "100%", textAlign: "right", background: "transparent",
+        borderRadius: RADIUS.sm, padding: `${SPACE.xxs}px ${SPACE.xs}px`,
+        color: theme.text, ...TYPE.caption, fontFamily: FONT,
+        fontVariantNumeric: "tabular-nums", outline: "none", boxSizing: "border-box",
+      }}
+    />
+  );
+}
+
 function SavingsChart({ series }) {
   const { theme, s } = useThemed();
   if (!series || series.length < 2) {
@@ -1374,9 +1396,17 @@ export default function App() {
 
   const patchMonth = useCallback((key, patch) => {
     const m = data.months[key] || emptyMonth();
+    // An edit to an already-closed period is a retroactive correction, so stamp
+    // it. The Savings table surfaces this, otherwise a hand-corrected figure is
+    // indistinguishable from a calculated one months later. ISO-UTC is right
+    // here: this is an instant, not a calendar day.
+    const closed = key < currentPeriodKey(data.cutoffDay || 1);
     save({
       ...data,
-      months: { ...data.months, [key]: { ...m, ...patch } },
+      months: {
+        ...data.months,
+        [key]: { ...m, ...patch, ...(closed ? { editedAt: new Date().toISOString() } : {}) },
+      },
     });
   }, [data, save]);
 
@@ -1496,6 +1526,11 @@ export default function App() {
         button:active:not(:disabled) { transform: scale(0.95); }
         :focus-visible { outline: 2px solid ${FOCUS_BLUE}; outline-offset: 2px; }
         .icon-btn:hover { background: ${CHIP_GRAY} !important; }
+
+        /* Inline-editable cells read as text until you reach for them. */
+        .inline-edit { border: 1px solid transparent; transition: border-color .15s ease, background-color .15s ease; }
+        .inline-edit:hover { border-color: ${theme.border}; }
+        .inline-edit:focus { border-color: ${FOCUS_BLUE}; background: ${theme.bg} !important; }
       `}</style>
 
       {/* SIDEBAR */}
@@ -2420,18 +2455,42 @@ export default function App() {
                   <div style={s.emptySmall}>Close out a period to start tracking savings.</div>
                 ) : (
                   <>
+                    <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginTop: SPACE.xs }}>
+                      Income is editable here. For expenses, open the period.
+                    </div>
                     <TableHeader columns={[
                       { label: "PERIOD", flex: 2 }, { label: "INCOME", flex: 1, align: "right" },
                       { label: "SPENT", flex: 1, align: "right" }, { label: "CHANGE", flex: 1, align: "right" },
-                      { label: "BALANCE", flex: 1, align: "right" },
+                      { label: "BALANCE", flex: 1, align: "right" }, { label: "", flex: 0.8, align: "right" },
                     ]} />
                     {savings.series.slice(1).map((row) => (
                       <div key={row.key} style={s.tableRow}>
-                        <div style={{ flex: 2, fontWeight: 600 }}>{periodLabel(row.key, cutoffDay).primary}</div>
-                        <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", color: theme.textMuted }}>{fmt(row.income)}</div>
+                        <div style={{ flex: 2, fontWeight: 600, display: "flex", alignItems: "center", gap: SPACE.xs }}>
+                          {periodLabel(row.key, cutoffDay).primary}
+                          {row.editedAt && (
+                            <span
+                              title={`Edited after this period closed, on ${new Date(row.editedAt).toLocaleDateString()}`}
+                              style={{ ...TYPE.microLegal, color: theme.textFaint, border: `1px solid ${theme.border}`, borderRadius: RADIUS.pill, padding: "1px 7px", fontWeight: 400 }}
+                            >edited</span>
+                          )}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <InlineNumber
+                            value={data.months[row.key]?.income || 0}
+                            title="Base income for this period"
+                            onChange={(v) => patchMonth(row.key, { income: v })}
+                          />
+                        </div>
                         <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", color: theme.textMuted }}>{fmt(row.spent)}</div>
                         <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: row.delta >= 0 ? "#10b981" : "#ef4444" }}>{row.delta >= 0 ? "+" : ""}{fmt(row.delta)}</div>
                         <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>{fmt(row.balance)}</div>
+                        <div style={{ flex: 0.8, textAlign: "right" }}>
+                          <button
+                            style={{ ...s.linkBtn, padding: 0 }}
+                            title="Open this period to edit its expenses, recurring items and credits"
+                            onClick={() => { setTab("history"); setHistoryKey(row.key); }}
+                          >Open →</button>
+                        </div>
                       </div>
                     ))}
                   </>
