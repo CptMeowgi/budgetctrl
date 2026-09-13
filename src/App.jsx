@@ -164,7 +164,7 @@ function defaultData() {
   const cur = currentMonthKey();
   return {
     months: { [cur]: emptyMonth() },
-    savingsGoalPercent: 20,
+    savingsGoal: { monthly: 0, target: 0 },
     startingBalance: 0,
     cutoffDay: 1,
     recurringTemplate: [],
@@ -296,6 +296,21 @@ function migrateCreditCategories(data) {
 function migrateCutoff(data) {
   const cd = Number(data.cutoffDay);
   return { ...data, cutoffDay: (cd >= 1 && cd <= 28) ? cd : 1 };
+}
+
+// The goal used to be a percentage of income. It is now two concrete sums: what
+// you mean to set aside each period, and the total you are saving up to. The old
+// percentage is converted against current income so an existing goal survives.
+function migrateSavingsGoal(data) {
+  const g = data.savingsGoal;
+  const clean = (n) => (Number.isFinite(+n) && +n > 0 ? Math.round(+n) : 0);
+  if (g && typeof g === "object") {
+    return { ...data, savingsGoal: { monthly: clean(g.monthly), target: clean(g.target) } };
+  }
+  const pct = Number(data.savingsGoalPercent) || 0;
+  const income = data.months?.[currentPeriodKey(data.cutoffDay || 1)]?.income || 0;
+  const { savingsGoalPercent: _dropped, ...rest } = data;
+  return { ...rest, savingsGoal: { monthly: clean((income * pct) / 100), target: 0 } };
 }
 
 function migrateReminders(data) {
@@ -494,7 +509,6 @@ function migrate(raw) {
 
   return {
     months,
-    savingsGoalPercent: Number(raw.savingsGoalPercent) || 20,
     recurringTemplate: oldRecurring.map((r) => ({ ...r })),
   };
 }
@@ -504,13 +518,14 @@ function migrate(raw) {
 // a six-deep nest repeated at four call sites, and extending it dropped a
 // closing paren on all four.
 function hydrate(data) {
-  return migrateReminders(
+  return migrateSavingsGoal(
+    migrateReminders(
     migrateCreditCategories(
       migrateTemplateIds(
         migrateCredits(
           migrateCategories(
             ensureCurrentMonth(
-              migrateCutoff(data)))))));
+              migrateCutoff(data))))))));
 }
 
 function ensureCurrentMonth(data) {
@@ -1280,6 +1295,18 @@ function InlineNumber({ value, onChange, title }) {
   );
 }
 
+function GoalProgress({ saved, target }) {
+  const { theme } = useThemed();
+  const pct = target > 0 ? Math.max(0, Math.min(100, (saved / target) * 100)) : 0;
+  const reached = saved >= target;
+  return (
+    <div style={{ height: 8, borderRadius: RADIUS.pill, background: theme.border, overflow: "hidden" }}>
+      <div style={{ height: "100%", width: `${pct}%`, borderRadius: RADIUS.pill,
+                    background: reached ? theme.success : theme.accent, transition: "width .3s" }} />
+    </div>
+  );
+}
+
 function SavingsChart({ series }) {
   const { theme, s } = useThemed();
   if (!series || series.length < 2) {
@@ -1552,12 +1579,13 @@ export default function App() {
   const totalStillScheduled = totalRecurringFuture + totalUnpaidUpcoming;
   const totalCommitted = totalActuallySpent;
   const availableAfterCommitted = Math.max(0, effectiveIncome - totalCommitted);
-  const maxSavingsPct = baseIncome > 0
-    ? Math.min(50, Math.max(0, Math.floor((availableAfterCommitted / baseIncome) * 100)))
-    : 0;
-  const displayPct = Math.min(data.savingsGoalPercent, maxSavingsPct);
-  const savingsTarget = (baseIncome * displayPct) / 100;
-  const canInvest = Math.max(0, availableAfterCommitted - savingsTarget);
+  const savingsGoal = data.savingsGoal || { monthly: 0, target: 0 };
+  // Store what was typed, apply what the period can actually cover - the same
+  // split the percentage version used, so a lean month cannot silently rewrite
+  // the goal. The gap is surfaced rather than hidden.
+  const savingsTarget = Math.min(savingsGoal.monthly, availableAfterCommitted);
+  const savingsShortfall = Math.max(0, savingsGoal.monthly - availableAfterCommitted);
+  const leftToSpend = Math.max(0, availableAfterCommitted - savingsTarget);
   const remaining = effectiveIncome - totalCommitted;
   const unpaidCount = cur.upcoming.filter((u) => !u.paid).length;
   const totalUpcoming = totalUnpaidUpcoming;
@@ -1739,7 +1767,6 @@ export default function App() {
               <div style={s.statsRow}>
                 <StatCard label="Remaining" value={fmt(remaining)} accent={remaining >= 0 ? "#10b981" : "#ef4444"} sub={totalStillScheduled > 0 ? `${fmt(totalStillScheduled)} still scheduled` : "Everything's landed"} icon="↓" />
                 <StatCard label="Still to Pay" value={fmt(totalUpcoming)} accent="#f59e0b" sub={`${unpaidCount} upcoming payment${unpaidCount !== 1 ? "s" : ""}`} icon="◈" />
-                <StatCard label="Can Invest" value={fmt(canInvest)} accent="#0066cc" sub={`After ${displayPct}% savings goal`} icon="↗" />
                 <StatCard label="Total Spent" value={fmt(totalActuallySpent)} accent="#ef4444" sub={`${cur.expenses.length} one-off · ${cur.recurring.length} recurring`} icon="↻" />
                 {savings.monthsCounted > 0 && (
                   <StatCard label="Saved So Far" value={fmt(savings.total)}
@@ -1751,21 +1778,33 @@ export default function App() {
               <div style={{ ...s.card, marginBottom: 16 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.4fr)", gap: 32, alignItems: "start" }}>
                   <div>
-                    <div style={s.cardTitle}>Savings Goal</div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 20, marginTop: 12 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <input type="number" min={0} max={maxSavingsPct} value={displayPct}
-                          onChange={(e) => save({ ...data, savingsGoalPercent: Math.max(0, Math.min(maxSavingsPct, +e.target.value || 0)) })}
-                          style={{ ...s.input, width: 90, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 18 }} />
-                        <span style={{ fontSize: 18, fontWeight: 700, color: "#0066cc" }}>%</span>
-                      </div>
-                      <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066cc", fontSize: 18, textAlign: "right" }}>
-                        <div style={{ fontSize: 12, color: theme.textMuted, fontWeight: 400 }}>{fmt(savingsTarget)}</div>
-                        {maxSavingsPct < 50 && (
-                          <div style={{ fontSize: 11, color: theme.textFaint, fontWeight: 400, marginTop: 2 }}>max {maxSavingsPct}%</div>
-                        )}
-                      </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <div style={s.cardTitle}>Set Aside Each Period</div>
+                      <InfoHint text="How much you mean to save out of this period's money. It is taken off before Left to Spend, so what remains is genuinely free." />
                     </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
+                      <input type="number" min={0} value={savingsGoal.monthly || ""} placeholder="0"
+                        onChange={(e) => save({ ...data, savingsGoal: { ...savingsGoal, monthly: Math.max(0, Math.floor(+e.target.value) || 0) } })}
+                        style={{ ...s.input, width: 140, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 18 }} />
+                      <span style={{ ...TYPE.caption, color: theme.textMuted, fontWeight: 600 }}>PLN</span>
+                    </div>
+                    {savingsShortfall > 0 ? (
+                      <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.warning, marginTop: 8 }}>
+                        {fmt(savingsShortfall)} short this period · setting aside {fmt(savingsTarget)}
+                      </div>
+                    ) : savingsGoal.monthly > 0 ? (
+                      <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginTop: 8 }}>
+                        Covered · {fmt(leftToSpend)} still free
+                      </div>
+                    ) : null}
+                    {savingsGoal.target > 0 && (
+                      <div style={{ marginTop: 14 }}>
+                        <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginBottom: 6 }}>
+                          {fmt(Math.max(0, savings.total))} of {fmt(savingsGoal.target)} saved
+                        </div>
+                        <GoalProgress saved={savings.total} target={savingsGoal.target} />
+                      </div>
+                    )}
                   </div>
                   <div>
                     <div style={s.cardTitle}>Income Breakdown</div>
@@ -1776,7 +1815,7 @@ export default function App() {
                             { pct: (totalActuallySpent / effectiveIncome) * 100, color: "#ef4444" },
                             { pct: (totalStillScheduled / effectiveIncome) * 100, color: "#f59e0b" },
                             { pct: (savingsTarget / effectiveIncome) * 100, color: "#0066cc" },
-                            { pct: (canInvest / effectiveIncome) * 100, color: "#10b981" },
+                            { pct: (leftToSpend / effectiveIncome) * 100, color: "#10b981" },
                           ].filter((x) => x.pct > 0 && isFinite(x.pct)).map((seg, i) => (
                             <div key={i} style={{ height: "100%", background: seg.color, width: `${Math.min(seg.pct, 100)}%`, transition: "width .3s" }} />
                           ))}
@@ -1786,7 +1825,7 @@ export default function App() {
                             { color: "#ef4444", label: "Spent", val: totalActuallySpent },
                             { color: "#f59e0b", label: "Upcoming", val: totalStillScheduled },
                             { color: "#0066cc", label: "Savings", val: savingsTarget },
-                            { color: "#10b981", label: "Investable", val: canInvest },
+                            { color: "#10b981", label: "Left to spend", val: leftToSpend },
                           ].map((l) => (
                             <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
                               <div style={{ width: 10, height: 10, borderRadius: 3, background: l.color }} />
@@ -2113,14 +2152,8 @@ export default function App() {
             const m = data.months[historyKey] || emptyMonth();
             const spent = m.expenses.reduce((a, e) => a + e.amount, 0);
             const rec = m.recurring.reduce((a, e) => a + e.amount, 0);
-            const upc = m.upcoming.filter((u) => !u.paid).reduce((a, e) => a + e.amount, 0);
             const credits = (m.credits || []).reduce((a, c) => a + c.amount, 0);
             const effective = m.income + credits;
-            const committed = spent + rec + upc;
-            const sTargetRaw = (m.income * data.savingsGoalPercent) / 100;
-            const availableH = Math.max(0, effective - committed);
-            const sTarget = Math.min(sTargetRaw, availableH);
-            const canInv = Math.max(0, availableH - sTarget);
             const rem = effective - spent - rec;
             return (
               <>
@@ -2140,7 +2173,6 @@ export default function App() {
                   <StatCard label="Income" value={fmt(effective)} accent="#10b981" sub={credits > 0 ? `+${fmt(credits)} credits` : "For this month"} icon="↑" />
                   <StatCard label="Remaining" value={fmt(rem)} accent={rem >= 0 ? "#10b981" : "#ef4444"} sub="After expenses & recurring" icon="↓" />
                   <StatCard label="Total Spent" value={fmt(spent + rec)} accent="#ef4444" sub={`${m.expenses.length} one-off · ${m.recurring.length} recurring`} icon="↻" />
-                  <StatCard label="Can Invest" value={fmt(canInv)} accent="#0066cc" sub={`After ${data.savingsGoalPercent}% savings goal`} icon="↗" />
                 </div>
                 <div style={s.card}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -2409,6 +2441,48 @@ export default function App() {
                     placeholder="0" style={{ ...s.input, width: 180 }} />
                   <span style={{ fontSize: 12, color: theme.textMuted, fontWeight: 600 }}>PLN</span>
                 </div>
+              </div>
+
+              <div style={{ ...s.card, marginTop: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={s.cardTitle}>Savings Goal</div>
+                  <InfoHint text="The total you're saving up to. Progress is measured against everything saved across closed periods, including your starting balance." />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }}>
+                  <input type="number" min={0} value={savingsGoal.target || ""} placeholder="0"
+                    onChange={(e) => save({ ...data, savingsGoal: { ...savingsGoal, target: Math.max(0, Math.floor(+e.target.value) || 0) } })}
+                    style={{ ...s.input, width: 180 }} />
+                  <span style={{ ...TYPE.caption, color: theme.textMuted, fontWeight: 600 }}>PLN</span>
+                </div>
+                {savingsGoal.target > 0 ? (() => {
+                  const remainingToGoal = savingsGoal.target - savings.total;
+                  // Pace comes from closed periods only, so it reflects what you
+                  // actually saved rather than what you intended to.
+                  const closed = savings.series.slice(1);
+                  const avgDelta = closed.length ? closed.reduce((a, r) => a + r.delta, 0) / closed.length : 0;
+                  const periodsLeft = remainingToGoal > 0 && avgDelta > 0 ? Math.ceil(remainingToGoal / avgDelta) : null;
+                  return (
+                    <div style={{ marginTop: 16 }}>
+                      <GoalProgress saved={savings.total} target={savingsGoal.target} />
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginTop: 10, flexWrap: "wrap" }}>
+                        <span style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint }}>
+                          {fmt(Math.max(0, savings.total))} of {fmt(savingsGoal.target)}
+                        </span>
+                        <span style={{ ...TYPE.finePrint, lineHeight: 1.5, color: remainingToGoal <= 0 ? theme.success : theme.textFaint }}>
+                          {remainingToGoal <= 0
+                            ? "Goal reached"
+                            : periodsLeft
+                              ? `${fmt(remainingToGoal)} to go · about ${periodsLeft} more period${periodsLeft !== 1 ? "s" : ""} at your recent pace`
+                              : `${fmt(remainingToGoal)} to go`}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })() : (
+                  <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginTop: 8 }}>
+                    Set a target to track progress against it.
+                  </div>
+                )}
               </div>
 
               <div style={{ ...s.card, marginTop: 16 }}>
