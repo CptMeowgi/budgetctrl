@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Budget Ctrl",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "identifier": "com.budget-ctrl.app",
   "build": {
     "frontendDist": "../dist",
@@ -19,7 +19,8 @@
         "minHeight": 700,
         "resizable": true,
         "center": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "decorations": false
       }
     ],
     "security": {

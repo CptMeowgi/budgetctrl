@@ -658,6 +658,86 @@ function TableHeader({ columns, sorts, onSort }) {
   );
 }
 
+const isTauri = typeof window !== "undefined" && !!window.__TAURI_INTERNALS__;
+
+async function getAppWindow() {
+  const { getCurrentWindow } = await import("@tauri-apps/api/window");
+  return getCurrentWindow();
+}
+
+const WIN_GLYPHS = {
+  minimize: "M19 13H5v-2h14z",
+  maximize: "M4 4h16v16H4zm2 4v10h12V8z",
+  restore: "M4 8h4V4h12v12h-4v4H4zm12 0v6h2V6h-8v2zM6 12v6h8v-6z",
+  close: "M13.46 12L19 17.54V19h-1.46L12 13.46L6.46 19H5v-1.46L10.54 12L5 6.46V5h1.46L12 10.54L17.54 5H19v1.46z",
+};
+
+function WindowControls() {
+  const { theme } = useThemed();
+  const [maximized, setMaximized] = useState(false);
+  const [hover, setHover] = useState(null);
+
+  useEffect(() => {
+    if (!isTauri) return;
+    let unlisten;
+    let alive = true;
+    (async () => {
+      try {
+        const w = await getAppWindow();
+        if (!alive) return;
+        setMaximized(await w.isMaximized());
+        unlisten = await w.onResized(async () => {
+          if (alive) setMaximized(await w.isMaximized());
+        });
+      } catch {}
+    })();
+    return () => { alive = false; if (unlisten) unlisten(); };
+  }, []);
+
+  if (!isTauri) return null;
+
+  const act = async (name) => {
+    try {
+      const w = await getAppWindow();
+      if (name === "minimize") await w.minimize();
+      else if (name === "toggle") await w.toggleMaximize();
+      else if (name === "close") await w.close();
+    } catch {}
+  };
+
+  const btn = (id, action, title, path) => {
+    const isClose = id === "close";
+    const hovered = hover === id;
+    return (
+      <button
+        key={id}
+        title={title}
+        onClick={() => act(action)}
+        onMouseEnter={() => setHover(id)}
+        onMouseLeave={() => setHover(null)}
+        style={{
+          width: 46, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
+          border: "none", cursor: "pointer", padding: 0, transition: "background .12s",
+          background: hovered ? (isClose ? "#e81123" : theme.outerBorder) : "transparent",
+          color: hovered && isClose ? "#ffffff" : theme.outerText,
+        }}
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24">
+          <path fill="currentColor" d={path} />
+        </svg>
+      </button>
+    );
+  };
+
+  return (
+    <div style={{ position: "absolute", top: 0, right: 0, display: "flex", alignItems: "center", zIndex: 10 }}>
+      {btn("minimize", "minimize", "Minimize", WIN_GLYPHS.minimize)}
+      {btn("maximize", "toggle", maximized ? "Restore" : "Maximize", maximized ? WIN_GLYPHS.restore : WIN_GLYPHS.maximize)}
+      {btn("close", "close", "Close", WIN_GLYPHS.close)}
+    </div>
+  );
+}
+
 function InfoHint({ text }) {
   const { theme } = useThemed();
   const [open, setOpen] = useState(false);
@@ -1073,9 +1153,9 @@ export default function App() {
 
       {/* SIDEBAR */}
       <aside style={s.sidebar}>
-        <div style={s.logo}>
-          <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: -0.5, color: theme.outerText }}>BUDGET</div>
-          <div style={{ fontSize: 10, letterSpacing: 3, color: theme.accent, fontWeight: 700 }}>CTRL</div>
+        <div data-tauri-drag-region style={s.logo}>
+          <div data-tauri-drag-region style={{ fontSize: 18, fontWeight: 800, letterSpacing: -0.5, color: theme.outerText }}>BUDGET</div>
+          <div data-tauri-drag-region style={{ fontSize: 10, letterSpacing: 3, color: theme.accent, fontWeight: 700 }}>CTRL</div>
         </div>
         <nav style={s.nav}>
           {TABS.map((t) => (
@@ -1127,12 +1207,14 @@ export default function App() {
 
       {/* MAIN */}
       <main style={s.main}>
-        <header style={s.topbar}>
-          <div>
-            <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0, letterSpacing: -0.5, color: theme.outerText }}>
+        <header style={{ ...s.topbar, position: "relative", paddingRight: isTauri ? 150 : undefined }}>
+          <WindowControls />
+          {/* Drag region: text-only, so it never swallows button clicks */}
+          <div data-tauri-drag-region style={{ flex: 1, cursor: isTauri ? "default" : undefined }}>
+            <h1 data-tauri-drag-region style={{ fontSize: 24, fontWeight: 800, margin: 0, letterSpacing: -0.5, color: theme.outerText }}>
               {TABS.find((t) => t.id === tab)?.label}
             </h1>
-            <div style={{ fontSize: 12, color: theme.outerTextMuted, marginTop: 2 }}>
+            <div data-tauri-drag-region style={{ fontSize: 12, color: theme.outerTextMuted, marginTop: 2 }}>
               {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
               {cutoffDay > 1 && (
                 <span style={{ color: theme.outerTextMuted }}> · period {periodLabel(curKey, cutoffDay).range}</span>
