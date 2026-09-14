@@ -30,8 +30,9 @@ window is closed.
 
 - **System tray** — the app keeps running in the tray with Open / Quit
 - **Notifications** — one digest per day covering everything due, rather than a
-  toast per bill. Overdue unpaid items are included, and stay included for 30
-  days before being treated as abandoned
+  toast per bill. Each line carries its own amount and timing. Unpaid bills are
+  chased for 30 days past their date, so a forgotten entry doesn't nag forever —
+  after that they stop appearing in notifications but stay listed under Due Soon
 - **Lead time** — warns 3 days ahead by default, adjustable
 - **Start with Windows** — optional, launches straight to the tray with no
   window
