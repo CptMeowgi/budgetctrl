@@ -2036,6 +2036,15 @@ export default function App() {
                       <div style={{ flex: 2, fontWeight: 600 }}>{b.name}</div>
                       <div style={{ flex: 0.9, color: theme.textMuted, ...TYPE.finePrint, lineHeight: 1.5 }}>
                         {b.kind === "recurring" ? "Recurring" : "Upcoming"}
+                        {/* Reminders scan every period, but the Upcoming tab only
+                            shows the current one - so an item left unpaid in an
+                            earlier period was invisible while still nagging.
+                            Naming its period makes that obvious. */}
+                        {b.periodKey !== curKey && (
+                          <span style={{ display: "block", color: theme.danger }}>
+                            from {periodLabel(b.periodKey, cutoffDay).primary}
+                          </span>
+                        )}
                       </div>
                       <div style={{ flex: 1, color: theme.textMuted, ...TYPE.caption }}>{b.dueISO}</div>
                       <div style={{ flex: 1, ...TYPE.caption, color: b.inDays < 0 ? theme.danger : b.inDays === 0 ? theme.warning : theme.textMuted }}>
