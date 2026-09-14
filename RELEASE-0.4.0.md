@@ -38,6 +38,30 @@ window is closed.
 
 All of it is behind the new **⚙ Settings** panel in the top bar.
 
+### Due Soon
+
+A tab showing exactly what a reminder would fire for — the same list, so the
+notification and the screen can never disagree. Each entry shows its date, how
+many days remain, and which period it belongs to.
+
+That last part matters: reminders look across every period for unpaid bills,
+but the Upcoming tab only shows the current one. A payment left unpaid in an
+earlier period was invisible in the app while still being counted in every
+notification. Those now appear here, flagged with the period they came from.
+
+Anything more than 30 days overdue had been dropping out of notifications
+entirely and had nowhere else to surface — so it was simply forgotten. Due Soon
+lists it regardless of age and marks it *not in reminders*.
+
+### Bills that pay themselves
+
+Upcoming payments and recurring items can be marked **Pays itself** — for direct
+debits and card-on-file subscriptions. They settle on their own due date and
+never send a reminder, so a bill that needs no action stops asking for one.
+
+They are not silently marked paid: the distinction between "I paid this" and
+"this pays itself" is kept, so your records stay honest.
+
 ---
 
 ## Budget periods that match your payday

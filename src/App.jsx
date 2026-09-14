@@ -884,7 +884,10 @@ const REMINDER_INTERVAL_MS = 30 * 60 * 1000;
 const REMINDER_STARTUP_DELAY_MS = 10 * 1000;
 // How long after a reminder a return to the app still counts as answering it.
 const REMINDER_OPEN_WINDOW_MS = 10 * 60 * 1000;
-// Past this, an unpaid item is abandoned data rather than a bill to chase.
+// How far back a notification will chase an unpaid bill. It exists to stop a
+// forgotten entry nagging forever - NOT to hide it. The app itself passes
+// Infinity, because an unpaid bill is money owed however old it is, and
+// quietly dropping it is worse than repeating it.
 const OVERDUE_GRACE_DAYS = 30;
 
 // Local-calendar day. Never toISOString() here - that shifts to UTC and lands
@@ -912,7 +915,7 @@ function daysBetween(from, to) {
   return Math.round((startOfDay(to) - startOfDay(from)) / 86400000);
 }
 
-function collectDueBills(data, now, leadDays) {
+function collectDueBills(data, now, leadDays, graceDays = OVERDUE_GRACE_DAYS) {
   const cutoffDay = data.cutoffDay || 1;
   const key = periodKeyFor(now, cutoffDay);
   const out = [];
@@ -940,7 +943,7 @@ function collectDueBills(data, now, leadDays) {
       const due = new Date(u.dueDate);
       if (isNaN(due.getTime())) continue;
       const inDays = daysBetween(now, due);
-      if (inDays <= leadDays && inDays >= -OVERDUE_GRACE_DAYS) {
+      if (inDays <= leadDays && inDays >= -graceDays) {
         out.push({ id: `u-${u.id}`, kind: "upcoming", entryId: u.id, periodKey: mk,
                    name: u.name, amount: u.amount || 0, inDays, dueISO: isoDay(due) });
       }
@@ -1672,7 +1675,7 @@ export default function App() {
   const reminderLeadDays = Number.isFinite(data.reminders?.leadDays) ? data.reminders.leadDays : 3;
   // Exactly what a reminder would fire for, so the notification and the screen
   // can never disagree about what is due.
-  const dueBills = collectDueBills(data, today, reminderLeadDays);
+  const dueBills = collectDueBills(data, today, reminderLeadDays, Infinity);
   const totalUpcoming = totalUnpaidUpcoming;
 
   const catBreakdown = categoryBreakdown(cur, data.categories || [], curKey, today, cutoffDay);
@@ -2049,6 +2052,12 @@ export default function App() {
                       <div style={{ flex: 1, color: theme.textMuted, ...TYPE.caption }}>{b.dueISO}</div>
                       <div style={{ flex: 1, ...TYPE.caption, color: b.inDays < 0 ? theme.danger : b.inDays === 0 ? theme.warning : theme.textMuted }}>
                         {whenLabel(b.inDays)}
+                        {b.inDays < -OVERDUE_GRACE_DAYS && (
+                          <span title={`Older than ${OVERDUE_GRACE_DAYS} days, so reminders no longer mention it`}
+                                style={{ display: "block", ...TYPE.microLegal, color: theme.textFaint }}>
+                            not in reminders
+                          </span>
+                        )}
                       </div>
                       <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: theme.warning }}>{fmt(b.amount)}</div>
                       <div style={{ flex: 1.1, textAlign: "right", display: "flex", gap: SPACE.sm, justifyContent: "flex-end" }}>
