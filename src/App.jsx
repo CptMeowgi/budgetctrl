@@ -124,6 +124,7 @@ const MODAL_FOR_TAB = { expenses: "expense" };
 
 const TABS = [
   { id: "dashboard", label: "Dashboard", icon: "◉" },
+  { id: "duesoon", label: "Due Soon", icon: "!" },
   { id: "expenses", label: "Expenses", icon: "↗" },
   { id: "recurring", label: "Recurring", icon: "↻" },
   { id: "upcoming", label: "Upcoming", icon: "◈" },
@@ -584,7 +585,7 @@ function cumulativeSavings(data) {
     const income = (m.income || 0) + (m.credits || []).reduce((a, c) => a + c.amount, 0);
     const spent = (m.expenses || []).reduce((a, e) => a + e.amount, 0)
                 + (m.recurring || []).reduce((a, r) => a + r.amount, 0)
-                + (m.upcoming || []).filter((u) => u.paid).reduce((a, u) => a + u.amount, 0);
+                + (m.upcoming || []).filter((u) => upcomingSettled(u)).reduce((a, u) => a + u.amount, 0);
     const delta = income - spent;
     total += delta;
     series.push({ key: k, label: monthLabel(k).slice(0, 3), balance: total, delta, income, spent, editedAt: m.editedAt || null });
@@ -645,16 +646,28 @@ function FormModal({ title, fields, onClose, onSave }) {
   const { theme, s } = useThemed();
   const [vals, setVals] = useState(() => {
     const init = {};
-    fields.forEach((f) => { init[f.key] = f.defaultValue || ""; });
+    fields.forEach((f) => { init[f.key] = f.type === "checkbox" ? !!f.defaultValue : (f.defaultValue || ""); });
     return init;
   });
   return (
     <Modal title={title} onClose={onClose}>
       <div style={{ display: "grid", gridTemplateColumns: fields.length > 3 ? "1fr 1fr" : "1fr", gap: 16, padding: "20px 0" }}>
         {fields.map((f) => (
-          <div key={f.key}>
-            <label style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 6, display: "block", fontWeight: 600 }}>{f.label}</label>
-            {f.type === "select" ? (
+          <div key={f.key} style={f.type === "checkbox" ? { gridColumn: "1 / -1" } : undefined}>
+            {f.type !== "checkbox" && (
+              <label style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 6, display: "block", fontWeight: 600 }}>{f.label}</label>
+            )}
+            {f.type === "checkbox" ? (
+              <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", padding: "4px 0" }}>
+                <input type="checkbox" checked={!!vals[f.key]}
+                  onChange={(e) => setVals({ ...vals, [f.key]: e.target.checked })}
+                  style={{ accentColor: theme.accent, width: 16, height: 16, cursor: "pointer" }} />
+                <span>
+                  <span style={{ ...TYPE.caption, color: theme.text }}>{f.label}</span>
+                  {f.hint && <span style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, display: "block" }}>{f.hint}</span>}
+                </span>
+              </label>
+            ) : f.type === "select" ? (
               <select value={vals[f.key]} onChange={(e) => setVals({ ...vals, [f.key]: e.target.value })} style={s.input}>
                 {f.options.map((o) => <option key={o} value={o}>{o}</option>)}
               </select>
@@ -761,7 +774,10 @@ function RecurringRow({ entry: r, categories, onEdit, onDelete }) {
   const { theme, s } = useThemed();
   return (
     <div style={s.tableRow}>
-      <div style={{ flex: 2, fontWeight: 600 }}>{r.name}</div>
+      <div style={{ flex: 2, fontWeight: 600 }}>
+        {r.name}
+        {r.autoPay && <span title="Pays itself" style={{ ...TYPE.microLegal, color: theme.textFaint, marginLeft: 6 }}>auto</span>}
+      </div>
       <div style={{ flex: 1.2 }}><CategoryPill categoryName={r.category} categories={categories} /></div>
       <div style={{ flex: 0.5, textAlign: "center", color: theme.textMuted, ...TYPE.caption }}>{r.dayOfMonth || "—"}</div>
       <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: theme.accent }}>{fmt(r.amount)}</div>
@@ -770,22 +786,27 @@ function RecurringRow({ entry: r, categories, onEdit, onDelete }) {
   );
 }
 
-function UpcomingRow({ entry: u, categories, onTogglePaid, onEdit, onDelete }) {
+function UpcomingRow({ entry: u, categories, today, onTogglePaid, onEdit, onDelete }) {
   const { theme, s } = useThemed();
+  const settled = upcomingSettled(u, today);
   return (
-    <div style={{ ...s.tableRow, opacity: u.paid ? 0.4 : 1 }}>
+    <div style={{ ...s.tableRow, opacity: settled ? 0.4 : 1 }}>
       <div style={{ flex: 0.3 }}>
-        <input type="checkbox" checked={!!u.paid} onChange={onTogglePaid}
-          style={{ accentColor: theme.success, width: 16, height: 16, cursor: "pointer" }} />
+        <input type="checkbox" checked={settled} onChange={onTogglePaid} disabled={!!u.autoPay}
+          title={u.autoPay ? "Pays itself - settles on its due date" : undefined}
+          style={{ accentColor: theme.success, width: 16, height: 16, cursor: u.autoPay ? "default" : "pointer" }} />
       </div>
-      <div style={{ flex: 2, fontWeight: 600, textDecoration: u.paid ? "line-through" : "none" }}>{u.name}</div>
+      <div style={{ flex: 2, fontWeight: 600, textDecoration: settled ? "line-through" : "none" }}>
+        {u.name}
+        {u.autoPay && <span title="Pays itself" style={{ ...TYPE.microLegal, color: theme.textFaint, marginLeft: 6 }}>auto</span>}
+      </div>
       <div style={{ flex: 1.2 }}><CategoryPill categoryName={u.category} categories={categories} /></div>
       <div style={{ flex: 1, color: theme.textMuted, ...TYPE.caption }}>{u.dueDate}</div>
-      <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: u.paid ? theme.success : theme.warning }}>{fmt(u.amount)}</div>
+      <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: settled ? theme.success : theme.warning }}>{fmt(u.amount)}</div>
       <div style={{ flex: 0.7, textAlign: "center" }}>
         <span style={{ ...TYPE.microLegal, padding: "3px 10px", borderRadius: RADIUS.pill, fontWeight: 600,
-          background: u.paid ? "rgba(16,185,129,0.12)" : "rgba(245,158,11,0.12)",
-          color: u.paid ? theme.success : theme.warning }}>{u.paid ? "Paid" : "Pending"}</span>
+          background: settled ? "rgba(16,185,129,0.12)" : "rgba(245,158,11,0.12)",
+          color: settled ? theme.success : theme.warning }}>{settled ? "Paid" : "Pending"}</span>
       </div>
       <RowActions id={u.id} onEdit={onEdit} onDelete={onDelete} />
     </div>
@@ -843,6 +864,15 @@ async function getAppWindow() {
   return getCurrentWindow();
 }
 
+async function showAndFocusWindow() {
+  try {
+    const w = await getAppWindow();
+    await w.unminimize();
+    await w.show();
+    await w.setFocus();
+  } catch { /* Tauri API unavailable (browser dev server) */ }
+}
+
 /* ---- Bill reminders ------------------------------------------------------
    The checker runs here, in the webview, rather than in Rust. Closing the
    window only hides it, so this keeps ticking in the tray, and it reuses the
@@ -852,6 +882,8 @@ async function getAppWindow() {
 const REMINDER_SENT_KEY = "budget-ctrl-reminders-sent";
 const REMINDER_INTERVAL_MS = 30 * 60 * 1000;
 const REMINDER_STARTUP_DELAY_MS = 10 * 1000;
+// How long after a reminder a return to the app still counts as answering it.
+const REMINDER_OPEN_WINDOW_MS = 10 * 60 * 1000;
 // Past this, an unpaid item is abandoned data rather than a bill to chase.
 const OVERDUE_GRACE_DAYS = 30;
 
@@ -859,6 +891,17 @@ const OVERDUE_GRACE_DAYS = 30;
 // on the wrong day for anyone east of Greenwich.
 function isoDay(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// A payment is settled when it has been ticked off, or when it pays itself and
+// its due date has passed. Direct debits and card-on-file subscriptions leave
+// the account without anyone touching the app, so demanding a manual tick made
+// them look permanently overdue.
+function upcomingSettled(u, today) {
+  if (u.paid) return true;
+  if (!u.autoPay) return false;
+  const due = new Date(u.dueDate);
+  return !isNaN(due.getTime()) && startOfDay(due) <= startOfDay(today || new Date());
 }
 
 function startOfDay(d) {
@@ -876,25 +919,30 @@ function collectDueBills(data, now, leadDays) {
 
   for (const r of (data.months?.[key]?.recurring || [])) {
     if (r.dayOfMonth == null) continue;
-    const inDays = daysBetween(now, recurringDateInPeriod(r.dayOfMonth, key, cutoffDay));
+    // A bill that pays itself needs no warning - that is the point of the flag.
+    if (r.autoPay) continue;
+    const due = recurringDateInPeriod(r.dayOfMonth, key, cutoffDay);
+    const inDays = daysBetween(now, due);
     // Recurring items carry no paid flag - they count as spent once the day
     // passes - so only the run-up to the date is worth announcing.
     if (inDays >= 0 && inDays <= leadDays) {
-      out.push({ id: `r-${r.id}-${key}`, name: r.name, amount: r.amount || 0, inDays });
+      out.push({ id: `r-${r.id}-${key}`, kind: "recurring", entryId: r.id, periodKey: key,
+                 name: r.name, amount: r.amount || 0, inDays, dueISO: isoDay(due) });
     }
   }
 
   // Unpaid one-offs are scanned across every period, not just the current one:
   // an item left unpaid last month stays filed under last month, and that is
   // precisely the case most worth surfacing.
-  for (const m of Object.values(data.months || {})) {
+  for (const [mk, m] of Object.entries(data.months || {})) {
     for (const u of (m.upcoming || [])) {
-      if (u.paid) continue;
+      if (u.paid || u.autoPay) continue;
       const due = new Date(u.dueDate);
       if (isNaN(due.getTime())) continue;
       const inDays = daysBetween(now, due);
       if (inDays <= leadDays && inDays >= -OVERDUE_GRACE_DAYS) {
-        out.push({ id: `u-${u.id}`, name: u.name, amount: u.amount || 0, inDays });
+        out.push({ id: `u-${u.id}`, kind: "upcoming", entryId: u.id, periodKey: mk,
+                   name: u.name, amount: u.amount || 0, inDays, dueISO: isoDay(due) });
       }
     }
   }
@@ -912,15 +960,17 @@ function whenLabel(inDays) {
 function buildDigest(bills) {
   if (bills.length === 1) {
     const b = bills[0];
-    return { title: `${b.name} — ${whenLabel(b.inDays)}`, body: fmt(b.amount) };
+    return { title: `${b.name} — ${whenLabel(b.inDays)}`, body: `${fmt(b.amount)} · due ${b.dueISO}` };
   }
   const total = bills.reduce((a, b) => a + b.amount, 0);
   const overdue = bills.filter((b) => b.inDays < 0).length;
-  const names = bills.slice(0, 3).map((b) => b.name).join(", ");
-  const more = bills.length > 3 ? ` +${bills.length - 3} more` : "";
+  // Each line carries its own date. A bare list of names gave no way to tell
+  // why something had been included, which made a wrong reminder unfalsifiable.
+  const lines = bills.slice(0, 3).map((b) => `${b.name} · ${fmt(b.amount)} · ${whenLabel(b.inDays)}`);
+  if (bills.length > 3) lines.push(`+${bills.length - 3} more`);
   return {
-    title: `${bills.length} bills due${overdue ? ` · ${overdue} overdue` : ""}`,
-    body: `${fmt(total)} — ${names}${more}`,
+    title: `${bills.length} bills due${overdue ? ` · ${overdue} overdue` : ""} · ${fmt(total)}`,
+    body: lines.join("\n"),
   };
 }
 
@@ -932,7 +982,7 @@ function writeSentMarker(v) {
   try { localStorage.setItem(REMINDER_SENT_KEY, JSON.stringify(v)); } catch { /* private mode or quota: a repeated reminder beats a crash */ }
 }
 
-function useReminders(data, loaded, setTodayKey) {
+function useReminders(data, loaded, setTodayKey, onReminderOpened) {
   // Read through a ref so the interval is installed once instead of being torn
   // down and restarted on every keystroke that edits the budget.
   const dataRef = useRef(data);
@@ -977,20 +1027,50 @@ function useReminders(data, loaded, setTodayKey) {
         if (!granted || !alive) return;
         const { title, body } = buildDigest(bills);
         await n.sendNotification({ title, body });
-        writeSentMarker({ date: today, sig });
+        // `at` drives the fallback below; `seen` stops it firing twice.
+        writeSentMarker({ date: today, sig, at: Date.now(), seen: false });
       } catch { /* Tauri API unavailable (browser dev server) */ }
+    };
+
+    // Clicking a toast should land on the list it was about. onAction is the
+    // documented hook, but the docs do not promise it fires for a body click on
+    // Windows desktop - registerActionTypes is mobile-only - so it is wired
+    // opportunistically and backed by a focus fallback that needs no plumbing:
+    // any route back into the app shortly after a reminder lands on Due Soon.
+    let unlistenAction;
+    (async () => {
+      try {
+        const n = await import("@tauri-apps/plugin-notification");
+        if (typeof n.onAction === "function") {
+          unlistenAction = await n.onAction(() => {
+            if (!alive) return;
+            showAndFocusWindow();
+            onReminderOpened();
+          });
+        }
+      } catch { /* Tauri API unavailable (browser dev server) */ }
+    })();
+
+    const onWindowFocus = () => {
+      const sent = readSentMarker();
+      if (sent.at && !sent.seen && Date.now() - sent.at < REMINDER_OPEN_WINDOW_MS) {
+        writeSentMarker({ ...sent, seen: true });
+        onReminderOpened();
+      }
+      tick();
     };
 
     const startup = setTimeout(tick, REMINDER_STARTUP_DELAY_MS);
     const iv = setInterval(tick, REMINDER_INTERVAL_MS);
-    window.addEventListener("focus", tick);
+    window.addEventListener("focus", onWindowFocus);
     return () => {
       alive = false;
       clearTimeout(startup);
       clearInterval(iv);
-      window.removeEventListener("focus", tick);
+      window.removeEventListener("focus", onWindowFocus);
+      if (unlistenAction) unlistenAction();
     };
-  }, [loaded]);
+  }, [loaded, onReminderOpened]);
 }
 
 function Switch({ checked, onChange }) {
@@ -1544,7 +1624,8 @@ export default function App() {
 
   const deleteArm = useMemo(() => ({ armedId: pendingDelete, arm: setPendingDelete }), [pendingDelete]);
 
-  useReminders(data, loaded, setTodayKey);
+  const openDueSoon = useCallback(() => setTab("duesoon"), []);
+  useReminders(data, loaded, setTodayKey, openDueSoon);
 
   // Derived from todayKey rather than recomputed per render: stable within a
   // day, and guaranteed to refresh when the tick above crosses midnight. Local
@@ -1564,8 +1645,8 @@ export default function App() {
     .filter((r) => isRecurringDue(r, curKey, today, cutoffDay))
     .reduce((a, e) => a + e.amount, 0);
   const totalRecurringFuture = totalRecurringAll - totalRecurringPast;
-  const totalUnpaidUpcoming = cur.upcoming.filter((u) => !u.paid).reduce((a, e) => a + e.amount, 0);
-  const totalPaidUpcoming = cur.upcoming.filter((u) => u.paid).reduce((a, e) => a + e.amount, 0);
+  const totalUnpaidUpcoming = cur.upcoming.filter((u) => !upcomingSettled(u, today)).reduce((a, e) => a + e.amount, 0);
+  const totalPaidUpcoming = cur.upcoming.filter((u) => upcomingSettled(u, today)).reduce((a, e) => a + e.amount, 0);
   const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
   const allCredits = cur.credits || [];
   const creditReceived = (c) => c.dayOfMonth != null
@@ -1587,7 +1668,11 @@ export default function App() {
   const savingsShortfall = Math.max(0, savingsGoal.monthly - availableAfterCommitted);
   const leftToSpend = Math.max(0, availableAfterCommitted - savingsTarget);
   const remaining = effectiveIncome - totalCommitted;
-  const unpaidCount = cur.upcoming.filter((u) => !u.paid).length;
+  const unpaidCount = cur.upcoming.filter((u) => !upcomingSettled(u, today)).length;
+  const reminderLeadDays = Number.isFinite(data.reminders?.leadDays) ? data.reminders.leadDays : 3;
+  // Exactly what a reminder would fire for, so the notification and the screen
+  // can never disagree about what is due.
+  const dueBills = collectDueBills(data, today, reminderLeadDays);
   const totalUpcoming = totalUnpaidUpcoming;
 
   const catBreakdown = categoryBreakdown(cur, data.categories || [], curKey, today, cutoffDay);
@@ -1678,6 +1763,7 @@ export default function App() {
               <span style={{ fontSize: 16, width: 24, textAlign: "center" }}>{t.icon}</span>
               <span>{t.label}</span>
               {t.id === "upcoming" && unpaidCount > 0 && <span style={s.badge}>{unpaidCount}</span>}
+              {t.id === "duesoon" && dueBills.length > 0 && <span style={s.badge}>{dueBills.length}</span>}
             </button>
           ))}
         </nav>
@@ -1892,9 +1978,9 @@ export default function App() {
                     <div style={s.cardTitle}>Upcoming Payments</div>
                     <button style={s.linkBtn} onClick={() => setTab("upcoming")}>View all →</button>
                   </div>
-                  {cur.upcoming.filter((u) => !u.paid).length === 0 ? (
+                  {cur.upcoming.filter((u) => !upcomingSettled(u, today)).length === 0 ? (
                     <div style={s.emptySmall}>All caught up!</div>
-                  ) : cur.upcoming.filter((u) => !u.paid).slice(0, 4).map((u) => (
+                  ) : cur.upcoming.filter((u) => !upcomingSettled(u, today)).slice(0, 4).map((u) => (
                     <div key={u.id} style={s.miniRow}>
                       <div><div style={{ fontWeight: 600, fontSize: 13 }}>{u.name}</div><div style={{ fontSize: 11, color: theme.textMuted }}>Due {u.dueDate}</div></div>
                       <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#f59e0b", fontSize: 13 }}>{fmt(u.amount)}</div>
@@ -1923,6 +2009,63 @@ export default function App() {
           )}
 
           {/* EXPENSES */}
+          {tab === "duesoon" && (
+            <div style={s.card}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <div style={s.cardTitle}>Due Soon</div>
+                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: theme.warning, fontSize: 16 }}>
+                  {fmt(dueBills.reduce((a, b) => a + b.amount, 0))}
+                </div>
+              </div>
+              <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginBottom: 4 }}>
+                Everything a reminder would fire for: due within {reminderLeadDays} day{reminderLeadDays !== 1 ? "s" : ""},
+                plus anything still unpaid past its date. Entries marked <em>pays itself</em> are excluded.
+                {" "}<button style={{ ...s.linkBtn, padding: 0, ...TYPE.finePrint, fontWeight: 600 }} onClick={() => setSettingsOpen(true)}>Change the window</button>
+              </div>
+              {dueBills.length === 0 ? (
+                <div style={s.empty}>Nothing due in the next {reminderLeadDays} day{reminderLeadDays !== 1 ? "s" : ""}.</div>
+              ) : (
+                <>
+                  <TableHeader columns={[
+                    { label: "NAME", flex: 2 }, { label: "TYPE", flex: 0.9 },
+                    { label: "DUE", flex: 1 }, { label: "WHEN", flex: 1 },
+                    { label: "AMOUNT", flex: 1, align: "right" }, { label: "", flex: 1.1, align: "right" },
+                  ]} />
+                  {dueBills.map((b) => (
+                    <div key={b.id} style={s.tableRow}>
+                      <div style={{ flex: 2, fontWeight: 600 }}>{b.name}</div>
+                      <div style={{ flex: 0.9, color: theme.textMuted, ...TYPE.finePrint, lineHeight: 1.5 }}>
+                        {b.kind === "recurring" ? "Recurring" : "Upcoming"}
+                      </div>
+                      <div style={{ flex: 1, color: theme.textMuted, ...TYPE.caption }}>{b.dueISO}</div>
+                      <div style={{ flex: 1, ...TYPE.caption, color: b.inDays < 0 ? theme.danger : b.inDays === 0 ? theme.warning : theme.textMuted }}>
+                        {whenLabel(b.inDays)}
+                      </div>
+                      <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: theme.warning }}>{fmt(b.amount)}</div>
+                      <div style={{ flex: 1.1, textAlign: "right", display: "flex", gap: SPACE.sm, justifyContent: "flex-end" }}>
+                        {b.kind === "upcoming" && (
+                          <button style={{ ...s.linkBtn, padding: 0 }}
+                            onClick={() => {
+                              const mk = b.periodKey;
+                              const mm = data.months[mk] || emptyMonth();
+                              patchMonth(mk, { upcoming: mm.upcoming.map((x) => x.id === b.entryId ? { ...x, paid: true } : x) });
+                            }}>Mark paid</button>
+                        )}
+                        <button style={{ ...s.linkBtn, padding: 0 }}
+                          onClick={() => setModal({ type: b.kind === "recurring" ? "recurring" : "upcoming", editId: b.entryId, monthKey: b.periodKey })}>
+                          Edit
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginTop: SPACE.md }}>
+                    Something here that pays itself? Open it and tick <em>Pays itself</em> — it will settle on its own date and stop reminding.
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
           {tab === "expenses" && (
             <div style={s.card}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
@@ -1998,7 +2141,7 @@ export default function App() {
                 <>
                   <TableHeader columns={ENTRY_COLUMNS.upcoming} sorts={upcomingView.sorts} onSort={onSortUpcoming} />
                   {filteredUpcoming.map((u) => (
-                    <UpcomingRow key={u.id} entry={u} categories={data.categories}
+                    <UpcomingRow key={u.id} entry={u} categories={data.categories} today={today}
                       onTogglePaid={() => patchCur({ upcoming: cur.upcoming.map((x) => x.id === u.id ? { ...x, paid: !x.paid } : x) })}
                       onEdit={() => setModal({ type: "upcoming", editId: u.id })}
                       onDelete={() => patchCur({ upcoming: cur.upcoming.filter((x) => x.id !== u.id) })} />
@@ -2217,7 +2360,7 @@ export default function App() {
                     <>
                       <TableHeader columns={ENTRY_COLUMNS.upcoming} />
                       {m.upcoming.map((u) => (
-                        <UpcomingRow key={u.id} entry={u} categories={data.categories}
+                        <UpcomingRow key={u.id} entry={u} categories={data.categories} today={today}
                           onTogglePaid={() => patchMonth(historyKey, { upcoming: m.upcoming.map((x) => x.id === u.id ? { ...x, paid: !x.paid } : x) })}
                           onEdit={() => setModal({ type: "upcoming", editId: u.id, monthKey: historyKey })}
                           onDelete={() => patchMonth(historyKey, { upcoming: m.upcoming.filter((x) => x.id !== u.id) })} />
@@ -2595,6 +2738,8 @@ export default function App() {
             { key: "amount", label: "Amount (PLN)", type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
             { key: "category", label: "Category", type: "category", categories: data.categories, defaultValue: editing?.category },
             { key: "dayOfMonth", label: "Day of Month", type: "number", placeholder: "1", defaultValue: editing ? String(editing.dayOfMonth) : "" },
+            { key: "autoPay", label: "Pays itself", type: "checkbox", defaultValue: editing?.autoPay,
+              hint: "Direct debit or card on file. Never sends a reminder." },
           ]} onClose={() => setModal(null)} onSave={(v) => {
             const { categories, category } = ensureCategory(data.categories, v.category);
             if (editing) {
@@ -2604,6 +2749,7 @@ export default function App() {
                 amount: +v.amount,
                 dayOfMonth: +v.dayOfMonth || 1,
                 category: category.name,
+                autoPay: !!v.autoPay,
               };
               save({
                 ...data,
@@ -2625,7 +2771,7 @@ export default function App() {
               });
             } else {
               const tid = uid();
-              const newItem = { id: uid(), templateId: tid, name: v.name, amount: +v.amount, dayOfMonth: +v.dayOfMonth || 1, category: category.name };
+              const newItem = { id: uid(), templateId: tid, name: v.name, amount: +v.amount, dayOfMonth: +v.dayOfMonth || 1, category: category.name, autoPay: !!v.autoPay };
               save({
                 ...data,
                 categories,
@@ -2649,6 +2795,8 @@ export default function App() {
             { key: "amount", label: "Amount (PLN)", type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
             { key: "category", label: "Category", type: "category", categories: data.categories, defaultValue: editing?.category },
             { key: "dueDate", label: "Due Date", type: "date", defaultValue: editing?.dueDate || `${targetKey}-01` },
+            { key: "autoPay", label: "Pays itself", type: "checkbox", defaultValue: editing?.autoPay,
+              hint: "Direct debit or card on file. Counts as paid on its due date and never sends a reminder." },
           ]} onClose={() => setModal(null)} onSave={(v) => {
             const { categories, category } = ensureCategory(data.categories, v.category);
             if (editing) {
@@ -2660,13 +2808,13 @@ export default function App() {
                   [targetKey]: {
                     ...targetMonth,
                     upcoming: targetMonth.upcoming.map((x) => x.id === editing.id
-                      ? { ...x, name: v.name, amount: +v.amount, dueDate: v.dueDate, category: category.name }
+                      ? { ...x, name: v.name, amount: +v.amount, dueDate: v.dueDate, category: category.name, autoPay: !!v.autoPay }
                       : x),
                   },
                 },
               });
             } else {
-              const newItem = { id: uid(), name: v.name, amount: +v.amount, dueDate: v.dueDate, paid: false, category: category.name };
+              const newItem = { id: uid(), name: v.name, amount: +v.amount, dueDate: v.dueDate, paid: false, autoPay: !!v.autoPay, category: category.name };
               save({
                 ...data,
                 categories,
