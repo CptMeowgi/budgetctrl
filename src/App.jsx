@@ -1378,6 +1378,27 @@ function InlineNumber({ value, onChange, title }) {
   );
 }
 
+// Recovery for a period created before the rollover fix landed, or one whose
+// entries were deleted by accident: the template still knows what belongs here.
+function MissingFromTemplate({ missing, noun, onAdd }) {
+  const { theme, s } = useThemed();
+  if (!missing.length) return null;
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: SPACE.sm, flexWrap: "wrap",
+      background: theme.accentSoft, border: `1px solid ${theme.border}`,
+      borderRadius: RADIUS.md, padding: `${SPACE.sm}px ${SPACE.md}px`, marginBottom: SPACE.sm,
+    }}>
+      <span style={{ ...TYPE.caption, color: theme.text }}>
+        {missing.length} {noun}{missing.length !== 1 ? "s" : ""} from your template {missing.length !== 1 ? "are" : "is"} not in this period: {missing.map((x) => x.name).join(", ")}
+      </span>
+      <button style={{ ...s.linkBtn, padding: 0, marginLeft: "auto" }} onClick={onAdd}>
+        Add {missing.length !== 1 ? "them" : "it"} →
+      </button>
+    </div>
+  );
+}
+
 function GoalProgress({ saved, target }) {
   const { theme } = useThemed();
   const pct = target > 0 ? Math.max(0, Math.min(100, (saved / target) * 100)) : 0;
@@ -1627,6 +1648,18 @@ export default function App() {
 
   const deleteArm = useMemo(() => ({ armedId: pendingDelete, arm: setPendingDelete }), [pendingDelete]);
 
+  // ensureCurrentMonth used to run only inside hydrate(), i.e. only at launch.
+  // Since the app lives in the tray it can sit running across a period boundary,
+  // so a new period was never created and the recurring and credit templates
+  // never copied in. Worse, both `cur` and patchMonth fall back to emptyMonth(),
+  // so the first edit in the new period would persist that empty month and lose
+  // the templates for good. Re-running it on every date tick closes that window.
+  useEffect(() => {
+    if (!loaded) return;
+    const rolled = ensureCurrentMonth(data);
+    if (rolled !== data) save(rolled);
+  }, [loaded, todayKey, data, save]);
+
   const openDueSoon = useCallback(() => setTab("duesoon"), []);
   useReminders(data, loaded, setTodayKey, openDueSoon);
 
@@ -1672,6 +1705,10 @@ export default function App() {
   const leftToSpend = Math.max(0, availableAfterCommitted - savingsTarget);
   const remaining = effectiveIncome - totalCommitted;
   const unpaidCount = cur.upcoming.filter((u) => !upcomingSettled(u, today)).length;
+  const missingRecurring = (data.recurringTemplate || []).filter(
+    (tpl) => !cur.recurring.some((r) => r.templateId === tpl.id));
+  const missingCredits = (data.creditTemplate || []).filter(
+    (tpl) => !(cur.credits || []).some((c) => c.templateId === tpl.id));
   const reminderLeadDays = Number.isFinite(data.reminders?.leadDays) ? data.reminders.leadDays : 3;
   // Exactly what a reminder would fire for, so the notification and the screen
   // can never disagree about what is due.
@@ -2117,6 +2154,11 @@ export default function App() {
                 <div style={s.cardTitle}>Recurring Payments</div>
                 <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066cc", fontSize: 16 }}>Monthly: {fmt(totalRecurringAll)}</div>
               </div>
+              <MissingFromTemplate
+                missing={missingRecurring}
+                noun="recurring payment"
+                onAdd={() => patchCur({ recurring: [...cur.recurring, ...missingRecurring.map((tpl) => ({ ...tpl, id: uid(), templateId: tpl.id }))] })}
+              />
               <input
                 type="text"
                 placeholder="Search recurring..."
@@ -2208,6 +2250,11 @@ export default function App() {
                       {totalCreditsPending > 0 && <span style={{ color: theme.textMuted, fontSize: 13 }}> · {fmt(totalCreditsPending)} pending</span>}
                     </div>
                   </div>
+                  <MissingFromTemplate
+                    missing={missingCredits}
+                    noun="recurring credit"
+                    onAdd={() => patchCur({ credits: [...(cur.credits || []), ...missingCredits.map((tpl) => ({ ...tpl, id: uid(), templateId: tpl.id }))] })}
+                  />
                   <input
                     type="text"
                     placeholder="Search credits..."
