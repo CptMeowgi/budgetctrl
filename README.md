@@ -150,4 +150,5 @@ a confirmation.
 
 ## Releases
 
-See [RELEASE-0.4.0.md](RELEASE-0.4.0.md) for what's in the current version.
+See the [changelog](CHANGELOG.md) for what's in each version, and
+[RELEASE-0.4.0.md](RELEASE-0.4.0.md) for the long-form 0.4.0 notes.
