@@ -21,6 +21,9 @@ your lead window, plus anything still unpaid past its date. Bills that pay
 themselves — direct debits, card-on-file subscriptions — can be marked as such
 and will settle on their own date without ever reminding you.
 
+**Your currency and number format.** Both are settings — pick the currency you
+actually hold and how you want figures punctuated.
+
 **Money in, not just money out.** Credits cover refunds, gifts, bonuses and
 salary, as one-offs or recurring, and are kept separate from spending so they
 never distort the category breakdown.
@@ -140,11 +143,19 @@ a confirmation.
 
 - **Windows only.** Nothing is deliberately platform-locked, but the tray
   behaviour, window chrome and installer are only built and tested here.
-- **Single currency**, displayed as PLN.
+- **One currency at a time** — set it in Settings, along with number
+  formatting. Amounts are not converted between currencies.
 - **Notifications need the installed build**, as above.
 - Changing the cutoff day re-buckets entries by date and discards the markers
   on periods you'd previously corrected. It asks first, and the figures
   themselves are untouched.
+
+---
+
+## Licence
+
+MIT — see [LICENSE](LICENSE). Use it, change it, ship it; attribution is the
+only ask.
 
 ---
 

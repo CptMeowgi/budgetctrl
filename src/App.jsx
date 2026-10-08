@@ -138,8 +138,88 @@ function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
+// Currency was hardcoded to PLN, which made the app unusable outside Poland.
+// It is held at module scope rather than passed down because fmt() is called
+// from ~56 places, several of them plain functions outside the React tree;
+// threading a parameter through all of them would add an argument to half the
+// file to express a single global preference. App sets it on every render.
+let activeCurrency = "PLN";
+let activeLocale = (typeof navigator !== "undefined" && navigator.language) || "en-US";
+
+function setMoneyFormat(currency, locale) {
+  if (currency) activeCurrency = currency;
+  if (locale) activeLocale = locale;
+}
+
+function currencyCode() {
+  return activeCurrency;
+}
+
 function fmt(n) {
-  return new Intl.NumberFormat("pl-PL", { style: "currency", currency: "PLN" }).format(n);
+  try {
+    return new Intl.NumberFormat(activeLocale, { style: "currency", currency: activeCurrency }).format(n);
+  } catch {
+    // An unrecognised code should degrade to a readable number, not throw and
+    // take the whole screen down with it.
+    return `${Number(n || 0).toFixed(2)} ${activeCurrency}`;
+  }
+}
+
+// Only a guess for a brand-new install, and always overridable in Settings.
+// Intl has no region-to-currency mapping, so this covers the common cases
+// rather than pretending to be exhaustive.
+const REGION_CURRENCY = {
+  PL: "PLN", GB: "GBP", US: "USD", CA: "CAD", AU: "AUD", NZ: "NZD", CH: "CHF",
+  SE: "SEK", NO: "NOK", DK: "DKK", CZ: "CZK", HU: "HUF", RO: "RON", BG: "BGN",
+  UA: "UAH", TR: "TRY", JP: "JPY", CN: "CNY", IN: "INR", BR: "BRL", MX: "MXN",
+  ZA: "ZAR", SG: "SGD", HK: "HKD", KR: "KRW", IL: "ILS", AE: "AED",
+  DE: "EUR", FR: "EUR", ES: "EUR", IT: "EUR", NL: "EUR", BE: "EUR", AT: "EUR",
+  IE: "EUR", PT: "EUR", FI: "EUR", GR: "EUR", SK: "EUR", SI: "EUR", EE: "EUR",
+  LV: "EUR", LT: "EUR", LU: "EUR", CY: "EUR", MT: "EUR", HR: "EUR",
+};
+
+// Number grouping and decimal separators are a separate question from which
+// currency you hold - a Pole holding euros still wants 1 234,56. Offered as a
+// short list plus the system default rather than every locale Intl knows.
+const LOCALE_OPTIONS = [
+  { value: "", label: "System default" },
+  { value: "en-US", label: "English (US) — 1,234.56" },
+  { value: "en-GB", label: "English (UK) — 1,234.56" },
+  { value: "pl-PL", label: "Polski — 1 234,56" },
+  { value: "de-DE", label: "Deutsch — 1.234,56" },
+  { value: "fr-FR", label: "Français — 1 234,56" },
+  { value: "es-ES", label: "Español — 1.234,56" },
+  { value: "it-IT", label: "Italiano — 1.234,56" },
+  { value: "nl-NL", label: "Nederlands — 1.234,56" },
+  { value: "sv-SE", label: "Svenska — 1 234,56" },
+  { value: "cs-CZ", label: "Čeština — 1 234,56" },
+  { value: "pt-BR", label: "Português (BR) — 1.234,56" },
+  { value: "ja-JP", label: "日本語 — 1,234.56" },
+];
+
+function detectCurrency() {
+  try {
+    const region = new Intl.Locale(navigator.language).maximize().region;
+    return REGION_CURRENCY[region] || "USD";
+  } catch {
+    return "USD";
+  }
+}
+
+function currencyOptions() {
+  let codes;
+  try {
+    codes = Intl.supportedValuesOf("currency");
+  } catch {
+    codes = Object.values(REGION_CURRENCY).filter((c, i, a) => a.indexOf(c) === i).sort();
+  }
+  let names = null;
+  try { names = new Intl.DisplayNames([activeLocale], { type: "currency" }); } catch { /* names are a nicety */ }
+  return codes.map((code) => {
+    let label = code;
+    try { const n = names && names.of(code); if (n && n !== code) label = `${code} — ${n}`; } catch { /* keep the bare code */ }
+    return { code, label };
+  });
 }
 
 function monthKey(date) {
@@ -166,6 +246,8 @@ function defaultData() {
   return {
     months: { [cur]: emptyMonth() },
     savingsGoal: { monthly: 0, target: 0 },
+    currency: detectCurrency(),
+    locale: "",
     startingBalance: 0,
     cutoffDay: 1,
     recurringTemplate: [],
@@ -302,6 +384,21 @@ function migrateCutoff(data) {
 // The goal used to be a percentage of income. It is now two concrete sums: what
 // you mean to set aside each period, and the total you are saving up to. The old
 // percentage is converted against current income so an existing goal survives.
+// Existing installs keep PLN, which is what every figure in them was entered
+// and displayed as. Only a fresh install guesses from the system locale.
+function migrateCurrency(data) {
+  if (typeof data.currency === "string" && data.currency.length === 3) {
+    return typeof data.locale === "string" ? data : { ...data, locale: "" };
+  }
+  // Existing installs keep both the currency and the pl-PL number formatting
+  // that was hardcoded before, so upgrading changes nothing on screen. Only a
+  // fresh install follows the system.
+  const existing = Object.keys(data.months || {}).length > 0;
+  return existing
+    ? { ...data, currency: "PLN", locale: "pl-PL" }
+    : { ...data, currency: detectCurrency(), locale: "" };
+}
+
 function migrateSavingsGoal(data) {
   const g = data.savingsGoal;
   const clean = (n) => (Number.isFinite(+n) && +n > 0 ? Math.round(+n) : 0);
@@ -519,14 +616,15 @@ function migrate(raw) {
 // a six-deep nest repeated at four call sites, and extending it dropped a
 // closing paren on all four.
 function hydrate(data) {
-  return migrateSavingsGoal(
+  return migrateCurrency(
+    migrateSavingsGoal(
     migrateReminders(
     migrateCreditCategories(
       migrateTemplateIds(
         migrateCredits(
           migrateCategories(
             ensureCurrentMonth(
-              migrateCutoff(data))))))));
+              migrateCutoff(data)))))))));
 }
 
 function ensureCurrentMonth(data) {
@@ -1110,7 +1208,7 @@ function SettingRow({ label, hint, children }) {
   );
 }
 
-function SettingsModal({ data, onClose, onChangeReminders }) {
+function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onChangeLocale }) {
   const { theme, s } = useThemed();
   const rem = data.reminders || { enabled: true, leadDays: 3 };
   // null until the plugin answers; the real registry entry is the source of
@@ -1143,6 +1241,28 @@ function SettingsModal({ data, onClose, onChangeReminders }) {
 
   return (
     <Modal title="Settings" onClose={onClose}>
+      <div style={group}>Money</div>
+      <SettingRow label="Currency" hint="Changes how every amount is displayed. It does not convert existing figures.">
+        <select
+          value={data.currency || "PLN"}
+          onChange={(e) => onChangeCurrency(e.target.value)}
+          style={{ ...s.input, width: 200 }}
+        >
+          {currencyOptions().map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
+        </select>
+      </SettingRow>
+
+      <SettingRow label="Number format" hint="How amounts are grouped and punctuated.">
+        <select
+          value={data.locale || ""}
+          onChange={(e) => onChangeLocale(e.target.value)}
+          style={{ ...s.input, width: 200 }}
+        >
+          {LOCALE_OPTIONS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
+        </select>
+      </SettingRow>
+
+      <div style={divider} />
       <div style={group}>Reminders</div>
       <SettingRow
         label="Remind me about due bills"
@@ -1646,6 +1766,10 @@ export default function App() {
     patchMonth(currentPeriodKey(data.cutoffDay || 1), patch);
   }, [patchMonth, data.cutoffDay]);
 
+  // Applied during render so every fmt() below this line uses the chosen
+  // currency, including the ones inside helpers called from the JSX.
+  setMoneyFormat(data.currency, data.locale || navigator.language || "en-US");
+
   const deleteArm = useMemo(() => ({ armedId: pendingDelete, arm: setPendingDelete }), [pendingDelete]);
 
   // ensureCurrentMonth used to run only inside hydrate(), i.e. only at launch.
@@ -1813,7 +1937,7 @@ export default function App() {
             <input type="number" value={cur.income || ""}
               onChange={(e) => patchCur({ income: +e.target.value || 0 })}
               placeholder="0" style={s.incomeInput} />
-            <span style={{ ...TYPE.finePrint, color: theme.outerTextMuted, fontWeight: 600 }}>PLN</span>
+            <span style={{ ...TYPE.finePrint, color: theme.outerTextMuted, fontWeight: 600 }}>{data.currency}</span>
           </div>
           {(totalCredits > 0 || totalCreditsPending > 0) && (
             <div style={{ fontSize: 11, color: "#10b981", marginTop: 6, fontFamily: FONT, fontVariantNumeric: "tabular-nums" }}>
@@ -1912,7 +2036,7 @@ export default function App() {
                       <input type="number" min={0} value={savingsGoal.monthly || ""} placeholder="0"
                         onChange={(e) => save({ ...data, savingsGoal: { ...savingsGoal, monthly: Math.max(0, Math.floor(+e.target.value) || 0) } })}
                         style={{ ...s.input, width: 140, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 18 }} />
-                      <span style={{ ...TYPE.caption, color: theme.textMuted, fontWeight: 600 }}>PLN</span>
+                      <span style={{ ...TYPE.caption, color: theme.textMuted, fontWeight: 600 }}>{data.currency}</span>
                     </div>
                     {savingsShortfall > 0 ? (
                       <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.warning, marginTop: 8 }}>
@@ -2375,7 +2499,7 @@ export default function App() {
                   <input type="number" value={m.income || ""}
                     onChange={(ev) => patchMonth(historyKey, { income: +ev.target.value || 0 })}
                     placeholder="0" style={{ ...s.input, width: 140 }} />
-                  <span style={{ fontSize: 12, color: theme.textMuted, fontWeight: 600 }}>PLN</span>
+                  <span style={{ fontSize: 12, color: theme.textMuted, fontWeight: 600 }}>{data.currency}</span>
                 </div>
                 <div style={s.statsRow}>
                   <StatCard label="Income" value={fmt(effective)} accent="#10b981" sub={credits > 0 ? `+${fmt(credits)} credits` : "For this month"} icon="↑" />
@@ -2647,7 +2771,7 @@ export default function App() {
                   <input type="number" value={data.startingBalance || ""}
                     onChange={(e) => save({ ...data, startingBalance: +e.target.value || 0 })}
                     placeholder="0" style={{ ...s.input, width: 180 }} />
-                  <span style={{ fontSize: 12, color: theme.textMuted, fontWeight: 600 }}>PLN</span>
+                  <span style={{ fontSize: 12, color: theme.textMuted, fontWeight: 600 }}>{data.currency}</span>
                 </div>
               </div>
 
@@ -2660,7 +2784,7 @@ export default function App() {
                   <input type="number" min={0} value={savingsGoal.target || ""} placeholder="0"
                     onChange={(e) => save({ ...data, savingsGoal: { ...savingsGoal, target: Math.max(0, Math.floor(+e.target.value) || 0) } })}
                     style={{ ...s.input, width: 180 }} />
-                  <span style={{ ...TYPE.caption, color: theme.textMuted, fontWeight: 600 }}>PLN</span>
+                  <span style={{ ...TYPE.caption, color: theme.textMuted, fontWeight: 600 }}>{data.currency}</span>
                 </div>
                 {savingsGoal.target > 0 ? (() => {
                   const remainingToGoal = savingsGoal.target - savings.total;
@@ -2759,7 +2883,7 @@ export default function App() {
         return (
           <FormModal title={editing ? "Edit Expense" : "Add Expense"} fields={[
             { key: "name", label: "Name", placeholder: "e.g. Groceries", defaultValue: editing?.name },
-            { key: "amount", label: "Amount (PLN)", type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
+            { key: "amount", label: `Amount (${currencyCode()})`, type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
             { key: "category", label: "Category", type: "category", categories: data.categories, defaultValue: editing?.category },
             { key: "date", label: "Date", type: "date", defaultValue: editing?.date || `${targetKey}-01` },
           ]} onClose={() => setModal(null)} onSave={(v) => {
@@ -2800,7 +2924,7 @@ export default function App() {
         return (
           <FormModal title={editing ? "Edit Recurring Payment" : "Add Recurring Payment"} fields={[
             { key: "name", label: "Name", placeholder: "e.g. Rent", defaultValue: editing?.name },
-            { key: "amount", label: "Amount (PLN)", type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
+            { key: "amount", label: `Amount (${currencyCode()})`, type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
             { key: "category", label: "Category", type: "category", categories: data.categories, defaultValue: editing?.category },
             { key: "dayOfMonth", label: "Day of Month", type: "number", placeholder: "1", defaultValue: editing ? String(editing.dayOfMonth) : "" },
             { key: "autoPay", label: "Pays itself", type: "checkbox", defaultValue: editing?.autoPay,
@@ -2857,7 +2981,7 @@ export default function App() {
         return (
           <FormModal title={editing ? "Edit Upcoming Payment" : "Add Upcoming Payment"} fields={[
             { key: "name", label: "Name", placeholder: "e.g. Car Insurance", defaultValue: editing?.name },
-            { key: "amount", label: "Amount (PLN)", type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
+            { key: "amount", label: `Amount (${currencyCode()})`, type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
             { key: "category", label: "Category", type: "category", categories: data.categories, defaultValue: editing?.category },
             { key: "dueDate", label: "Due Date", type: "date", defaultValue: editing?.dueDate || `${targetKey}-01` },
             { key: "autoPay", label: "Pays itself", type: "checkbox", defaultValue: editing?.autoPay,
@@ -2898,7 +3022,7 @@ export default function App() {
         return (
           <FormModal title={editing ? "Edit Recurring Credit" : "Add Recurring Credit"} fields={[
             { key: "name", label: "Name", placeholder: "e.g. Allowance", defaultValue: editing?.name },
-            { key: "amount", label: "Amount (PLN)", type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
+            { key: "amount", label: `Amount (${currencyCode()})`, type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
             { key: "category", label: "Source", type: "category", categories: data.creditCategories || [], defaultValue: editing?.category },
             { key: "dayOfMonth", label: "Day of Month", type: "number", placeholder: "1", defaultValue: editing ? String(editing.dayOfMonth) : "" },
           ]} onClose={() => setModal(null)} onSave={(v) => {
@@ -2940,7 +3064,7 @@ export default function App() {
         return (
           <FormModal title={editing ? "Edit Credit" : "Add Credit"} fields={[
             { key: "name", label: "Name", placeholder: "e.g. Amazon refund", defaultValue: editing?.name },
-            { key: "amount", label: "Amount (PLN)", type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
+            { key: "amount", label: `Amount (${currencyCode()})`, type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
             { key: "category", label: "Source", type: "category", categories: data.creditCategories || [], defaultValue: editing?.category || editing?.source },
             { key: "date", label: "Date", type: "date", defaultValue: editing?.date || `${targetKey}-01` },
           ]} onClose={() => setModal(null)} onSave={(v) => {
@@ -2967,6 +3091,8 @@ export default function App() {
           data={data}
           onClose={() => setSettingsOpen(false)}
           onChangeReminders={(reminders) => save({ ...data, reminders })}
+          onChangeCurrency={(currency) => save({ ...data, currency })}
+          onChangeLocale={(locale) => save({ ...data, locale })}
         />
       )}
     </div>
