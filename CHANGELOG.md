@@ -61,6 +61,22 @@ new month starting, are never undone.
 
 The full list is in Settings.
 
+### Reports
+The Year tab is now **Reports**, and opens on this year just as Year did. Pick any
+year, the last 3, 6 or 12 months, or all time, and see:
+
+- **Spending by category, month by month**, shaded so a category's busy months
+  stand out, with totals and averages. Click a month to open it
+- **What changed**: the categories that moved most against a fair comparison —
+  the same months a year earlier, or the stretch just before
+- **Top payees**, grouping one shop across store numbers and capitals —
+  `BIEDRONKA 1234` and `Biedronka 77` are one place
+- **Biggest one-off payments**, where it went, and income sources
+- **Export CSV** of the category-by-month table
+
+Averages and comparisons leave out the month still running; half a month always
+looks thrifty.
+
 ### Fixes
 - A recurring bill marked **Pays itself** lost the flag when the next month began,
   and started sending reminders again

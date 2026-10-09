@@ -188,6 +188,7 @@ import { decodeBytes, sniffDelimiter, parseCsv, findHeaderRow, guessMapping, toT
 import { monthKey, currentMonthKey, monthLabel, periodKeyFor, currentPeriodKey, periodLabel, recurringDateInPeriod, isoDay } from "./lib/periods.js";
 import { OVERDUE_GRACE_DAYS, upcomingSettled, collectDueBills, whenLabel } from "./lib/reminders.js";
 import { periodSpending, periodIncome, creditReceived, categoryAverage } from "./lib/totals.js";
+import { rangeOptions, rangeKeys, comparisonFor, buildReport, categoryChanges, percentChange, reportToCsv, periodNoun, BASE_INCOME_NAME } from "./lib/reports.js";
 
 // ---- Apple design tokens -------------------------------------------------
 // Transcribed from the Apple DESIGN.md spec. Kept as tokens rather than inlined
@@ -312,7 +313,7 @@ const TABS = [
   { id: "upcoming", label: "Upcoming", icon: "◈" },
   { id: "credits", label: "Credits", icon: "+" },
   { id: "history", label: "History", icon: "◷" },
-  { id: "year", label: "Year", icon: "▦" },
+  { id: "reports", label: "Reports", icon: "▦" },
   { id: "savings", label: "Savings", icon: "◆" },
 ];
 
@@ -344,6 +345,16 @@ function fmt(n) {
     // An unrecognised code should degrade to a readable number, not throw and
     // take the whole screen down with it.
     return `${Number(n || 0).toFixed(2)} ${activeCurrency}`;
+  }
+}
+
+// Whole units without the currency symbol, for dense tables whose heading
+// already says what the numbers are.
+function fmtWhole(n) {
+  try {
+    return new Intl.NumberFormat(activeLocale, { maximumFractionDigits: 0 }).format(n);
+  } catch {
+    return String(Math.round(n || 0));
   }
 }
 
@@ -1990,6 +2001,299 @@ function CategoryDonut({ data, total }) {
   );
 }
 
+// Two-digit alpha suffix for a #rrggbb colour.
+function alphaHex(a) {
+  return Math.round(Math.max(0, Math.min(1, a)) * 255).toString(16).padStart(2, "0");
+}
+
+function shortPeriod(key, withYear) {
+  const m = monthLabel(key).slice(0, 3);
+  return withYear ? `${m} ’${key.slice(2, 4)}` : m;
+}
+
+// Category by period. Each cell is shaded by where it sits between its own
+// row's quietest and busiest period, so a category's rhythm shows at a glance
+// whatever its size - and a bill that never changes stays pale instead of
+// lighting up the whole row.
+function CategoryTrends({ report, categories, curKey, onOpenPeriod }) {
+  const { theme } = useThemed();
+  const withYear = report.keys.length > 0 && report.keys[0].slice(0, 4) !== report.keys[report.keys.length - 1].slice(0, 4);
+  const line = `1px solid ${theme.border}`;
+  const th = { ...TYPE.finePrint, textTransform: "uppercase", letterSpacing: "0.6px", color: theme.textFaint, fontWeight: 600,
+               padding: "8px 10px", textAlign: "right", whiteSpace: "nowrap", borderBottom: line };
+  const td = { ...TYPE.caption, padding: "8px 10px", textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums",
+               whiteSpace: "nowrap", borderBottom: line };
+  // The category column stays put while the periods scroll sideways.
+  const sticky = { position: "sticky", left: 0, background: theme.surface, zIndex: 1, textAlign: "left" };
+  const footer = [
+    { label: "Spent", values: report.periods.map((p) => p.spent), total: report.spent, avg: report.averageSpent, color: () => theme.text },
+    { label: "Income", values: report.periods.map((p) => p.income), total: report.income, avg: report.averageIncome, color: () => theme.text },
+    { label: "Saved", values: report.periods.map((p) => p.income - p.spent), total: report.saved, avg: report.averageSaved,
+      color: (v) => (v >= 0 ? "#10b981" : "#ef4444") },
+  ];
+  return (
+    <div style={{ overflowX: "auto", marginTop: SPACE.md }}>
+      <table style={{ borderCollapse: "separate", borderSpacing: 0, width: "100%" }}>
+        <thead>
+          <tr>
+            <th style={{ ...th, ...sticky }}>Category</th>
+            {report.keys.map((k) => (
+              <th key={k} style={th}>
+                <button onClick={() => onOpenPeriod(k)}
+                  title={k === curKey ? "Still running · open on the Dashboard" : "Open in History"}
+                  style={{ all: "unset", cursor: "pointer" }}>
+                  {shortPeriod(k, withYear)}{k === curKey ? " •" : ""}
+                </button>
+              </th>
+            ))}
+            <th style={th}>Total</th>
+            <th style={th} title={report.averagedOver < report.keys.length ? "Completed periods only" : undefined}>Avg</th>
+          </tr>
+        </thead>
+        <tbody>
+          {report.categories.map((row) => {
+            const cat = findCategory(categories, row.name) || { name: row.name, color: "#9ca3af", icon: "·" };
+            // Scaled on completed periods: a half-finished month is always low
+            // and would make every full one look busy.
+            const settled = row.perPeriod.filter((_, i) => report.keys[i] !== curKey);
+            const scale = settled.length ? settled : row.perPeriod;
+            const lo = Math.min(...scale);
+            const hi = Math.max(...scale);
+            const shade = (v) => `${cat.color}${alphaHex(0.06 + (hi > lo ? 0.24 * Math.min(1, Math.max(0, (v - lo) / (hi - lo))) : 0))}`;
+            return (
+              <tr key={row.name}>
+                <td style={{ ...td, ...sticky }}>
+                  <CategoryPill categoryName={row.name} categories={categories} fallback={cat} />
+                </td>
+                {row.perPeriod.map((v, i) => (
+                  <td key={report.keys[i]} style={{
+                    ...td, color: v ? theme.text : theme.textFaint,
+                    background: v > 0 ? shade(v) : "transparent",
+                  }}>{v ? fmtWhole(v) : "–"}</td>
+                ))}
+                <td style={{ ...td, fontWeight: 700 }}>{fmtWhole(row.total)}</td>
+                <td style={{ ...td, color: theme.textMuted }}>{fmtWhole(row.average)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+        <tfoot>
+          {footer.map((f) => (
+            <tr key={f.label}>
+              <td style={{ ...td, ...sticky, fontWeight: 600, color: theme.textMuted, fontFamily: FONT }}>{f.label}</td>
+              {f.values.map((v, i) => (
+                <td key={report.keys[i]} style={{ ...td, fontWeight: 600, color: f.color(v) }}>{fmtWhole(v)}</td>
+              ))}
+              <td style={{ ...td, fontWeight: 700, color: f.color(f.total) }}>{fmtWhole(f.total)}</td>
+              <td style={{ ...td, color: theme.textMuted }}>{fmtWhole(f.avg)}</td>
+            </tr>
+          ))}
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+
+function ReportsView({ data, today, curKey, range, onRange, onOpenPeriod }) {
+  const { theme, s } = useThemed();
+  const cutoffDay = data.cutoffDay || 1;
+  const options = rangeOptions(data, curKey);
+  const rangeId = options.some((o) => o.id === range) ? range : (options[0]?.id || `year:${curKey.slice(0, 4)}`);
+  const keys = rangeKeys(data, rangeId, curKey);
+  // Averages and comparisons use completed periods only - half a month always
+  // looks thrifty. The headline totals still include the running one.
+  const report = buildReport(data, keys, today, { runningKey: curKey });
+  const running = keys.includes(curKey);
+  const one = periodNoun(cutoffDay, 1);
+  const cmp = comparisonFor(data, rangeId, curKey);
+  const nowCmp = cmp ? buildReport(data, cmp.closed, today) : null;
+  const beforeCmp = cmp ? buildReport(data, cmp.keys, today) : null;
+  const changes = cmp ? categoryChanges(nowCmp, beforeCmp).slice(0, 6) : [];
+  const perPeriod = (r, field) => (r.keys.length ? r[field] / r.keys.length : 0);
+  const vs = (field) => {
+    if (!cmp) return null;
+    const d = percentChange(perPeriod(nowCmp, field), perPeriod(beforeCmp, field));
+    if (d == null) return null;
+    return `${d >= 0 ? "↑" : "↓"} ${Math.abs(d * 100).toFixed(0)}% a ${one} vs ${cmp.label}`;
+  };
+
+  const exportReport = () => {
+    const csv = reportToCsv(report, {
+      locale: data.locale || navigator.language,
+      label: (k) => periodLabel(k, cutoffDay).primary,
+    });
+    downloadText(csv, `budget-ctrl-report-${rangeId.replace(":", "-")}-${fileDate()}.csv`, "text/csv;charset=utf-8");
+  };
+
+  const span = keys.length
+    ? `${monthLabel(keys[0])}${keys.length > 1 ? ` – ${monthLabel(keys[keys.length - 1])}` : ""} · ${keys.length} ${periodNoun(cutoffDay, keys.length)} tracked`
+      + (running ? ` · ${monthLabel(curKey).split(" ")[0]} still running` : "")
+    : "";
+
+  const year = rangeId.startsWith("year:") ? rangeId.slice(5) : null;
+  const multiYear = keys.length > 0 && keys[0].slice(0, 4) !== keys[keys.length - 1].slice(0, 4);
+  const byKey = new Map(report.periods.map((p) => [p.key, p]));
+  // A calendar year always shows January to December, so a gap reads as a gap.
+  const bars = (year
+    ? Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, "0")}`)
+    : keys
+  ).map((k) => ({ key: k, label: shortPeriod(k, multiYear), spent: byKey.get(k)?.spent || 0, income: byKey.get(k)?.income || 0 }));
+
+  const catDonut = categoryBreakdown(new Map(report.categories.map((c) => [c.name, c.total])), data.categories || []);
+  const incomeDonut = report.incomeSources.map(({ name, value }) => {
+    if (name === BASE_INCOME_NAME) return { name, value, color: "#0066cc", icon: "💼" };
+    const cat = (data.creditCategories || []).find((c) => c.name === name) || CREDIT_UNCATEGORIZED;
+    return { name, value, color: cat.color, icon: cat.icon };
+  });
+  const grid = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16, marginTop: 16 };
+  const money = { fontFamily: FONT, fontVariantNumeric: "tabular-nums" };
+  const ellipsis = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+  const shortDate = (iso) => {
+    const d = iso ? new Date(`${iso}T00:00:00`) : null;
+    return d && !isNaN(d) ? d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "";
+  };
+
+  return (
+    <>
+      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: SPACE.md, marginBottom: SPACE.md, flexWrap: "wrap" }}>
+        <div>
+          <select aria-label="Report range" value={rangeId} onChange={(e) => onRange(e.target.value)}
+            style={{ ...s.input, width: "auto", minWidth: 220, fontWeight: 600 }}>
+            {options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+          </select>
+          {span && <div style={{ ...TYPE.finePrint, color: theme.textMuted, marginTop: 6 }}>{span}</div>}
+        </div>
+        {keys.length > 0 && <button style={s.linkBtn} onClick={exportReport} title="Category by period, as a spreadsheet">Export CSV</button>}
+      </div>
+
+      {keys.length === 0 ? (
+        <div style={s.empty}>Nothing recorded in this range.</div>
+      ) : (
+        <>
+          <div style={s.statsRow}>
+            <StatCard label="Income" value={fmt(report.income)} accent="#10b981"
+              sub={vs("income") || "Base income and credits received"} icon="↑" />
+            <StatCard label="Spent" value={fmt(report.spent)} accent="#ef4444"
+              sub={vs("spent") || (running ? "Everything paid so far" : "Everything paid")} icon="↻" />
+            <StatCard label="Saved" value={fmt(report.saved)} accent={report.saved >= 0 ? "#10b981" : "#ef4444"}
+              sub={report.savingsRate == null ? "No income recorded" : `${Math.round(report.savingsRate * 100)}% of income`} icon="↓" />
+            <StatCard label={`Avg per ${one}`} value={fmt(report.averageSpent)} accent="#0066cc"
+              sub={`Spent, over ${report.averagedOver}${running && report.averagedOver < keys.length ? " completed" : ""} ${periodNoun(cutoffDay, report.averagedOver)}`} icon="◐" />
+          </div>
+
+          <div style={s.card}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: SPACE.md }}>
+              <div style={s.cardTitle}>Spent each {one}</div>
+              <div style={{ ...TYPE.finePrint, color: theme.textFaint }}>Red where spending passed income</div>
+            </div>
+            <MonthlyBarChart data={bars} curKey={curKey} onBarClick={onOpenPeriod} />
+          </div>
+
+          <div style={{ ...s.card, marginTop: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: SPACE.md }}>
+              <div style={s.cardTitle}>Spending by category</div>
+              <div style={{ ...TYPE.finePrint, color: theme.textFaint }}>In {data.currency || currencyCode()} · click a {one} to open it</div>
+            </div>
+            {report.categories.length === 0
+              ? <div style={s.emptySmall}>Nothing spent in this range.</div>
+              : <CategoryTrends report={report} categories={data.categories || []} curKey={curKey} onOpenPeriod={onOpenPeriod} />}
+          </div>
+
+          <div style={grid}>
+            <div style={s.card}>
+              <div style={s.cardTitle}>What changed{cmp ? ` · vs ${cmp.label}` : ""}</div>
+              {!cmp ? (
+                <div style={s.emptySmall}>Nothing earlier to compare with yet.</div>
+              ) : changes.length === 0 ? (
+                <div style={s.emptySmall}>No category moved.</div>
+              ) : (
+                <>
+                  {changes.map((c) => {
+                    const up = c.delta > 0;
+                    return (
+                      <div key={c.name} style={{ ...s.tableRow, gap: SPACE.md }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <CategoryPill categoryName={c.name} categories={data.categories || []}
+                            fallback={{ name: c.name, color: "#9ca3af", icon: "·" }} />
+                          <div style={{ ...TYPE.finePrint, color: theme.textFaint, marginTop: 4, ...money }}>
+                            {fmt(c.now)} a {one}, was {fmt(c.before)}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "right", whiteSpace: "nowrap", ...money }}>
+                          <div style={{ fontWeight: 700, color: up ? "#ef4444" : "#10b981" }}>{up ? "↑" : "↓"} {fmt(Math.abs(c.delta))}</div>
+                          {c.pct != null && <div style={{ ...TYPE.finePrint, color: theme.textFaint, marginTop: 2 }}>{up ? "+" : "−"}{Math.abs(c.pct * 100).toFixed(0)}%</div>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div style={{ ...TYPE.finePrint, color: theme.textFaint, marginTop: SPACE.sm }}>
+                    Average per {one}, completed {periodNoun(cutoffDay)} only.
+                  </div>
+                </>
+              )}
+            </div>
+            <div style={s.card}>
+              <div style={s.cardTitle}>Where it went</div>
+              <CategoryDonut data={catDonut} total={report.spent} />
+            </div>
+          </div>
+
+          <div style={grid}>
+            <div style={s.card}>
+              <div style={s.cardTitle}>Biggest one-off payments</div>
+              {report.biggest.length === 0 ? (
+                <div style={s.emptySmall}>No one-off payments in this range.</div>
+              ) : (
+                report.biggest.map(({ entry, periodKey }) => (
+                  <div key={`${periodKey}-${entry.id}`} style={{ ...s.tableRow, gap: SPACE.md }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ ...ellipsis, fontWeight: 600 }} title={entry.name}>{entry.name}</div>
+                      <div style={{ ...ellipsis, ...TYPE.finePrint, color: theme.textFaint, marginTop: 2 }}>
+                        {entry.category || "Uncategorized"} · {shortDate(entry.date || entry.dueDate)}
+                      </div>
+                    </div>
+                    <div style={{ fontWeight: 700, color: "#ef4444", whiteSpace: "nowrap", ...money }}>{fmt(entry.amount)}</div>
+                  </div>
+                ))
+              )}
+            </div>
+            <div style={s.card}>
+              <div style={s.cardTitle}>Top payees</div>
+              {report.payees.length === 0 ? (
+                <div style={s.emptySmall}>No payments in this range.</div>
+              ) : (
+                <>
+                  {report.payees.map((p) => (
+                    <div key={p.key} style={{ ...s.tableRow, gap: SPACE.md }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ ...ellipsis, fontWeight: 600 }} title={p.name}>{p.name}</div>
+                        <div style={{ ...TYPE.finePrint, color: theme.textFaint, marginTop: 2 }}>
+                          {p.count} payment{p.count !== 1 ? "s" : ""}
+                        </div>
+                      </div>
+                      <div style={{ fontWeight: 700, whiteSpace: "nowrap", ...money }}>{fmt(p.total)}</div>
+                    </div>
+                  ))}
+                  <div style={{ ...TYPE.finePrint, color: theme.textFaint, marginTop: SPACE.sm }}>
+                    Same name, ignoring store numbers and capitals.
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div style={grid}>
+            <div style={s.card}>
+              <div style={s.cardTitle}>Income sources</div>
+              <CategoryDonut data={incomeDonut} total={report.income} />
+            </div>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
 function MonthlyBarChart({ data, curKey, onBarClick }) {
   const { theme, s } = useThemed();
   if (data.length < 2) {
@@ -2232,7 +2536,7 @@ export default function App() {
   const [modal, setModal] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [historyKey, setHistoryKey] = useState(null);
-  const [yearKey, setYearKey] = useState(() => String(new Date().getFullYear()));
+  const [reportRange, setReportRange] = useState(null);
   const importInputRef = useRef(null);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [themeMode, setThemeMode] = useState(() => {
@@ -3248,148 +3552,13 @@ export default function App() {
               </>
             );
           })()}
-          {tab === "year" && (() => {
-            const allYears = Array.from(new Set(Object.keys(data.months).map((k) => k.slice(0, 4)))).sort();
-            const monthsInYear = Object.entries(data.months)
-              .filter(([k]) => k.startsWith(yearKey + "-"));
-
-            const spendingOf = (k) => periodSpending(data.months[k], k, today, cutoffDay);
-            const incomeOf = (k) => periodIncome(data.months[k], k, today, cutoffDay);
-            const totalIncomeY = monthsInYear.reduce((a, [k]) => a + incomeOf(k).total, 0);
-            const totalSpentY = monthsInYear.reduce((a, [k]) => a + spendingOf(k).total, 0);
-            const totalSavedY = totalIncomeY - totalSpentY;
-            const monthsCount = monthsInYear.length;
-            const avgMonthlySpend = monthsCount > 0 ? totalSpentY / monthsCount : 0;
-
-            const yearCatTotals = new Map();
-            for (const [k] of monthsInYear) {
-              for (const [name, v] of spendingOf(k).byCategory) yearCatTotals.set(name, (yearCatTotals.get(name) || 0) + v);
-            }
-            const yearCatBreakdown = categoryBreakdown(yearCatTotals, data.categories || []);
-            const yearCatTotal = totalSpentY;
-
-            // Navigation steps between years that actually hold data, rather than
-            // +/- 1 calendar year. Stepping into an empty year showed a page of
-            // zeroes, and a gap year used to dead-end the button entirely.
-            const earlierYears = allYears.filter((y) => y < yearKey);
-            const laterYears = allYears.filter((y) => y > yearKey);
-            const prevYear = earlierYears.length ? earlierYears[earlierYears.length - 1] : null;
-            const nextYear = laterYears.length ? laterYears[0] : null;
-            // Year-over-year always compares against the real preceding calendar
-            // year, which is a different question from "where can I navigate".
-            const compareYear = String(Number(yearKey) - 1);
-
-            // 12-month Jan–Dec series (months with no data render as zero)
-            const monthBars = Array.from({ length: 12 }, (_, i) => {
-              const k = `${yearKey}-${String(i + 1).padStart(2, "0")}`;
-              const label = new Date(2000, i, 1).toLocaleDateString("en-US", { month: "short" });
-              if (!data.months[k]) return { key: k, label, spent: 0, income: 0 };
-              return { key: k, label, spent: spendingOf(k).total, income: incomeOf(k).total };
-            });
-
-            // Year-over-year comparison
-            const prevMonths = Object.entries(data.months).filter(([k]) => k.startsWith(compareYear + "-"));
-            const prevIncomeY = prevMonths.reduce((a, [k]) => a + incomeOf(k).total, 0);
-            const prevSpentY = prevMonths.reduce((a, [k]) => a + spendingOf(k).total, 0);
-            const yoySub = (curr, prev) => {
-              if (!(prev > 0)) return null;
-              const d = ((curr - prev) / prev) * 100;
-              return `${d >= 0 ? "↑" : "↓"} ${Math.abs(d).toFixed(0)}% vs ${compareYear}`;
-            };
-
-            // Top 5 biggest one-off expenses
-            const topExpenses = monthsInYear
-              .flatMap(([, m]) => (m.expenses || []))
-              .sort((a, b) => b.amount - a.amount)
-              .slice(0, 5);
-
-            // Income sources
-            const incomeSources = new Map();
-            let baseIncomeY = 0;
-            for (const [k, m] of monthsInYear) {
-              baseIncomeY += (m.income || 0);
-              for (const c of (m.credits || [])) {
-                if (!creditReceived(c, k, today, cutoffDay)) continue;
-                const name = c.category || c.source || "Other";
-                incomeSources.set(name, (incomeSources.get(name) || 0) + c.amount);
-              }
-            }
-            const incomeBreakdown = [
-              ...(baseIncomeY > 0 ? [{ name: "Base Income", value: baseIncomeY, color: "#0066cc", icon: "💼" }] : []),
-              ...Array.from(incomeSources.entries()).map(([name, value]) => {
-                const cat = (data.creditCategories || []).find((c) => c.name === name) || CREDIT_UNCATEGORIZED;
-                return { name, value, color: cat.color, icon: cat.icon };
-              }),
-            ].sort((a, b) => b.value - a.value);
-            const incomeTotal = incomeBreakdown.reduce((a, c) => a + c.value, 0);
-
-            return (
-              <>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: SPACE.md, marginBottom: SPACE.md }}>
-                  <div style={{ justifySelf: "end" }}>
-                    {prevYear && <button style={s.linkBtn} onClick={() => setYearKey(prevYear)}>← {prevYear}</button>}
-                  </div>
-                  <h2 style={{ ...TYPE.displayMedium, margin: 0 }}>{yearKey}</h2>
-                  <div style={{ justifySelf: "start" }}>
-                    {nextYear && <button style={s.linkBtn} onClick={() => setYearKey(nextYear)}>{nextYear} →</button>}
-                  </div>
-                </div>
-                {monthsCount === 0 ? (
-                  <div style={s.empty}>No data for {yearKey}.</div>
-                ) : (
-                  <>
-                    <div style={s.statsRow}>
-                      <StatCard label="Total Income" value={fmt(totalIncomeY)} accent="#10b981"
-                        sub={yoySub(totalIncomeY, prevIncomeY) || `${monthsCount} month${monthsCount !== 1 ? "s" : ""} tracked`} icon="↑" />
-                      <StatCard label="Total Spent" value={fmt(totalSpentY)} accent="#ef4444"
-                        sub={yoySub(totalSpentY, prevSpentY) || "Across the year"} icon="↻" />
-                      <StatCard label="Total Saved" value={fmt(totalSavedY)}
-                        accent={totalSavedY >= 0 ? "#10b981" : "#ef4444"}
-                        sub={totalSavedY >= 0 ? "Income minus spent" : "Overspent"} icon="↓" />
-                      <StatCard label="Avg Monthly" value={fmt(avgMonthlySpend)} accent="#0066cc"
-                        sub="Spending per month" icon="◐" />
-                    </div>
-
-                    <div style={{ ...s.card, marginTop: 16 }}>
-                      <div style={s.cardTitle}>Monthly Breakdown — {yearKey}</div>
-                      <MonthlyBarChart data={monthBars} curKey={curKey}
-                        onBarClick={(key) => { if (data.months[key]) { setTab("history"); setHistoryKey(key); } }} />
-                    </div>
-
-                    <div style={{ ...s.card, marginTop: 16 }}>
-                      <div style={s.cardTitle}>Category Breakdown — {yearKey}</div>
-                      <CategoryDonut data={yearCatBreakdown} total={yearCatTotal} />
-                    </div>
-
-                    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 16, marginTop: 16 }}>
-                      <div style={s.card}>
-                        <div style={s.cardTitle}>Biggest Expenses — {yearKey}</div>
-                        {topExpenses.length === 0 ? (
-                          <div style={s.emptySmall}>No expenses recorded for {yearKey}.</div>
-                        ) : (
-                          <>
-                            <TableHeader columns={[{ label: "NAME", flex: 2 }, { label: "CATEGORY", flex: 1.2 }, { label: "DATE", flex: 1 }, { label: "AMOUNT", flex: 1, align: "right" }]} />
-                            {topExpenses.map((e) => (
-                              <div key={e.id} style={s.tableRow}>
-                                <div style={{ flex: 2, fontWeight: 600 }}>{e.name}</div>
-                                <div style={{ flex: 1.2 }}><CategoryPill categoryName={e.category} categories={data.categories} /></div>
-                                <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{e.date}</div>
-                                <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444" }}>{fmt(e.amount)}</div>
-                              </div>
-                            ))}
-                          </>
-                        )}
-                      </div>
-                      <div style={s.card}>
-                        <div style={s.cardTitle}>Income Sources — {yearKey}</div>
-                        <CategoryDonut data={incomeBreakdown} total={incomeTotal} />
-                      </div>
-                    </div>
-                  </>
-                )}
-              </>
-            );
-          })()}
+          {tab === "reports" && (
+            <ReportsView data={data} today={today} curKey={curKey} range={reportRange} onRange={setReportRange}
+              onOpenPeriod={(key) => {
+                if (key === curKey) { setTab("dashboard"); return; }
+                if (data.months[key]) { setTab("history"); setHistoryKey(key); }
+              }} />
+          )}
 
           {/* SAVINGS */}
           {tab === "savings" && (

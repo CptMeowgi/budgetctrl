@@ -51,7 +51,7 @@ are marked, so a hand-adjusted figure never passes for a calculated one.
 | **Upcoming** | Scheduled one-off payments |
 | **Credits** | Money in — refunds, gifts, bonuses, salary |
 | **History** | Any past period, fully editable |
-| **Year** | Twelve-month bars, year-over-year, biggest expenses, income sources |
+| **Reports** | Any year, the last 3/6/12 months or all time: each category month by month, what changed, top payees, biggest payments, CSV export |
 | **Savings** | Cumulative total, goal progress, period-by-period table |
 
 ---

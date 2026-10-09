@@ -33,11 +33,11 @@ export function csvEscape(value, delimiter = ",") {
 // file is opened in Excel or Sheets ("CSV injection"). Names and notes are free
 // text, so they are neutralised with a leading apostrophe. Amounts are not -
 // a negative amount has to stay a number.
-function guardText(s) {
+export function guardText(s) {
   return /^[=+\-@\t\r]/.test(s || "") ? `'${s}` : (s || "");
 }
 
-function formatAmount(n, decimal) {
+export function formatAmount(n, decimal) {
   const fixed = (Math.round((Number(n) || 0) * 100) / 100).toFixed(2);
   return decimal === "," ? fixed.replace(".", ",") : fixed;
 }
