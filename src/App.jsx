@@ -182,6 +182,7 @@ if (!window.storage) {
 import { useState, useEffect, useCallback, useRef, createContext, useContext, useMemo } from "react";
 import { PieChart, Pie, Cell, Tooltip as RTooltip, ResponsiveContainer, XAxis, YAxis, CartesianGrid, BarChart, Bar, AreaChart, Area } from "recharts";
 import { renameCategory, deleteCategory, restyleCategory, countUsage, isFallback } from "./lib/categories.js";
+import { budgetToCsv } from "./lib/csv.js";
 
 // ---- Apple design tokens -------------------------------------------------
 // Transcribed from the Apple DESIGN.md spec. Kept as tokens rather than inlined
@@ -431,17 +432,36 @@ function defaultData() {
   };
 }
 
-function exportData(data) {
-  const json = JSON.stringify(data, null, 2);
-  const blob = new Blob([json], { type: "application/json" });
+function downloadText(text, filename, type) {
+  const blob = new Blob([text], { type });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `budget-ctrl-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+// Local calendar date for filenames. toISOString() is UTC, so an export made
+// just after midnight anywhere east of Greenwich was stamped with yesterday.
+function fileDate() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function exportData(data) {
+  downloadText(JSON.stringify(data, null, 2), `budget-ctrl-backup-${fileDate()}.json`, "application/json");
+}
+
+function exportCsv(data) {
+  const csv = budgetToCsv(data, {
+    resolveRecurringDate: (day, period) => isoDay(recurringDateInPeriod(day, period, data.cutoffDay || 1)),
+    locale: data.locale || navigator.language,
+    currency: data.currency,
+  });
+  downloadText(csv, `budget-ctrl-${fileDate()}.csv`, "text/csv;charset=utf-8");
 }
 
 function normalizeCatName(name) {
@@ -725,7 +745,9 @@ function filterAndSort(arr, view) {
   let out = arr;
   if (view.search) {
     const q = view.search.toLowerCase();
-    out = out.filter((x) => (x.name || "").toLowerCase().includes(q));
+    // Name, category and note, so "dentist" finds an entry named "Dr. Kowalski"
+    // whose note says dentist.
+    out = out.filter((x) => [x.name, x.category, x.note].some((f) => (f || "").toLowerCase().includes(q)));
   }
   const sorts = view.sorts || [];
   if (sorts.length > 0) {
@@ -914,6 +936,14 @@ function CategoryPicker({ value, onChange, categories }) {
   );
 }
 
+// Optional free text on any entry. Blank is stored as absent, not "".
+function cleanNote(s) {
+  const v = (s || "").trim();
+  return v || undefined;
+}
+
+const NOTE_FIELD = (editing) => ({ key: "note", label: "Note", type: "textarea", placeholder: "Optional — reference, who, why", defaultValue: editing?.note });
+
 function FormModal({ title, fields, onClose, onSave }) {
   const { theme, s } = useThemed();
   const [vals, setVals] = useState(() => {
@@ -925,7 +955,7 @@ function FormModal({ title, fields, onClose, onSave }) {
     <Modal title={title} onClose={onClose}>
       <div style={{ display: "grid", gridTemplateColumns: fields.length > 3 ? "1fr 1fr" : "1fr", gap: 16, padding: "20px 0" }}>
         {fields.map((f) => (
-          <div key={f.key} style={f.type === "checkbox" ? { gridColumn: "1 / -1" } : undefined}>
+          <div key={f.key} style={f.type === "checkbox" || f.type === "textarea" ? { gridColumn: "1 / -1" } : undefined}>
             {f.type !== "checkbox" && (
               <label style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 6, display: "block", fontWeight: 600 }}>{f.label}</label>
             )}
@@ -945,6 +975,10 @@ function FormModal({ title, fields, onClose, onSave }) {
               </select>
             ) : f.type === "category" ? (
               <CategoryPicker value={vals[f.key] || ""} onChange={(v) => setVals({ ...vals, [f.key]: v })} categories={f.categories} />
+            ) : f.type === "textarea" ? (
+              <textarea placeholder={f.placeholder} rows={2}
+                value={vals[f.key]} onChange={(e) => setVals({ ...vals, [f.key]: e.target.value })}
+                style={{ ...s.input, resize: "vertical", minHeight: 44, lineHeight: 1.4 }} />
             ) : f.type === "number" ? (
               <input type="text" inputMode="decimal" placeholder={f.placeholder}
                 value={vals[f.key]} onChange={(e) => setVals({ ...vals, [f.key]: e.target.value })}
@@ -1026,6 +1060,22 @@ const ENTRY_COLUMNS = {
   ],
 };
 
+// Name cell shared by every entry row: the name, any badge passed as children,
+// and the note on a second line. The note is clipped to one line so a long one
+// never changes row height; the full text is on hover.
+function EntryName({ name, note, strike, children }) {
+  const { theme } = useThemed();
+  return (
+    <div style={{ flex: 2, minWidth: 0 }}>
+      <div style={{ fontWeight: 600, textDecoration: strike ? "line-through" : "none" }}>{name}{children}</div>
+      {note && (
+        <div title={note} style={{ ...TYPE.finePrint, lineHeight: 1.4, color: theme.textFaint, marginTop: 2,
+                                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{note}</div>
+      )}
+    </div>
+  );
+}
+
 // One row definition per entry type, used by the live tab and by History. They
 // were duplicated character-for-character apart from which period the edit and
 // delete callbacks targeted, so that is all the caller supplies.
@@ -1033,7 +1083,7 @@ function ExpenseRow({ entry: e, categories, onEdit, onDelete }) {
   const { theme, s } = useThemed();
   return (
     <div style={s.tableRow}>
-      <div style={{ flex: 2, fontWeight: 600 }}>{e.name}</div>
+      <EntryName name={e.name} note={e.note} />
       <div style={{ flex: 1.2 }}><CategoryPill categoryName={e.category} categories={categories} /></div>
       <div style={{ flex: 1, color: theme.textMuted, ...TYPE.caption }}>{e.date}</div>
       <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: theme.danger }}>{fmt(e.amount)}</div>
@@ -1046,10 +1096,9 @@ function RecurringRow({ entry: r, categories, onEdit, onDelete }) {
   const { theme, s } = useThemed();
   return (
     <div style={s.tableRow}>
-      <div style={{ flex: 2, fontWeight: 600 }}>
-        {r.name}
+      <EntryName name={r.name} note={r.note}>
         {r.autoPay && <span title="Pays itself" style={{ ...TYPE.microLegal, color: theme.textFaint, marginLeft: 6 }}>auto</span>}
-      </div>
+      </EntryName>
       <div style={{ flex: 1.2 }}><CategoryPill categoryName={r.category} categories={categories} /></div>
       <div style={{ flex: 0.5, textAlign: "center", color: theme.textMuted, ...TYPE.caption }}>{r.dayOfMonth || "—"}</div>
       <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: theme.accent }}>{fmt(r.amount)}</div>
@@ -1068,10 +1117,9 @@ function UpcomingRow({ entry: u, categories, today, onTogglePaid, onEdit, onDele
           title={u.autoPay ? "Pays itself - settles on its due date" : undefined}
           style={{ accentColor: theme.success, width: 16, height: 16, cursor: u.autoPay ? "default" : "pointer" }} />
       </div>
-      <div style={{ flex: 2, fontWeight: 600, textDecoration: settled ? "line-through" : "none" }}>
-        {u.name}
+      <EntryName name={u.name} note={u.note} strike={settled}>
         {u.autoPay && <span title="Pays itself" style={{ ...TYPE.microLegal, color: theme.textFaint, marginLeft: 6 }}>auto</span>}
-      </div>
+      </EntryName>
       <div style={{ flex: 1.2 }}><CategoryPill categoryName={u.category} categories={categories} /></div>
       <div style={{ flex: 1, color: theme.textMuted, ...TYPE.caption }}>{u.dueDate}</div>
       <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: settled ? theme.success : theme.warning }}>{fmt(u.amount)}</div>
@@ -2378,7 +2426,8 @@ export default function App() {
         <div style={{ padding: "12px 20px 16px", borderTop: "1px solid " + theme.outerBorder, flexShrink: 0 }}>
           <div style={{ fontSize: 10, color: theme.outerTextMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>DATA</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <button style={s.dataLink} onClick={() => exportData(data)}>EXPORT</button>
+            <button style={s.dataLink} onClick={() => exportData(data)} title="Full backup, for restoring with Import">EXPORT</button>
+            <button style={s.dataLink} onClick={() => exportCsv(data)} title="Every entry as a spreadsheet">EXPORT CSV</button>
             <button style={s.dataLink} onClick={triggerImport}>IMPORT</button>
             <button style={s.dataLink} onClick={async () => { if (confirm("Reset all data?")) await save(hydrate(defaultData())); }}>RESET</button>
           </div>
@@ -2761,7 +2810,7 @@ export default function App() {
             const oneOffCredits = filteredCredits.filter((c) => c.dayOfMonth == null);
             const creditRow = (c, kind) => (
               <div key={c.id} style={s.tableRow}>
-                <div style={{ flex: 2, fontWeight: 600 }}>{c.name}</div>
+                <EntryName name={c.name} note={c.note} />
                 <div style={{ flex: 1.2 }}><CategoryPill categoryName={c.category || c.source} categories={data.creditCategories || []} fallback={CREDIT_UNCATEGORIZED} /></div>
                 {kind === "recurring"
                   ? <div style={{ flex: 1, textAlign: "center", color: theme.textMuted, fontSize: 13 }}>{c.dayOfMonth || "—"}</div>
@@ -2987,7 +3036,7 @@ export default function App() {
                       <TableHeader columns={[{ label: "NAME", flex: 2 }, { label: "SOURCE", flex: 1.2 }, { label: "DATE", flex: 1 }, { label: "AMOUNT", flex: 1, align: "right" }, { label: "", flex: 0.6, align: "center" }]} />
                       {(m.credits || []).map((c) => (
                         <div key={c.id} style={s.tableRow}>
-                          <div style={{ flex: 2, fontWeight: 600 }}>{c.name}</div>
+                          <EntryName name={c.name} note={c.note} />
                           <div style={{ flex: 1.2 }}><CategoryPill categoryName={c.category || c.source} categories={data.creditCategories || []} fallback={CREDIT_UNCATEGORIZED} /></div>
                           <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{c.date}</div>
                           <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#10b981" }}>+{fmt(c.amount)}</div>
@@ -3306,6 +3355,7 @@ export default function App() {
             { key: "amount", label: `Amount (${currencyCode()})`, type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
             { key: "category", label: "Category", type: "category", categories: data.categories, defaultValue: editing?.category },
             { key: "date", label: "Date", type: "date", defaultValue: editing?.date || `${targetKey}-01` },
+            NOTE_FIELD(editing),
           ]} onClose={() => setModal(null)} onSave={(v) => {
             const { categories, category } = ensureCategory(data.categories, v.category);
             if (editing) {
@@ -3317,13 +3367,13 @@ export default function App() {
                   [targetKey]: {
                     ...targetMonth,
                     expenses: targetMonth.expenses.map((x) => x.id === editing.id
-                      ? { ...x, name: v.name, amount: +v.amount, date: v.date, category: category.name }
+                      ? { ...x, name: v.name, amount: +v.amount, date: v.date, category: category.name, note: cleanNote(v.note) }
                       : x),
                   },
                 },
               });
             } else {
-              const newExp = { id: uid(), name: v.name, amount: +v.amount, date: v.date, category: category.name };
+              const newExp = { id: uid(), name: v.name, amount: +v.amount, date: v.date, category: category.name, note: cleanNote(v.note) };
               save({
                 ...data,
                 categories,
@@ -3349,6 +3399,7 @@ export default function App() {
             { key: "dayOfMonth", label: "Day of Month", type: "number", placeholder: "1", defaultValue: editing ? String(editing.dayOfMonth) : "" },
             { key: "autoPay", label: "Pays itself", type: "checkbox", defaultValue: editing?.autoPay,
               hint: "Direct debit or card on file. Never sends a reminder." },
+            NOTE_FIELD(editing),
           ]} onClose={() => setModal(null)} onSave={(v) => {
             const { categories, category } = ensureCategory(data.categories, v.category);
             if (editing) {
@@ -3359,6 +3410,7 @@ export default function App() {
                 dayOfMonth: +v.dayOfMonth || 1,
                 category: category.name,
                 autoPay: !!v.autoPay,
+                note: cleanNote(v.note),
               };
               save({
                 ...data,
@@ -3373,20 +3425,20 @@ export default function App() {
                 recurringTemplate: touchesTemplate
                   ? data.recurringTemplate.map((t) =>
                       t.id === editing.templateId
-                        ? { ...t, name: v.name, amount: +v.amount, dayOfMonth: +v.dayOfMonth || 1, category: category.name }
+                        ? { ...t, name: v.name, amount: +v.amount, dayOfMonth: +v.dayOfMonth || 1, category: category.name, autoPay: !!v.autoPay, note: cleanNote(v.note) }
                         : t
                     )
                   : data.recurringTemplate,
               });
             } else {
               const tid = uid();
-              const newItem = { id: uid(), templateId: tid, name: v.name, amount: +v.amount, dayOfMonth: +v.dayOfMonth || 1, category: category.name, autoPay: !!v.autoPay };
+              const newItem = { id: uid(), templateId: tid, name: v.name, amount: +v.amount, dayOfMonth: +v.dayOfMonth || 1, category: category.name, autoPay: !!v.autoPay, note: cleanNote(v.note) };
               save({
                 ...data,
                 categories,
                 months: { ...data.months, [targetKey]: { ...targetMonth, recurring: [...targetMonth.recurring, newItem] } },
                 recurringTemplate: touchesTemplate
-                  ? [...data.recurringTemplate, { id: tid, name: v.name, amount: +v.amount, dayOfMonth: +v.dayOfMonth || 1, category: category.name }]
+                  ? [...data.recurringTemplate, { id: tid, name: v.name, amount: +v.amount, dayOfMonth: +v.dayOfMonth || 1, category: category.name, autoPay: !!v.autoPay, note: cleanNote(v.note) }]
                   : data.recurringTemplate,
               });
             }
@@ -3406,6 +3458,7 @@ export default function App() {
             { key: "dueDate", label: "Due Date", type: "date", defaultValue: editing?.dueDate || `${targetKey}-01` },
             { key: "autoPay", label: "Pays itself", type: "checkbox", defaultValue: editing?.autoPay,
               hint: "Direct debit or card on file. Counts as paid on its due date and never sends a reminder." },
+            NOTE_FIELD(editing),
           ]} onClose={() => setModal(null)} onSave={(v) => {
             const { categories, category } = ensureCategory(data.categories, v.category);
             if (editing) {
@@ -3417,13 +3470,13 @@ export default function App() {
                   [targetKey]: {
                     ...targetMonth,
                     upcoming: targetMonth.upcoming.map((x) => x.id === editing.id
-                      ? { ...x, name: v.name, amount: +v.amount, dueDate: v.dueDate, category: category.name, autoPay: !!v.autoPay }
+                      ? { ...x, name: v.name, amount: +v.amount, dueDate: v.dueDate, category: category.name, autoPay: !!v.autoPay, note: cleanNote(v.note) }
                       : x),
                   },
                 },
               });
             } else {
-              const newItem = { id: uid(), name: v.name, amount: +v.amount, dueDate: v.dueDate, paid: false, autoPay: !!v.autoPay, category: category.name };
+              const newItem = { id: uid(), name: v.name, amount: +v.amount, dueDate: v.dueDate, paid: false, autoPay: !!v.autoPay, category: category.name, note: cleanNote(v.note) };
               save({
                 ...data,
                 categories,
@@ -3445,31 +3498,32 @@ export default function App() {
             { key: "amount", label: `Amount (${currencyCode()})`, type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
             { key: "category", label: "Source", type: "category", categories: data.creditCategories || [], defaultValue: editing?.category },
             { key: "dayOfMonth", label: "Day of Month", type: "number", placeholder: "1", defaultValue: editing ? String(editing.dayOfMonth) : "" },
+            NOTE_FIELD(editing),
           ]} onClose={() => setModal(null)} onSave={(v) => {
             const amt = +v.amount;
             if (!v.name || !(amt > 0)) { setModal(null); return; }
             const { categories: creditCategories, category } = ensureCreditCategory(data.creditCategories || [], v.category);
             const day = +v.dayOfMonth || 1;
             if (editing) {
-              const updated = { ...editing, name: v.name, amount: amt, dayOfMonth: day, category: category.name };
+              const updated = { ...editing, name: v.name, amount: amt, dayOfMonth: day, category: category.name, note: cleanNote(v.note) };
               save({
                 ...data,
                 creditCategories,
                 months: { ...data.months, [targetKey]: { ...targetMonth, credits: (targetMonth.credits || []).map((x) => x.id === editing.id ? updated : x) } },
                 creditTemplate: touchesTemplate
                   ? (data.creditTemplate || []).map((t) => t.id === editing.templateId
-                      ? { ...t, name: v.name, amount: amt, dayOfMonth: day, category: category.name } : t)
+                      ? { ...t, name: v.name, amount: amt, dayOfMonth: day, category: category.name, note: cleanNote(v.note) } : t)
                   : (data.creditTemplate || []),
               });
             } else {
               const tid = uid();
-              const newItem = { id: uid(), templateId: tid, name: v.name, amount: amt, dayOfMonth: day, category: category.name };
+              const newItem = { id: uid(), templateId: tid, name: v.name, amount: amt, dayOfMonth: day, category: category.name, note: cleanNote(v.note) };
               save({
                 ...data,
                 creditCategories,
                 months: { ...data.months, [targetKey]: { ...targetMonth, credits: [...(targetMonth.credits || []), newItem] } },
                 creditTemplate: touchesTemplate
-                  ? [...(data.creditTemplate || []), { id: tid, name: v.name, amount: amt, dayOfMonth: day, category: category.name }]
+                  ? [...(data.creditTemplate || []), { id: tid, name: v.name, amount: amt, dayOfMonth: day, category: category.name, note: cleanNote(v.note) }]
                   : (data.creditTemplate || []),
               });
             }
@@ -3487,15 +3541,16 @@ export default function App() {
             { key: "amount", label: `Amount (${currencyCode()})`, type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
             { key: "category", label: "Source", type: "category", categories: data.creditCategories || [], defaultValue: editing?.category || editing?.source },
             { key: "date", label: "Date", type: "date", defaultValue: editing?.date || `${targetKey}-01` },
+            NOTE_FIELD(editing),
           ]} onClose={() => setModal(null)} onSave={(v) => {
             const amt = +v.amount;
             if (!v.name || !(amt > 0)) { setModal(null); return; }
             const { categories: creditCategories, category } = ensureCreditCategory(data.creditCategories || [], v.category);
             const nextCredits = editing
               ? (targetMonth.credits || []).map((x) => x.id === editing.id
-                  ? { ...x, name: v.name, amount: amt, date: v.date, category: category.name }
+                  ? { ...x, name: v.name, amount: amt, date: v.date, category: category.name, note: cleanNote(v.note) }
                   : x)
-              : [...(targetMonth.credits || []), { id: uid(), name: v.name, amount: amt, date: v.date, category: category.name }];
+              : [...(targetMonth.credits || []), { id: uid(), name: v.name, amount: amt, date: v.date, category: category.name, note: cleanNote(v.note) }];
             save({
               ...data,
               creditCategories,

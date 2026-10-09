@@ -1,5 +1,41 @@
 # Changelog
 
+## Unreleased
+
+### Your currency and number format
+Currency and number formatting are settings now, and separate ones — someone in
+Poland holding euros still wants `1 234,56`. Existing budgets keep exactly the
+PLN formatting they had.
+
+### Your data lives in a real file
+The desktop app keeps your budget in a file on your machine instead of browser
+storage, which the operating system can clear. Backups are taken daily and before
+any import or restore; the newest 14 are kept and can be restored from Settings.
+
+### Manage categories
+Rename, merge, recolour or delete spending categories and income sources. Fixing a
+typo is now a rename — renaming onto an existing category merges the two.
+
+### Notes on entries
+Any expense, bill, payment or credit can carry a note. Search finds entries by
+their note and category as well as their name.
+
+### Export to CSV
+Every entry across every period as a spreadsheet, with spending negative so a SUM
+gives your net. The file uses `;` and decimal commas where your number format
+does, so it opens correctly in Excel set to Polish or German.
+
+### Fixes
+- A recurring bill marked **Pays itself** lost the flag when the next month began,
+  and started sending reminders again
+- Exported files were dated in UTC, so an export just after midnight carried
+  yesterday's date
+
+### Licence
+Budget Ctrl is now MIT licensed.
+
+---
+
 ## 0.4.2
 
 Reminder fixes, and a bug that stopped recurring payments appearing in a new
