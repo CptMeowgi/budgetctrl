@@ -185,8 +185,9 @@ import { renameCategory, deleteCategory, restyleCategory, countUsage, isFallback
 import { budgetToCsv } from "./lib/csv.js";
 import { FREQUENCIES, frequencyLabel, everyFromLabel, isOnCycle, nextOnCycle } from "./lib/schedule.js";
 import { decodeBytes, sniffDelimiter, parseCsv, findHeaderRow, guessMapping, toTransactions, analyzeImport, applyImport } from "./lib/importer.js";
-import { monthKey, currentMonthKey, monthLabel, periodKeyFor, currentPeriodKey, periodLabel, recurringDateInPeriod, isRecurringDue, isoDay } from "./lib/periods.js";
+import { monthKey, currentMonthKey, monthLabel, periodKeyFor, currentPeriodKey, periodLabel, recurringDateInPeriod, isoDay } from "./lib/periods.js";
 import { OVERDUE_GRACE_DAYS, upcomingSettled, collectDueBills, whenLabel } from "./lib/reminders.js";
+import { periodSpending, periodIncome, creditReceived, categoryAverage } from "./lib/totals.js";
 
 // ---- Apple design tokens -------------------------------------------------
 // Transcribed from the Apple DESIGN.md spec. Kept as tokens rather than inlined
@@ -638,20 +639,6 @@ function rebucketData(data, newCutoff) {
   return { ...data, months: out };
 }
 
-function spentByCategory(month, monthKey, today, cutoffDay) {
-  const totals = new Map();
-  const add = (name, amount) => {
-    const key = name || UNCATEGORIZED.name;
-    totals.set(key, (totals.get(key) || 0) + amount);
-  };
-  for (const e of (month.expenses || [])) add(e.category, e.amount);
-  for (const r of (month.recurring || [])) {
-    // Recurring only counts once its day has passed, matching the Remaining card.
-    if (!today || isRecurringDue(r, monthKey, today, cutoffDay)) add(r.category, r.amount);
-  }
-  return totals;
-}
-
 function toggleSort(sorts, col, shiftKey) {
   const arr = sorts || [];
   const idx = arr.findIndex((s) => s.col === col);
@@ -694,18 +681,6 @@ function filterAndSort(arr, view) {
     });
   }
   return out;
-}
-
-function categoryAverage(data, categoryName, excludeKey) {
-  const keys = Object.keys(data.months).filter((k) => k !== excludeKey);
-  if (keys.length === 0) return null;
-  let total = 0;
-  for (const k of keys) {
-    const m = data.months[k];
-    for (const e of (m.expenses || [])) if (e.category === categoryName) total += e.amount;
-    for (const r of (m.recurring || [])) if (r.category === categoryName) total += r.amount;
-  }
-  return total / keys.length;
 }
 
 function migrate(raw) {
@@ -777,42 +752,37 @@ function ensureCurrentMonth(data) {
   };
 }
 
-// The donut's view of spentByCategory: same totals, decorated and ranked. These
-// were two separate aggregations that had already drifted once - only one of
-// them bucketed uncategorised entries under the Uncategorized name.
-function categoryBreakdown(month, categories, monthKey, today, cutoffDay) {
-  const totals = spentByCategory(month, monthKey, today, cutoffDay);
-  return Array.from(totals.entries()).map(([name, value]) => {
+// A donut's view of periodSpending's byCategory: same totals, decorated and
+// ranked. Never aggregate separately - see lib/totals.js for what drifted.
+function categoryBreakdown(byCategory, categories) {
+  return Array.from(byCategory.entries()).map(([name, value]) => {
     const cat = categories.find((c) => c.name === name) || { color: "#9ca3af", icon: "·" };
     return { name, value, color: cat.color, icon: cat.icon };
   }).sort((a, b) => b.value - a.value);
 }
 
-function monthlyTotals(data) {
-  const today = new Date();
+function monthlyTotals(data, today) {
   const cutoffDay = data.cutoffDay || 1;
   return Object.keys(data.months).sort().map((key) => {
     const m = data.months[key];
-    const spentExpenses = (m.expenses || []).reduce((a, e) => a + e.amount, 0);
-    const spentRecurring = (m.recurring || [])
-      .filter((r) => isRecurringDue(r, key, today, cutoffDay))
-      .reduce((a, e) => a + e.amount, 0);
-    const credits = (m.credits || []).reduce((a, c) => a + c.amount, 0);
-    return { key, label: monthLabel(key).slice(0, 3), spent: spentExpenses + spentRecurring, income: (m.income || 0) + credits };
+    return {
+      key, label: monthLabel(key).slice(0, 3),
+      spent: periodSpending(m, key, today, cutoffDay).total,
+      income: periodIncome(m, key, today, cutoffDay).total,
+    };
   });
 }
 
-function cumulativeSavings(data) {
-  const cur = currentPeriodKey(data.cutoffDay || 1);
+function cumulativeSavings(data, today) {
+  const cutoffDay = data.cutoffDay || 1;
+  const cur = currentPeriodKey(cutoffDay);
   const keys = Object.keys(data.months).filter((k) => k < cur).sort();
   let total = data.startingBalance || 0;
   const series = [{ key: "start", label: "Start", balance: total, delta: 0, income: 0, spent: 0 }];
   for (const k of keys) {
     const m = data.months[k];
-    const income = (m.income || 0) + (m.credits || []).reduce((a, c) => a + c.amount, 0);
-    const spent = (m.expenses || []).reduce((a, e) => a + e.amount, 0)
-                + (m.recurring || []).reduce((a, r) => a + r.amount, 0)
-                + (m.upcoming || []).filter((u) => upcomingSettled(u)).reduce((a, u) => a + u.amount, 0);
+    const income = periodIncome(m, k, today, cutoffDay).total;
+    const spent = periodSpending(m, k, today, cutoffDay).total;
     const delta = income - spent;
     total += delta;
     series.push({ key: k, label: monthLabel(k).slice(0, 3), balance: total, delta, income, spent, editedAt: m.editedAt || null });
@@ -2472,24 +2442,19 @@ export default function App() {
   const curKey = currentPeriodKey(cutoffDay);
   const cur = data.months[curKey] || emptyMonth();
 
-  const totalExpenses = cur.expenses.reduce((a, e) => a + e.amount, 0);
+  // Every spending and income figure on screen comes from these two. Nothing
+  // below re-sums entries, or the cards and charts drift apart again.
+  const spending = periodSpending(cur, curKey, today, cutoffDay);
+  const income = periodIncome(cur, curKey, today, cutoffDay);
+  const totalExpenses = spending.expenses;
   const totalRecurringAll = cur.recurring.reduce((a, e) => a + e.amount, 0);
-  const totalRecurringPast = cur.recurring
-    .filter((r) => isRecurringDue(r, curKey, today, cutoffDay))
-    .reduce((a, e) => a + e.amount, 0);
-  const totalRecurringFuture = totalRecurringAll - totalRecurringPast;
+  const totalRecurringFuture = totalRecurringAll - spending.recurring;
   const totalUnpaidUpcoming = cur.upcoming.filter((u) => !upcomingSettled(u, today)).reduce((a, e) => a + e.amount, 0);
-  const totalPaidUpcoming = cur.upcoming.filter((u) => upcomingSettled(u, today)).reduce((a, e) => a + e.amount, 0);
-  const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-  const allCredits = cur.credits || [];
-  const creditReceived = (c) => c.dayOfMonth != null
-    ? isRecurringDue(c, curKey, today, cutoffDay)
-    : (c.date || "") <= todayISO;
-  const totalCredits = allCredits.filter(creditReceived).reduce((a, c) => a + c.amount, 0);
-  const totalCreditsPending = allCredits.filter((c) => !creditReceived(c)).reduce((a, c) => a + c.amount, 0);
-  const baseIncome = cur.income;
-  const effectiveIncome = baseIncome + totalCredits;
-  const totalActuallySpent = totalExpenses + totalRecurringPast + totalPaidUpcoming;
+  const isReceived = (c) => creditReceived(c, curKey, today, cutoffDay);
+  const totalCredits = income.credits;
+  const totalCreditsPending = income.pending;
+  const effectiveIncome = income.total;
+  const totalActuallySpent = spending.total;
   const totalStillScheduled = totalRecurringFuture + totalUnpaidUpcoming;
   const totalCommitted = totalActuallySpent;
   const availableAfterCommitted = Math.max(0, effectiveIncome - totalCommitted);
@@ -2516,11 +2481,11 @@ export default function App() {
   const dueBills = collectDueBills(data, today, reminderLeadDays, Infinity);
   const totalUpcoming = totalUnpaidUpcoming;
 
-  const catBreakdown = categoryBreakdown(cur, data.categories || [], curKey, today, cutoffDay);
-  const catTotal = catBreakdown.reduce((a, c) => a + c.value, 0);
-  const monthlyData = monthlyTotals(data);
-  const savings = cumulativeSavings(data);
-  const spentByCat = spentByCategory(cur, curKey, today, cutoffDay);
+  const catBreakdown = categoryBreakdown(spending.byCategory, data.categories || []);
+  const catTotal = spending.total;
+  const monthlyData = monthlyTotals(data, today);
+  const savings = cumulativeSavings(data, today);
+  const spentByCat = spending.byCategory;
   const onSortExpenses = (col, shift) =>
     setExpensesView((v) => ({ ...v, sorts: toggleSort(v.sorts || [], col, shift) }));
   const filteredExpenses = filterAndSort(cur.expenses, expensesView);
@@ -2789,7 +2754,7 @@ export default function App() {
                     <CategoryBudgets
                       categories={data.categories}
                       spent={spentByCat}
-                      average={(name) => categoryAverage(data, name, curKey)}
+                      average={(name) => categoryAverage(data, name, curKey, today)}
                       onSetCap={onSetCap}
                     />
                   </div>
@@ -3041,7 +3006,7 @@ export default function App() {
                 {kind === "recurring"
                   ? <div style={{ flex: 1, textAlign: "center", color: theme.textMuted, fontSize: 13 }}>{c.dayOfMonth || "—"}</div>
                   : <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{c.date}</div>}
-                <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: creditReceived(c) ? "#10b981" : theme.textMuted }}>+{fmt(c.amount)}</div>
+                <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: isReceived(c) ? "#10b981" : theme.textMuted }}>+{fmt(c.amount)}</div>
                 <RowActions
                   id={c.id}
                   onEdit={() => setModal({ type: kind === "recurring" ? "creditRecurring" : "credit", editId: c.id })}
@@ -3135,10 +3100,10 @@ export default function App() {
                   <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
                     {pastKeys.map((k) => {
                       const m = data.months[k];
-                      const credits = (m.credits || []).reduce((a, c) => a + c.amount, 0);
-                      const spent = m.expenses.reduce((a, e) => a + e.amount, 0) + m.recurring.reduce((a, e) => a + e.amount, 0);
-                      const effective = m.income + credits;
-                      const rem = effective - spent;
+                      const inc = periodIncome(m, k, today, cutoffDay);
+                      const credits = inc.credits;
+                      const spent = periodSpending(m, k, today, cutoffDay).total;
+                      const rem = inc.total - spent;
                       const color = rem >= 0 ? "#10b981" : "#ef4444";
                       return (
                         <button key={k} onClick={() => setHistoryKey(k)} style={{
@@ -3181,11 +3146,11 @@ export default function App() {
           {/* HISTORY - DETAIL */}
           {tab === "history" && historyKey !== null && (() => {
             const m = data.months[historyKey] || emptyMonth();
-            const spent = m.expenses.reduce((a, e) => a + e.amount, 0);
-            const rec = m.recurring.reduce((a, e) => a + e.amount, 0);
-            const credits = (m.credits || []).reduce((a, c) => a + c.amount, 0);
-            const effective = m.income + credits;
-            const rem = effective - spent - rec;
+            const spent = periodSpending(m, historyKey, today, cutoffDay).total;
+            const inc = periodIncome(m, historyKey, today, cutoffDay);
+            const credits = inc.credits;
+            const effective = inc.total;
+            const rem = effective - spent;
             return (
               <>
                 <button style={{ ...s.linkBtn, marginBottom: 16, fontSize: 14 }} onClick={() => setHistoryKey(null)}>← Back to History</button>
@@ -3202,8 +3167,8 @@ export default function App() {
                 </div>
                 <div style={s.statsRow}>
                   <StatCard label="Income" value={fmt(effective)} accent="#10b981" sub={credits > 0 ? `+${fmt(credits)} credits` : "For this month"} icon="↑" />
-                  <StatCard label="Remaining" value={fmt(rem)} accent={rem >= 0 ? "#10b981" : "#ef4444"} sub="After expenses & recurring" icon="↓" />
-                  <StatCard label="Total Spent" value={fmt(spent + rec)} accent="#ef4444" sub={`${m.expenses.length} one-off · ${m.recurring.length} recurring`} icon="↻" />
+                  <StatCard label="Remaining" value={fmt(rem)} accent={rem >= 0 ? "#10b981" : "#ef4444"} sub="After everything paid" icon="↓" />
+                  <StatCard label="Total Spent" value={fmt(spent)} accent="#ef4444" sub={`${m.expenses.length} one-off · ${m.recurring.length} recurring`} icon="↻" />
                 </div>
                 <div style={s.card}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -3288,35 +3253,20 @@ export default function App() {
             const monthsInYear = Object.entries(data.months)
               .filter(([k]) => k.startsWith(yearKey + "-"));
 
-            const totalIncomeY = monthsInYear.reduce((a, [, m]) => {
-              const cr = (m.credits || []).reduce((aa, c) => aa + c.amount, 0);
-              return a + (m.income || 0) + cr;
-            }, 0);
-            const totalSpentY = monthsInYear.reduce((a, [k, m]) => {
-              const exp = (m.expenses || []).reduce((aa, e) => aa + e.amount, 0);
-              const rec = (m.recurring || [])
-                .filter((r) => isRecurringDue(r, k, today, cutoffDay))
-                .reduce((aa, r) => aa + r.amount, 0);
-              return a + exp + rec;
-            }, 0);
+            const spendingOf = (k) => periodSpending(data.months[k], k, today, cutoffDay);
+            const incomeOf = (k) => periodIncome(data.months[k], k, today, cutoffDay);
+            const totalIncomeY = monthsInYear.reduce((a, [k]) => a + incomeOf(k).total, 0);
+            const totalSpentY = monthsInYear.reduce((a, [k]) => a + spendingOf(k).total, 0);
             const totalSavedY = totalIncomeY - totalSpentY;
             const monthsCount = monthsInYear.length;
             const avgMonthlySpend = monthsCount > 0 ? totalSpentY / monthsCount : 0;
 
             const yearCatTotals = new Map();
-            for (const [k, m] of monthsInYear) {
-              for (const e of (m.expenses || [])) yearCatTotals.set(e.category, (yearCatTotals.get(e.category) || 0) + e.amount);
-              for (const r of (m.recurring || [])) {
-                if (isRecurringDue(r, k, today, cutoffDay)) {
-                  yearCatTotals.set(r.category, (yearCatTotals.get(r.category) || 0) + r.amount);
-                }
-              }
+            for (const [k] of monthsInYear) {
+              for (const [name, v] of spendingOf(k).byCategory) yearCatTotals.set(name, (yearCatTotals.get(name) || 0) + v);
             }
-            const yearCatBreakdown = Array.from(yearCatTotals.entries()).map(([name, value]) => {
-              const cat = (data.categories || []).find((c) => c.name === name) || { color: "#9ca3af", icon: "·" };
-              return { name, value, color: cat.color, icon: cat.icon };
-            }).sort((a, b) => b.value - a.value);
-            const yearCatTotal = yearCatBreakdown.reduce((a, c) => a + c.value, 0);
+            const yearCatBreakdown = categoryBreakdown(yearCatTotals, data.categories || []);
+            const yearCatTotal = totalSpentY;
 
             // Navigation steps between years that actually hold data, rather than
             // +/- 1 calendar year. Stepping into an empty year showed a page of
@@ -3333,21 +3283,14 @@ export default function App() {
             const monthBars = Array.from({ length: 12 }, (_, i) => {
               const k = `${yearKey}-${String(i + 1).padStart(2, "0")}`;
               const label = new Date(2000, i, 1).toLocaleDateString("en-US", { month: "short" });
-              const m = data.months[k];
-              if (!m) return { key: k, label, spent: 0, income: 0 };
-              const exp = (m.expenses || []).reduce((a, e) => a + e.amount, 0);
-              const rec = (m.recurring || []).filter((r) => isRecurringDue(r, k, today, cutoffDay)).reduce((a, r) => a + r.amount, 0);
-              const cr = (m.credits || []).reduce((a, c) => a + c.amount, 0);
-              return { key: k, label, spent: exp + rec, income: (m.income || 0) + cr };
+              if (!data.months[k]) return { key: k, label, spent: 0, income: 0 };
+              return { key: k, label, spent: spendingOf(k).total, income: incomeOf(k).total };
             });
 
             // Year-over-year comparison
             const prevMonths = Object.entries(data.months).filter(([k]) => k.startsWith(compareYear + "-"));
-            const prevIncomeY = prevMonths.reduce((a, [, m]) =>
-              a + (m.income || 0) + (m.credits || []).reduce((x, c) => x + c.amount, 0), 0);
-            const prevSpentY = prevMonths.reduce((a, [k, m]) =>
-              a + (m.expenses || []).reduce((x, e) => x + e.amount, 0)
-                + (m.recurring || []).filter((r) => isRecurringDue(r, k, today, cutoffDay)).reduce((x, r) => x + r.amount, 0), 0);
+            const prevIncomeY = prevMonths.reduce((a, [k]) => a + incomeOf(k).total, 0);
+            const prevSpentY = prevMonths.reduce((a, [k]) => a + spendingOf(k).total, 0);
             const yoySub = (curr, prev) => {
               if (!(prev > 0)) return null;
               const d = ((curr - prev) / prev) * 100;
@@ -3363,9 +3306,10 @@ export default function App() {
             // Income sources
             const incomeSources = new Map();
             let baseIncomeY = 0;
-            for (const [, m] of monthsInYear) {
+            for (const [k, m] of monthsInYear) {
               baseIncomeY += (m.income || 0);
               for (const c of (m.credits || [])) {
+                if (!creditReceived(c, k, today, cutoffDay)) continue;
                 const name = c.category || c.source || "Other";
                 incomeSources.set(name, (incomeSources.get(name) || 0) + c.amount);
               }

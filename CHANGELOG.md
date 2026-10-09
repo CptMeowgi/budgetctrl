@@ -66,6 +66,11 @@ The full list is in Settings.
   and started sending reminders again
 - Exported files were dated in UTC, so an export just after midnight carried
   yesterday's date
+- A paid Upcoming payment counted toward Total Spent but not toward its
+  category, so a category could read untouched while actually over budget. The
+  category chart, category budgets, History and the Year tab all left paid
+  payments out; History also counted bills that weren't due yet. Every screen
+  now uses one definition of what's been spent and received
 
 ### Licence
 Budget Ctrl is now MIT licensed.
