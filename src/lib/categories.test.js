@@ -87,6 +87,15 @@ describe("renameCategory", () => {
     expect(out.categories.find((c) => c.name === "Fun").cap).toBe(1200);
   });
 
+  it("carries the budget's history and rollover along with the cap", () => {
+    const d = fixture();
+    d.categories = d.categories.map((c) => (c.name === "Food"
+      ? { ...c, capHistory: [{ from: "2026-01", cap: 1200 }], rollover: { from: "2026-05" } } : c));
+    const fun = renameCategory(d, "spend", "Food", "Fun").categories.find((c) => c.name === "Fun");
+    expect(fun.capHistory).toEqual([{ from: "2026-01", cap: 1200 }]);
+    expect(fun.rollover).toEqual({ from: "2026-05" });
+  });
+
   it("refuses to rename the fallback, an empty name, or a missing category", () => {
     expect(() => renameCategory(fixture(), "spend", "Uncategorized", "X")).toThrow();
     expect(() => renameCategory(fixture(), "spend", "Food", "   ")).toThrow();

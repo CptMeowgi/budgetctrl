@@ -77,6 +77,16 @@ year, the last 3, 6 or 12 months, or all time, and see:
 Averages and comparisons leave out the month still running; half a month always
 looks thrifty.
 
+### Category budgets that roll over
+Any category with a budget can now **roll over what's left into next month** —
+edit its budget and tick the box. Unspent budget carries forward; overspending
+carries too, as a deficit, the way an envelope of cash would. The budget bar
+shows what's available this month, with what carried in underneath. Counting
+starts the month you switch it on, and **Start fresh** clears the balance.
+
+Budgets now remember when they changed, so raising one this month doesn't
+rewrite what earlier months carried.
+
 ### Fixes
 - A recurring bill marked **Pays itself** lost the flag when the next month began,
   and started sending reminders again

@@ -32,6 +32,11 @@ never distort the category breakdown.
 its day has passed, and a one-off only once it's settled. What you see is money
 you still have, not money you will eventually have spent.
 
+**Category budgets that can roll over.** Give any category a monthly budget. Turn
+on rollover for the ones that work like an envelope — gifts, clothes, car
+repairs — and what's left carries into next month, while overspending carries
+as a deficit. Changing a budget never rewrites what earlier months carried.
+
 **Savings with a target.** Set an amount to put aside each period and a total
 you're saving up to. The app tracks cumulative savings across closed periods and
 estimates how long the target will take at your recent pace.

@@ -188,6 +188,7 @@ import { decodeBytes, sniffDelimiter, parseCsv, findHeaderRow, guessMapping, toT
 import { monthKey, currentMonthKey, monthLabel, periodKeyFor, currentPeriodKey, periodLabel, recurringDateInPeriod, isoDay } from "./lib/periods.js";
 import { OVERDUE_GRACE_DAYS, upcomingSettled, collectDueBills, whenLabel } from "./lib/reminders.js";
 import { periodSpending, periodIncome, creditReceived, categoryAverage } from "./lib/totals.js";
+import { envelope, withCap, withRollover, startFresh } from "./lib/envelopes.js";
 import { rangeOptions, rangeKeys, comparisonFor, buildReport, categoryChanges, percentChange, reportToCsv, periodNoun, BASE_INCOME_NAME } from "./lib/reports.js";
 
 // ---- Apple design tokens -------------------------------------------------
@@ -2433,18 +2434,20 @@ function SavingsChart({ series }) {
   );
 }
 
-function CategoryBudgets({ categories, spent, average, onSetCap }) {
+function CategoryBudgets({ categories, spent, average, envelopeOf, onSetBudget, onStartFresh }) {
   const { theme, s } = useThemed();
   const [editing, setEditing] = useState(null);
   const [draftCap, setDraftCap] = useState("");
+  const [draftRollover, setDraftRollover] = useState(false);
 
   const startEdit = (c) => {
     setEditing(c.name);
     setDraftCap(c.cap != null ? String(c.cap) : "");
+    setDraftRollover(!!c.rollover);
   };
   const commitEdit = () => {
     const n = parseFloat(String(draftCap).replace(",", "."));
-    onSetCap(editing, isFinite(n) && n > 0 ? n : null);
+    onSetBudget(editing, isFinite(n) && n > 0 ? n : null, draftRollover);
     setEditing(null);
   };
   const cancelEdit = () => setEditing(null);
@@ -2453,8 +2456,13 @@ function CategoryBudgets({ categories, spent, average, onSetCap }) {
     .filter((c) => c.name !== "Uncategorized")
     .map((c) => {
       const sp = spent.get(c.name) || 0;
-      const pct = c.cap ? (sp / c.cap) * 100 : null;
-      return { ...c, sp, pct };
+      // What this period can spend: the budget, plus or minus whatever rolled
+      // in. An envelope already empty on arrival is over budget at once.
+      const env = envelopeOf(c, sp);
+      const pct = env.available == null ? null
+        : env.available > 0 ? (sp / env.available) * 100
+        : (sp > 0 || env.available < 0 ? Infinity : 0);
+      return { ...c, sp, pct, env };
     })
     .sort((a, b) => {
       if (a.pct == null && b.pct == null) return a.name.localeCompare(b.name);
@@ -2486,17 +2494,18 @@ function CategoryBudgets({ categories, spent, average, onSetCap }) {
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 {!isEditing && (
                   <span style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontSize: 12, color: theme.textMuted }}>
-                    {fmt(r.sp)} / {r.cap != null ? fmt(r.cap) : "—"}
+                    {fmt(r.sp)} / {r.env.available != null ? fmt(r.env.available) : "—"}
                   </span>
                 )}
                 {!isEditing && (
-                  <button style={s.editBtn} onClick={() => startEdit(r)}>{r.cap != null ? "✎" : "+"}</button>
+                  <button style={s.editBtn} onClick={() => startEdit(r)}>{r.env.cap != null ? "✎" : "+"}</button>
                 )}
                 {isEditing && (
                   <>
                     <input type="text" inputMode="decimal" autoFocus
                       value={draftCap}
-                      placeholder="Cap"
+                      placeholder="Budget"
+                      aria-label={`Budget for ${r.name}`}
                       onChange={(e) => setDraftCap(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") cancelEdit(); }}
                       style={{ width: 80, ...s.input, padding: "6px 10px", fontSize: 12 }} />
@@ -2506,14 +2515,36 @@ function CategoryBudgets({ categories, spent, average, onSetCap }) {
                 )}
               </div>
             </div>
-            {r.cap != null && (
+            {isEditing && (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: SPACE.sm, margin: "2px 0 8px" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, ...TYPE.finePrint, color: theme.textMuted, cursor: "pointer" }}
+                  title="Unspent budget carries into next month. Overspending carries too, as a deficit.">
+                  <input type="checkbox" checked={draftRollover} onChange={(e) => setDraftRollover(e.target.checked)} />
+                  Roll over what's left into next month
+                </label>
+                {r.rollover && r.env.carry !== 0 && (
+                  <button style={{ ...s.linkBtn, ...TYPE.finePrint }} onClick={() => { onStartFresh(r.name); setEditing(null); }}
+                    title="Forget the carried balance and count from this month">Start fresh</button>
+                )}
+              </div>
+            )}
+            {r.env.available != null && (
               <div style={{ height: 6, background: theme.bg, borderRadius: 3, overflow: "hidden" }}>
                 <div style={{ width: `${Math.min(100, r.pct)}%`, height: "100%", background: barColor, transition: "width .3s" }} />
               </div>
             )}
-            {avg != null && (
-              <div style={{ fontSize: 11, color: theme.textFaint, marginTop: 4 }}>
-                avg of past months: {fmt(avg)}
+            {(r.rollover || avg != null) && (
+              <div style={{ fontSize: 11, color: theme.textFaint, marginTop: 4, fontVariantNumeric: "tabular-nums" }}>
+                {r.rollover && (
+                  <span title={`Budget ${fmt(r.env.cap)} this month, ${r.env.carry >= 0 ? "plus" : "less"} what carried over`}
+                    style={{ color: r.env.carry < 0 ? theme.danger : r.env.carry > 0 ? theme.accent : theme.textFaint }}>
+                    ↻ {r.env.carry > 0 ? `${fmt(r.env.carry)} carried in`
+                      : r.env.carry < 0 ? `${fmt(-r.env.carry)} overspent before`
+                      : "Rolls over"}
+                  </span>
+                )}
+                {r.rollover && avg != null && " · "}
+                {avg != null && `avg of past months: ${fmt(avg)}`}
               </div>
             )}
           </div>
@@ -2816,13 +2847,20 @@ export default function App() {
     save(ok ? { ...rebucketData(data, clamped), cutoffDay: clamped } : { ...data, cutoffDay: clamped });
   };
 
-  const onSetCap = (name, newCap) => {
+  // Budget and rollover change together, as one undo step. A budget change
+  // applies from this period on; earlier periods keep the budget they had.
+  const onSetBudget = (name, newCap, rollover) => {
     save({
       ...data,
-      categories: data.categories.map((c) => c.name === name
-        ? (newCap == null ? { ...c, cap: undefined } : { ...c, cap: newCap })
-        : c),
+      categories: data.categories.map((c) => {
+        if (c.name !== name) return c;
+        const capped = (c.cap ?? null) === newCap ? c : withCap(c, newCap, curKey);
+        return withRollover(capped, rollover, curKey);
+      }),
     });
+  };
+  const onStartFresh = (name) => {
+    save({ ...data, categories: data.categories.map((c) => (c.name === name ? startFresh(c, curKey) : c)) });
   };
 
   return (
@@ -3059,7 +3097,9 @@ export default function App() {
                       categories={data.categories}
                       spent={spentByCat}
                       average={(name) => categoryAverage(data, name, curKey, today)}
-                      onSetCap={onSetCap}
+                      envelopeOf={(c, sp) => envelope(data, c, curKey, today, sp)}
+                      onSetBudget={onSetBudget}
+                      onStartFresh={onStartFresh}
                     />
                   </div>
                 </div>

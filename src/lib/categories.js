@@ -69,8 +69,15 @@ export function countUsage(data, kind, name) {
 
 // Rename `from` to `to`. If `to` already names a different category, the two are
 // merged: `from` disappears, its entries move across, and the target keeps its
-// own colour and icon. A cap set only on the source survives the merge rather
-// than being silently dropped.
+// own colour and icon. A budget set only on the source survives the merge -
+// with its history and rollover setting - rather than being silently dropped.
+function adoptBudget(target, source) {
+  const out = { ...target, cap: source.cap };
+  if (source.capHistory) out.capHistory = source.capHistory;
+  if (source.rollover) out.rollover = source.rollover;
+  return out;
+}
+
 export function renameCategory(data, kind, from, to) {
   const k = kindOf(kind);
   const target = norm(to);
@@ -89,7 +96,7 @@ export function renameCategory(data, kind, from, to) {
     finalName = existing.name;
     nextList = list
       .filter((c) => c !== source)
-      .map((c) => (c === existing && c.cap == null && source.cap != null ? { ...c, cap: source.cap } : c));
+      .map((c) => (c === existing && c.cap == null && source.cap != null ? adoptBudget(c, source) : c));
   } else {
     finalName = target;
     nextList = list.map((c) => (c === source ? { ...c, name: target } : c));
