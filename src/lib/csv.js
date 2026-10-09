@@ -84,7 +84,7 @@ export function rowsToCsv(rows, { delimiter = ",", decimal = ".", bom = true } =
     formatAmount(r.amount, decimal), r.currency, r.status, guardText(r.note),
   ]));
   // CRLF is what the CSV spec and Excel both expect.
-  return (bom ? "﻿" : "") + [line(CSV_COLUMNS), ...body].join("\r\n") + "\r\n";
+  return (bom ? "\uFEFF" : "") + [line(CSV_COLUMNS), ...body].join("\r\n") + "\r\n";
 }
 
 export function budgetToCsv(data, { resolveRecurringDate, locale, currency, bom = true } = {}) {

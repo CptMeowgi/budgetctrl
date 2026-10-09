@@ -27,6 +27,20 @@ period are listed underneath with when they're next due.
 Any expense, bill, payment or credit can carry a note. Search finds entries by
 their note and category as well as their name.
 
+### Import bank statements
+Add transactions from your bank's CSV export instead of typing them in. Polish bank
+files work as they come — Windows-1250 encoding, `;` separators, decimal commas and
+the account summary above the table are all handled — and the columns are guessed
+for you to confirm.
+
+Nothing is counted twice. Before anything is added, each transaction is checked
+against what your budget already holds: a purchase you entered by hand, a standing
+order that's already a recurring bill, and your salary (already your income) are
+left unticked, and a payment that settles an Upcoming bill marks it paid instead.
+Every row shows why, and you can override any of them. Categories are suggested
+from how you've filed similar entries before. Importing an overlapping statement
+again adds nothing new. A backup is taken before every import.
+
 ### Export to CSV
 Every entry across every period as a spreadsheet, with spending negative so a SUM
 gives your net. The file uses `;` and decimal commas where your number format

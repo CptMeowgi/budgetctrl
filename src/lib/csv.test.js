@@ -90,8 +90,8 @@ describe("budgetToRows", () => {
 describe("rowsToCsv", () => {
   it("writes a header, CRLF line endings and a UTF-8 BOM", () => {
     const csv = rowsToCsv([]);
-    expect(csv.startsWith("﻿")).toBe(true);
-    expect(csv).toBe("﻿" + CSV_COLUMNS.join(",") + "\r\n");
+    expect(csv.startsWith("\uFEFF")).toBe(true);
+    expect(csv).toBe("\uFEFF" + CSV_COLUMNS.join(",") + "\r\n");
   });
 
   it("formats amounts with two decimals in the dialect's decimal mark", () => {
@@ -113,7 +113,7 @@ describe("rowsToCsv", () => {
 describe("budgetToCsv", () => {
   it("produces a Polish-Excel-friendly file for pl-PL", () => {
     const csv = budgetToCsv(fixture(), { resolveRecurringDate: resolve, locale: "pl-PL" });
-    const lines = csv.replace("﻿", "").trim().split("\r\n");
+    const lines = csv.replace("\uFEFF", "").trim().split("\r\n");
     expect(lines[0]).toBe(CSV_COLUMNS.join(";"));
     const groceries = lines.find((l) => l.includes("Groceries"));
     expect(groceries).toBe("2026-10;2026-10-05;Expense;Groceries;Food;-123,40;PLN;;weekly shop");
