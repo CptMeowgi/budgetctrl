@@ -183,6 +183,8 @@ import { useState, useEffect, useCallback, useRef, createContext, useContext, us
 import { PieChart, Pie, Cell, Tooltip as RTooltip, ResponsiveContainer, XAxis, YAxis, CartesianGrid, BarChart, Bar, AreaChart, Area } from "recharts";
 import { renameCategory, deleteCategory, restyleCategory, countUsage, isFallback } from "./lib/categories.js";
 import { budgetToCsv } from "./lib/csv.js";
+import { monthKey, currentMonthKey, monthLabel, periodKeyFor, currentPeriodKey, periodLabel, recurringDateInPeriod, isRecurringDue, isoDay } from "./lib/periods.js";
+import { OVERDUE_GRACE_DAYS, upcomingSettled, collectDueBills, whenLabel } from "./lib/reminders.js";
 
 // ---- Apple design tokens -------------------------------------------------
 // Transcribed from the Apple DESIGN.md spec. Kept as tokens rather than inlined
@@ -397,21 +399,6 @@ function currencyOptions() {
   });
 }
 
-function monthKey(date) {
-  const d = date instanceof Date ? date : new Date(date);
-  if (isNaN(d.getTime())) return null;
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function currentMonthKey() {
-  return monthKey(new Date());
-}
-
-function monthLabel(key) {
-  const [y, m] = key.split("-").map(Number);
-  return new Date(y, m - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
-}
-
 function emptyMonth() {
   return { income: 0, expenses: [], recurring: [], upcoming: [], credits: [] };
 }
@@ -615,66 +602,6 @@ function migrateReminders(data) {
       leadDays: (lead >= 0 && lead <= 30) ? lead : 3,
     },
   };
-}
-
-function daysInCalMonth(year, month1) {
-  return new Date(year, month1, 0).getDate();
-}
-
-// A budget period is keyed by the calendar month it STARTS in. With a cutoff of
-// 10, period "2026-09" runs 10 Sep - 9 Oct. Cutoff 1 collapses to calendar months.
-function periodKeyFor(date, cutoffDay) {
-  const d = date instanceof Date ? date : new Date(date);
-  if (isNaN(d.getTime())) return null;
-  let y = d.getFullYear();
-  let m = d.getMonth();
-  if (cutoffDay > 1 && d.getDate() < cutoffDay) {
-    m -= 1;
-    if (m < 0) { m = 11; y -= 1; }
-  }
-  return `${y}-${String(m + 1).padStart(2, "0")}`;
-}
-
-function currentPeriodKey(cutoffDay) {
-  return periodKeyFor(new Date(), cutoffDay || 1);
-}
-
-function periodRange(periodKey, cutoffDay) {
-  const [y, m] = periodKey.split("-").map(Number);
-  const cd = cutoffDay || 1;
-  const start = new Date(y, m - 1, Math.min(cd, daysInCalMonth(y, m)));
-  const nextY = m === 12 ? y + 1 : y;
-  const nextM = m === 12 ? 1 : m + 1;
-  const endExclusive = new Date(nextY, nextM - 1, Math.min(cd, daysInCalMonth(nextY, nextM)));
-  return { start, end: new Date(endExclusive.getTime() - 86400000) };
-}
-
-function periodLabel(periodKey, cutoffDay) {
-  const primary = monthLabel(periodKey);
-  if (!cutoffDay || cutoffDay <= 1) return { primary, range: null };
-  const { start, end } = periodRange(periodKey, cutoffDay);
-  const short = (d) => d.toLocaleDateString("en-US", { day: "numeric", month: "short" });
-  return { primary, range: `${short(start)} – ${short(end)}` };
-}
-
-// Resolves which actual date inside the period a given dayOfMonth lands on.
-// With cutoff 10 and period 2026-09: day 15 -> 15 Sep; day 5 -> 5 Oct.
-function recurringDateInPeriod(dayOfMonth, periodKey, cutoffDay) {
-  const { start, end } = periodRange(periodKey, cutoffDay);
-  const day = Number(dayOfMonth || 1);
-  const tryIn = (y, m1) => new Date(y, m1 - 1, Math.min(day, daysInCalMonth(y, m1)));
-  let c = tryIn(start.getFullYear(), start.getMonth() + 1);
-  if (c >= start && c <= end) return c;
-  c = tryIn(end.getFullYear(), end.getMonth() + 1);
-  if (c >= start && c <= end) return c;
-  return start;
-}
-
-function isRecurringDue(r, periodKey, today, cutoffDay) {
-  const { start, end } = periodRange(periodKey, cutoffDay || 1);
-  if (today > end) return true;
-  if (today < start) return false;
-  return today >= recurringDateInPeriod(r.dayOfMonth, periodKey, cutoffDay || 1);
 }
 
 function countRebucketMoves(data, newCutoff) {
@@ -1206,82 +1133,6 @@ const REMINDER_INTERVAL_MS = 30 * 60 * 1000;
 const REMINDER_STARTUP_DELAY_MS = 10 * 1000;
 // How long after a reminder a return to the app still counts as answering it.
 const REMINDER_OPEN_WINDOW_MS = 10 * 60 * 1000;
-// How far back a notification will chase an unpaid bill. It exists to stop a
-// forgotten entry nagging forever - NOT to hide it. The app itself passes
-// Infinity, because an unpaid bill is money owed however old it is, and
-// quietly dropping it is worse than repeating it.
-const OVERDUE_GRACE_DAYS = 30;
-
-// Local-calendar day. Never toISOString() here - that shifts to UTC and lands
-// on the wrong day for anyone east of Greenwich.
-function isoDay(d) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-// A payment is settled when it has been ticked off, or when it pays itself and
-// its due date has passed. Direct debits and card-on-file subscriptions leave
-// the account without anyone touching the app, so demanding a manual tick made
-// them look permanently overdue.
-function upcomingSettled(u, today) {
-  if (u.paid) return true;
-  if (!u.autoPay) return false;
-  const due = new Date(u.dueDate);
-  return !isNaN(due.getTime()) && startOfDay(due) <= startOfDay(today || new Date());
-}
-
-function startOfDay(d) {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
-}
-
-function daysBetween(from, to) {
-  return Math.round((startOfDay(to) - startOfDay(from)) / 86400000);
-}
-
-function collectDueBills(data, now, leadDays, graceDays = OVERDUE_GRACE_DAYS) {
-  const cutoffDay = data.cutoffDay || 1;
-  const key = periodKeyFor(now, cutoffDay);
-  const out = [];
-
-  for (const r of (data.months?.[key]?.recurring || [])) {
-    if (r.dayOfMonth == null) continue;
-    // A bill that pays itself needs no warning - that is the point of the flag.
-    if (r.autoPay) continue;
-    const due = recurringDateInPeriod(r.dayOfMonth, key, cutoffDay);
-    const inDays = daysBetween(now, due);
-    // Recurring items carry no paid flag - they count as spent once the day
-    // passes - so only the run-up to the date is worth announcing.
-    if (inDays >= 0 && inDays <= leadDays) {
-      out.push({ id: `r-${r.id}-${key}`, kind: "recurring", entryId: r.id, periodKey: key,
-                 name: r.name, amount: r.amount || 0, inDays, dueISO: isoDay(due) });
-    }
-  }
-
-  // Unpaid one-offs are scanned across every period, not just the current one:
-  // an item left unpaid last month stays filed under last month, and that is
-  // precisely the case most worth surfacing.
-  for (const [mk, m] of Object.entries(data.months || {})) {
-    for (const u of (m.upcoming || [])) {
-      if (u.paid || u.autoPay) continue;
-      const due = new Date(u.dueDate);
-      if (isNaN(due.getTime())) continue;
-      const inDays = daysBetween(now, due);
-      if (inDays <= leadDays && inDays >= -graceDays) {
-        out.push({ id: `u-${u.id}`, kind: "upcoming", entryId: u.id, periodKey: mk,
-                   name: u.name, amount: u.amount || 0, inDays, dueISO: isoDay(due) });
-      }
-    }
-  }
-
-  return out.sort((a, b) => a.inDays - b.inDays);
-}
-
-function whenLabel(inDays) {
-  if (inDays < 0) return `${-inDays}d overdue`;
-  if (inDays === 0) return "due today";
-  if (inDays === 1) return "due tomorrow";
-  return `due in ${inDays}d`;
-}
-
 function buildDigest(bills) {
   if (bills.length === 1) {
     const b = bills[0];
