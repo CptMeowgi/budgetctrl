@@ -37,6 +37,12 @@ on rollover for the ones that work like an envelope — gifts, clothes, car
 repairs — and what's left carries into next month, while overspending carries
 as a deficit. Changing a budget never rewrites what earlier months carried.
 
+**Accounts and net worth.** List your current account, savings, cash,
+investments, cards and loans, and type in each balance when you check it — one
+field and Enter. You get net worth, assets against debts, a net worth chart and
+the change over the last 30 days, with a nudge when a balance is over a month
+old.
+
 **Savings with a target.** Set an amount to put aside each period and a total
 you're saving up to. The app tracks cumulative savings across closed periods and
 estimates how long the target will take at your recent pace.
@@ -58,6 +64,7 @@ are marked, so a hand-adjusted figure never passes for a calculated one.
 | **History** | Any past period, fully editable |
 | **Reports** | Any year, the last 3/6/12 months or all time: each category month by month, what changed, top payees, biggest payments, CSV export |
 | **Savings** | Cumulative total, goal progress, period-by-period table |
+| **Accounts** | Balances of your accounts, cards and loans, net worth and how it moves |
 
 ---
 

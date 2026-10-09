@@ -54,7 +54,7 @@ new month starting, are never undone.
 
 | Key | Does |
 |---|---|
-| Ctrl+1 … 9 | Switch tab |
+| Ctrl+1 … 0 | Switch tab |
 | N | New entry on this tab |
 | / | Search this tab |
 | Esc | Close a dialog |
@@ -86,6 +86,20 @@ starts the month you switch it on, and **Start fresh** clears the balance.
 
 Budgets now remember when they changed, so raising one this month doesn't
 rewrite what earlier months carried.
+
+### Accounts and net worth
+A new **Accounts** tab. Add your current account, savings, cash, investments,
+credit cards and loans, and type in each balance when you check it — **Update**,
+the amount, Enter. Two updates on the same day correct each other rather than
+piling up.
+
+- **Net worth**, assets and debts, with the change over the last 30 days
+- **Net worth over time**, each account carrying its last balance forward
+- Each account's change since its previous balance, and its full history
+- A note when a balance hasn't been updated for over a month
+- **Close** an account to stop it counting without losing its history
+
+For a card or loan, enter what you owe as a positive number.
 
 ### Fixes
 - A recurring bill marked **Pays itself** lost the flag when the next month began,
