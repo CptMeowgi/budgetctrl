@@ -179,7 +179,7 @@ if (!window.storage) {
     },
   };
 }
-import { useState, useEffect, useCallback, useRef, createContext, useContext, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef, createContext, useContext, useMemo, Fragment } from "react";
 import { PieChart, Pie, Cell, Tooltip as RTooltip, ResponsiveContainer, XAxis, YAxis, CartesianGrid, BarChart, Bar, AreaChart, Area } from "recharts";
 import { renameCategory, deleteCategory, restyleCategory, countUsage, isFallback } from "./lib/categories.js";
 import { budgetToCsv } from "./lib/csv.js";
@@ -291,6 +291,8 @@ const DEFAULT_CREDIT_CATEGORIES = [
 const CREDIT_UNCATEGORIZED = { name: "Other", color: "#9ca3af", icon: "·" };
 
 const STORAGE_KEY = "budget-app-data";
+const UNDO_LIMIT = 50;
+
 // Which tabs offer an "+ Add" CTA, what it is called, and which modal it opens.
 // Previously three parallel inline ternaries in the header that had to be kept
 // in sync by hand.
@@ -820,6 +822,13 @@ function cumulativeSavings(data) {
 
 function Modal({ title, onClose, children, width }) {
   const { s } = useThemed();
+  // Escape closes, as every desktop dialog does. Inputs that use Escape for
+  // their own purpose (reverting an inline edit) stop propagation first.
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
   return (
     <div style={s.overlay} onClick={onClose}>
       <div style={{ ...s.modal, ...(width ? { maxWidth: width } : null) }} onClick={(e) => e.stopPropagation()}>
@@ -1363,7 +1372,7 @@ function CategoryRow({ cat, kind, data, onRename, onRestyle, onDelete }) {
             onBlur={commit}
             onKeyDown={(e) => {
               if (e.key === "Enter") e.currentTarget.blur();
-              if (e.key === "Escape") { setDraft(cat.name); e.currentTarget.blur(); }
+              if (e.key === "Escape") { e.stopPropagation(); setDraft(cat.name); e.currentTarget.blur(); }
             }}
             className="inline-edit"
             style={{ flex: 1, background: "transparent", borderRadius: RADIUS.sm, padding: `${SPACE.xxs}px ${SPACE.xs}px`,
@@ -1703,6 +1712,18 @@ function StatementImport({ data, onClose, onImport }) {
   );
 }
 
+function Toast({ message }) {
+  const { theme } = useThemed();
+  if (!message) return null;
+  return (
+    <div role="status" style={{
+      position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 200,
+      background: theme.text, color: theme.surface, borderRadius: RADIUS.pill, padding: "10px 18px",
+      ...TYPE.caption, fontWeight: 600, boxShadow: ELEVATION, pointerEvents: "none",
+    }}>{message}</div>
+  );
+}
+
 function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onChangeLocale, onRestore, onManageCategories }) {
   const { theme, s } = useThemed();
   const rem = data.reminders || { enabled: true, leadDays: 3 };
@@ -1777,6 +1798,21 @@ function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onC
       <SettingRow label="Categories" hint="Rename, merge, recolour or remove spending categories and income sources.">
         <button style={{ ...s.linkBtn, padding: 0 }} onClick={onManageCategories}>Manage…</button>
       </SettingRow>
+
+      <div style={divider} />
+      <div style={group}>Keyboard</div>
+      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", columnGap: SPACE.md, rowGap: 6, padding: `${SPACE.xs}px 0`, ...TYPE.caption }}>
+        {[
+          ["Ctrl+Z", "Undo"], ["Ctrl+Shift+Z / Ctrl+Y", "Redo"], ["Ctrl+1 … 9", "Switch tab"],
+          ["N", "New entry on this tab"], ["/", "Search this tab"], ["Esc", "Close a dialog"],
+        ].map(([k, v]) => (
+          <Fragment key={k}>
+            <kbd style={{ fontFamily: FONT, ...TYPE.finePrint, fontWeight: 600, color: theme.text, background: theme.bg,
+                          border: `1px solid ${theme.border}`, borderRadius: RADIUS.xs, padding: "3px 7px", justifySelf: "start" }}>{k}</kbd>
+            <span style={{ color: theme.textMuted, alignSelf: "center" }}>{v}</span>
+          </Fragment>
+        ))}
+      </div>
 
       <div style={divider} />
       <div style={group}>Reminders</div>
@@ -2215,6 +2251,13 @@ function CategoryBudgets({ categories, spent, average, onSetCap }) {
 
 export default function App() {
   const [data, setData] = useState(defaultData());
+  // Undo history. Snapshots are cheap: every update is immutable, so each one
+  // shares all unchanged structure with its predecessor.
+  const dataRef = useRef(data);
+  dataRef.current = data;
+  const historyRef = useRef({ past: [], future: [], lastPushAt: 0 });
+  const [historySize, setHistorySize] = useState({ past: 0, future: 0 });
+  const [toast, setToast] = useState(null);
   const [tab, setTab] = useState("dashboard");
   const [modal, setModal] = useState(null);
   const [loaded, setLoaded] = useState(false);
@@ -2267,7 +2310,23 @@ export default function App() {
     reader.readAsText(file);
   };
 
-  const save = useCallback(async (next) => {
+  // Every user change goes through here and becomes undoable. System writes -
+  // first-launch defaults, the period rollover - pass { undoable: false }, so
+  // Ctrl+Z can never undo something the user did not do.
+  const save = useCallback(async (next, opts = {}) => {
+    if (opts.undoable !== false) {
+      const h = historyRef.current;
+      const now = Date.now();
+      // Saves within a second coalesce into one step. Some inputs save on every
+      // keystroke; undo should step back over "8000", not over each digit.
+      if (now - h.lastPushAt > 1000 || !h.past.length) {
+        h.past.push(dataRef.current);
+        if (h.past.length > UNDO_LIMIT) h.past.shift();
+      }
+      h.lastPushAt = now;
+      h.future = [];
+      setHistorySize({ past: h.past.length, future: 0 });
+    }
     setData(next);
     try { await window.storage.set(STORAGE_KEY, JSON.stringify(next)); } catch { /* in-memory state still updated; surfaced on next load */ }
   }, []);
@@ -2286,7 +2345,7 @@ export default function App() {
         } else {
           // Persist immediately rather than holding defaults in memory, so the
           // data file exists from first launch instead of first edit.
-          await save(hydrate(defaultData()));
+          await save(hydrate(defaultData()), { undoable: false });
         }
       } catch { /* Tauri API unavailable (browser dev server) */ }
       setLoaded(true);
@@ -2345,11 +2404,61 @@ export default function App() {
   useEffect(() => {
     if (!loaded) return;
     const rolled = ensureCurrentMonth(data);
-    if (rolled !== data) save(rolled);
+    if (rolled !== data) save(rolled, { undoable: false });
   }, [loaded, todayKey, data, save]);
 
   const openDueSoon = useCallback(() => setTab("duesoon"), []);
   useReminders(data, loaded, setTodayKey, openDueSoon);
+
+  useEffect(() => {
+    if (!toast) return;
+    const id = setTimeout(() => setToast(null), 2200);
+    return () => clearTimeout(id);
+  }, [toast]);
+
+  const restore = useCallback(async (from, to, label) => {
+    const h = historyRef.current;
+    if (!h[from].length) { setToast(`Nothing to ${label.toLowerCase()}`); return; }
+    const target = h[from].pop();
+    h[to].push(dataRef.current);
+    h.lastPushAt = 0; // the next edit starts a fresh undo step
+    setHistorySize({ past: h.past.length, future: h.future.length });
+    setData(target);
+    try { await window.storage.set(STORAGE_KEY, JSON.stringify(target)); } catch { /* in-memory state still updated */ }
+    setToast(label === "Undo" ? "Undone" : "Redone");
+  }, []);
+  const undo = useCallback(() => restore("past", "future", "Undo"), [restore]);
+  const redo = useCallback(() => restore("future", "past", "Redo"), [restore]);
+
+  // Desktop shortcuts. Ctrl/Cmd+Z, Shift+Ctrl+Z or Ctrl+Y, Ctrl+1-9 for tabs;
+  // N for a new entry and / for search when not typing. Nothing fires behind an
+  // open dialog, and undo leaves text fields alone so their own undo works.
+  useEffect(() => {
+    const onKey = (e) => {
+      const el = e.target;
+      const tag = (el?.tagName || "").toLowerCase();
+      const typing = tag === "input" || tag === "textarea" || tag === "select" || el?.isContentEditable;
+      const dialogOpen = !!modal || settingsOpen || categoriesOpen || statementOpen;
+      const mod = e.ctrlKey || e.metaKey;
+      const key = e.key.toLowerCase();
+      if (dialogOpen) return;
+      if (mod && key === "z" && !typing) { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
+      if (mod && key === "y" && !typing) { e.preventDefault(); redo(); return; }
+      if (mod && /^[1-9]$/.test(e.key)) {
+        const target = TABS[Number(e.key) - 1];
+        if (target) { e.preventDefault(); setTab(target.id); if (target.id !== "history") setHistoryKey(null); }
+        return;
+      }
+      if (typing || mod || e.altKey) return;
+      if (key === "n" && ADD_LABELS[tab]) { e.preventDefault(); setModal({ type: MODAL_FOR_TAB[tab] || tab }); return; }
+      if (key === "/") {
+        const search = document.querySelector('main input[placeholder^="Search"]');
+        if (search) { e.preventDefault(); search.focus(); }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [modal, settingsOpen, categoriesOpen, statementOpen, tab, undo, redo]);
 
   // Derived from todayKey rather than recomputed per render: stable within a
   // day, and guaranteed to refresh when the tick above crosses midnight. Local
@@ -2563,6 +2672,13 @@ export default function App() {
                 + Add {ADD_LABELS[tab]}
               </button>
             )}
+            <button
+              className="icon-btn"
+              style={{ ...s.themeToggle, opacity: historySize.past ? 1 : 0.35, cursor: historySize.past ? "pointer" : "default" }}
+              disabled={!historySize.past}
+              onClick={undo}
+              title="Undo (Ctrl+Z)"
+            >↶</button>
             <button
               className="icon-btn"
               style={s.themeToggle}
@@ -3724,6 +3840,8 @@ export default function App() {
           }} />
         );
       })()}
+
+      <Toast message={toast} />
 
       {statementOpen && (
         <StatementImport data={data} onClose={() => setStatementOpen(false)}

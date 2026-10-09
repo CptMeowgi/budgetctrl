@@ -46,6 +46,21 @@ Every entry across every period as a spreadsheet, with spending negative so a SU
 gives your net. The file uses `;` and decimal commas where your number format
 does, so it opens correctly in Excel set to Polish or German.
 
+### Undo, and keyboard shortcuts
+Every change can be undone — deletes, edits, an import, even a reset — with
+**Ctrl+Z** or the ↶ button, and redone with **Ctrl+Shift+Z** or **Ctrl+Y**. Typing a
+figure counts as one step, not one per digit. Things you didn't do yourself, like a
+new month starting, are never undone.
+
+| Key | Does |
+|---|---|
+| Ctrl+1 … 9 | Switch tab |
+| N | New entry on this tab |
+| / | Search this tab |
+| Esc | Close a dialog |
+
+The full list is in Settings.
+
 ### Fixes
 - A recurring bill marked **Pays itself** lost the flag when the next month began,
   and started sending reminders again
