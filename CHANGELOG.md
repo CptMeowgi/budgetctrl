@@ -16,6 +16,13 @@ any import or restore; the newest 14 are kept and can be restored from Settings.
 Rename, merge, recolour or delete spending categories and income sources. Fixing a
 typo is now a rename — renaming onto an existing category merges the two.
 
+### Yearly, quarterly and other repeating bills
+Recurring bills and credits can now repeat every 2, 3, 6 or 12 months, not just
+monthly — car insurance, annual subscriptions, a quarterly water bill, a yearly
+bonus. Each appears only in the periods it actually falls in, so it counts toward
+that month's totals and reminders and nowhere else. Bills that aren't due this
+period are listed underneath with when they're next due.
+
 ### Notes on entries
 Any expense, bill, payment or credit can carry a note. Search finds entries by
 their note and category as well as their name.

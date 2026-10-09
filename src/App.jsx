@@ -183,6 +183,7 @@ import { useState, useEffect, useCallback, useRef, createContext, useContext, us
 import { PieChart, Pie, Cell, Tooltip as RTooltip, ResponsiveContainer, XAxis, YAxis, CartesianGrid, BarChart, Bar, AreaChart, Area } from "recharts";
 import { renameCategory, deleteCategory, restyleCategory, countUsage, isFallback } from "./lib/categories.js";
 import { budgetToCsv } from "./lib/csv.js";
+import { FREQUENCIES, frequencyLabel, everyFromLabel, isOnCycle, nextOnCycle } from "./lib/schedule.js";
 import { monthKey, currentMonthKey, monthLabel, periodKeyFor, currentPeriodKey, periodLabel, recurringDateInPeriod, isRecurringDue, isoDay } from "./lib/periods.js";
 import { OVERDUE_GRACE_DAYS, upcomingSettled, collectDueBills, whenLabel } from "./lib/reminders.js";
 
@@ -763,9 +764,11 @@ function ensureCurrentMonth(data) {
       [cur]: {
         income: carriedIncome,
         expenses: [],
-        recurring: (data.recurringTemplate || []).map((r) => ({ ...r, id: uid(), templateId: r.id })),
+        // Only bills that fall in this period - a yearly bill is copied into one
+        // period in twelve. Items saved before frequencies existed are monthly.
+        recurring: (data.recurringTemplate || []).filter((r) => isOnCycle(r, cur)).map((r) => ({ ...r, id: uid(), templateId: r.id })),
         upcoming: [],
-        credits: (data.creditTemplate || []).map((c) => ({ ...c, id: uid(), templateId: c.id })),
+        credits: (data.creditTemplate || []).filter((c) => isOnCycle(c, cur)).map((c) => ({ ...c, id: uid(), templateId: c.id })),
       },
     },
   };
@@ -990,15 +993,46 @@ const ENTRY_COLUMNS = {
 // Name cell shared by every entry row: the name, any badge passed as children,
 // and the note on a second line. The note is clipped to one line so a long one
 // never changes row height; the full text is on hover.
-function EntryName({ name, note, strike, children }) {
+function EntryName({ name, note, strike, every, children }) {
   const { theme } = useThemed();
   return (
     <div style={{ flex: 2, minWidth: 0 }}>
-      <div style={{ fontWeight: 600, textDecoration: strike ? "line-through" : "none" }}>{name}{children}</div>
+      <div style={{ fontWeight: 600, textDecoration: strike ? "line-through" : "none" }}>
+        {name}
+        {(every || 1) > 1 && (
+          <span style={{ ...TYPE.microLegal, color: theme.textFaint, marginLeft: 6 }}>{frequencyLabel(every).toLowerCase()}</span>
+        )}
+        {children}
+      </div>
       {note && (
         <div title={note} style={{ ...TYPE.finePrint, lineHeight: 1.4, color: theme.textFaint, marginTop: 2,
                                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{note}</div>
       )}
+    </div>
+  );
+}
+
+// Recurring bills or credits that exist in the template but fall in a later
+// period. Without this they would vanish from view entirely between occurrences
+// - a yearly bill set up in October would be invisible until March.
+function NotDueThisPeriod({ items, curKey, cutoffDay, categories, fallback, positive, onEdit, onDelete }) {
+  const { theme, s } = useThemed();
+  if (!items.length) return null;
+  return (
+    <div style={{ marginTop: SPACE.lg }}>
+      <div style={{ ...s.cardTitle, marginBottom: SPACE.xxs }}>Not due this period</div>
+      {items.map((tpl) => (
+        <div key={tpl.id} style={{ ...s.tableRow, opacity: 0.8 }}>
+          <EntryName name={tpl.name} note={tpl.note} />
+          <div style={{ flex: 1.2 }}><CategoryPill categoryName={tpl.category} categories={categories} fallback={fallback} /></div>
+          <div style={{ flex: 1.5, color: theme.textMuted, ...TYPE.caption }}>
+            {frequencyLabel(tpl.every)} · next {periodLabel(nextOnCycle(tpl, curKey), cutoffDay).primary}
+          </div>
+          <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700,
+                        color: positive ? theme.success : theme.accent }}>{positive ? "+" : ""}{fmt(tpl.amount)}</div>
+          <RowActions id={`tpl-${tpl.id}`} onEdit={() => onEdit(tpl)} onDelete={() => onDelete(tpl)} />
+        </div>
+      ))}
     </div>
   );
 }
@@ -1023,7 +1057,7 @@ function RecurringRow({ entry: r, categories, onEdit, onDelete }) {
   const { theme, s } = useThemed();
   return (
     <div style={s.tableRow}>
-      <EntryName name={r.name} note={r.note}>
+      <EntryName name={r.name} note={r.note} every={r.every}>
         {r.autoPay && <span title="Pays itself" style={{ ...TYPE.microLegal, color: theme.textFaint, marginLeft: 6 }}>auto</span>}
       </EntryName>
       <div style={{ flex: 1.2 }}><CategoryPill categoryName={r.category} categories={categories} /></div>
@@ -2145,10 +2179,14 @@ export default function App() {
   const leftToSpend = Math.max(0, availableAfterCommitted - savingsTarget);
   const remaining = effectiveIncome - totalCommitted;
   const unpaidCount = cur.upcoming.filter((u) => !upcomingSettled(u, today)).length;
+  // Only bills due THIS period can be missing from it. Without the cycle check a
+  // yearly bill would be reported missing in the eleven periods it is not due.
   const missingRecurring = (data.recurringTemplate || []).filter(
-    (tpl) => !cur.recurring.some((r) => r.templateId === tpl.id));
+    (tpl) => isOnCycle(tpl, curKey) && !cur.recurring.some((r) => r.templateId === tpl.id));
   const missingCredits = (data.creditTemplate || []).filter(
-    (tpl) => !(cur.credits || []).some((c) => c.templateId === tpl.id));
+    (tpl) => isOnCycle(tpl, curKey) && !(cur.credits || []).some((c) => c.templateId === tpl.id));
+  const offCycleRecurring = (data.recurringTemplate || []).filter((tpl) => !isOnCycle(tpl, curKey));
+  const offCycleCredits = (data.creditTemplate || []).filter((tpl) => !isOnCycle(tpl, curKey));
   const reminderLeadDays = Number.isFinite(data.reminders?.leadDays) ? data.reminders.leadDays : 3;
   // Exactly what a reminder would fire for, so the notification and the screen
   // can never disagree about what is due.
@@ -2596,7 +2634,7 @@ export default function App() {
             <div style={s.card}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                 <div style={s.cardTitle}>Recurring Payments</div>
-                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066cc", fontSize: 16 }}>Monthly: {fmt(totalRecurringAll)}</div>
+                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066cc", fontSize: 16 }}>This period: {fmt(totalRecurringAll)}</div>
               </div>
               <MissingFromTemplate
                 missing={missingRecurring}
@@ -2610,7 +2648,7 @@ export default function App() {
                 onChange={(e) => setRecurringView((v) => ({ ...v, search: e.target.value }))}
                 style={s.searchInput}
               />
-              {filteredRecurring.length === 0 ? <div style={s.empty}>{recurringView.search ? `No recurring items match "${recurringView.search}".` : `No recurring payments set up. Click "+ Add Recurring" to create one.`}</div> : (
+              {filteredRecurring.length === 0 ? <div style={s.empty}>{recurringView.search ? `No recurring items match "${recurringView.search}".` : offCycleRecurring.length ? "Nothing recurring is due this period." : `No recurring payments set up. Click "+ Add Recurring" to create one.`}</div> : (
                 <>
                   <TableHeader columns={ENTRY_COLUMNS.recurring} sorts={recurringView.sorts} onSort={onSortRecurring} />
                   {filteredRecurring.map((r) => (
@@ -2624,6 +2662,9 @@ export default function App() {
                   ))}
                 </>
               )}
+              <NotDueThisPeriod items={offCycleRecurring} curKey={curKey} cutoffDay={cutoffDay} categories={data.categories}
+                onEdit={(tpl) => setModal({ type: "recurring", templateId: tpl.id })}
+                onDelete={(tpl) => save({ ...data, recurringTemplate: data.recurringTemplate.filter((x) => x.id !== tpl.id) })} />
             </div>
           )}
 
@@ -2661,7 +2702,7 @@ export default function App() {
             const oneOffCredits = filteredCredits.filter((c) => c.dayOfMonth == null);
             const creditRow = (c, kind) => (
               <div key={c.id} style={s.tableRow}>
-                <EntryName name={c.name} note={c.note} />
+                <EntryName name={c.name} note={c.note} every={c.every} />
                 <div style={{ flex: 1.2 }}><CategoryPill categoryName={c.category || c.source} categories={data.creditCategories || []} fallback={CREDIT_UNCATEGORIZED} /></div>
                 {kind === "recurring"
                   ? <div style={{ flex: 1, textAlign: "center", color: theme.textMuted, fontSize: 13 }}>{c.dayOfMonth || "—"}</div>
@@ -2721,6 +2762,10 @@ export default function App() {
                       {recurringCredits.map((c) => creditRow(c, "recurring"))}
                     </>
                   )}
+                  <NotDueThisPeriod items={offCycleCredits} curKey={curKey} cutoffDay={cutoffDay}
+                    categories={data.creditCategories || []} fallback={CREDIT_UNCATEGORIZED} positive
+                    onEdit={(tpl) => setModal({ type: "creditRecurring", templateId: tpl.id })}
+                    onDelete={(tpl) => save({ ...data, creditTemplate: (data.creditTemplate || []).filter((x) => x.id !== tpl.id) })} />
                 </div>
 
                 <div style={{ ...s.card, marginTop: 16 }}>
@@ -2887,7 +2932,7 @@ export default function App() {
                       <TableHeader columns={[{ label: "NAME", flex: 2 }, { label: "SOURCE", flex: 1.2 }, { label: "DATE", flex: 1 }, { label: "AMOUNT", flex: 1, align: "right" }, { label: "", flex: 0.6, align: "center" }]} />
                       {(m.credits || []).map((c) => (
                         <div key={c.id} style={s.tableRow}>
-                          <EntryName name={c.name} note={c.note} />
+                          <EntryName name={c.name} note={c.note} every={c.every} />
                           <div style={{ flex: 1.2 }}><CategoryPill categoryName={c.category || c.source} categories={data.creditCategories || []} fallback={CREDIT_UNCATEGORIZED} /></div>
                           <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{c.date}</div>
                           <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#10b981" }}>+{fmt(c.amount)}</div>
@@ -3242,55 +3287,75 @@ export default function App() {
         // the live template, which governs future months.
         const touchesTemplate = targetKey === curKey;
         const editing = modal.editId ? targetMonth.recurring.find((x) => x.id === modal.editId) : null;
+        // A bill not due this period has no instance here, only its template.
+        const editingTpl = modal.templateId ? (data.recurringTemplate || []).find((x) => x.id === modal.templateId) : null;
+        const tplOf = editing ? (data.recurringTemplate || []).find((x) => x.id === editing.templateId) : null;
+        const source = editingTpl || editing;
+        const sched = editingTpl || tplOf || editing || {};
         return (
-          <FormModal title={editing ? "Edit Recurring Payment" : "Add Recurring Payment"} fields={[
-            { key: "name", label: "Name", placeholder: "e.g. Rent", defaultValue: editing?.name },
-            { key: "amount", label: `Amount (${currencyCode()})`, type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
-            { key: "category", label: "Category", type: "category", categories: data.categories, defaultValue: editing?.category },
-            { key: "dayOfMonth", label: "Day of Month", type: "number", placeholder: "1", defaultValue: editing ? String(editing.dayOfMonth) : "" },
-            { key: "autoPay", label: "Pays itself", type: "checkbox", defaultValue: editing?.autoPay,
+          <FormModal title={source ? "Edit Recurring Payment" : "Add Recurring Payment"} fields={[
+            { key: "name", label: "Name", placeholder: "e.g. Rent", defaultValue: source?.name },
+            { key: "amount", label: `Amount (${currencyCode()})`, type: "number", placeholder: "0", defaultValue: source ? String(source.amount) : "" },
+            { key: "category", label: "Category", type: "category", categories: data.categories, defaultValue: source?.category },
+            { key: "dayOfMonth", label: "Day of Month", type: "number", placeholder: "1", defaultValue: source ? String(source.dayOfMonth) : "" },
+            // Frequency belongs to the template, so it is offered only where the
+            // template is being edited - not on a correction to a past period.
+            ...(touchesTemplate ? [
+              { key: "repeats", label: "Repeats", type: "select", options: FREQUENCIES.map((f) => f.label), defaultValue: frequencyLabel(sched.every) },
+              { key: "anchor", label: "First due in", type: "month", defaultValue: sched.anchor || targetKey },
+            ] : []),
+            { key: "autoPay", label: "Pays itself", type: "checkbox", defaultValue: source?.autoPay,
               hint: "Direct debit or card on file. Never sends a reminder." },
-            NOTE_FIELD(editing),
+            NOTE_FIELD(source),
           ]} onClose={() => setModal(null)} onSave={(v) => {
             const { categories, category } = ensureCategory(data.categories, v.category);
-            if (editing) {
-              const updatedItem = {
-                ...editing,
-                name: v.name,
-                amount: +v.amount,
-                dayOfMonth: +v.dayOfMonth || 1,
-                category: category.name,
-                autoPay: !!v.autoPay,
-                note: cleanNote(v.note),
-              };
+            const fields = { name: v.name, amount: +v.amount, dayOfMonth: +v.dayOfMonth || 1, category: category.name,
+                             autoPay: !!v.autoPay, note: cleanNote(v.note) };
+            const every = touchesTemplate ? everyFromLabel(v.repeats) : (sched.every || 1);
+            // Monthly items carry no schedule at all, exactly like items saved
+            // before frequencies existed.
+            const schedule = every > 1
+              ? { every, anchor: v.anchor || sched.anchor || targetKey }
+              : { every: undefined, anchor: undefined };
+            const dueNow = isOnCycle(schedule, curKey);
+
+            if (editingTpl) {
+              const tpl = { ...editingTpl, ...fields, ...schedule };
+              const has = cur.recurring.some((r) => r.templateId === tpl.id);
               save({
-                ...data,
-                categories,
-                months: {
-                  ...data.months,
-                  [targetKey]: {
-                    ...targetMonth,
-                    recurring: targetMonth.recurring.map((x) => x.id === editing.id ? updatedItem : x),
-                  },
-                },
+                ...data, categories,
+                recurringTemplate: data.recurringTemplate.map((x) => x.id === tpl.id ? tpl : x),
+                // Rescheduled into this period: give it an instance now, since the
+                // rollover that would have created one has already happened.
+                months: dueNow && !has
+                  ? { ...data.months, [curKey]: { ...cur, recurring: [...cur.recurring, { ...tpl, id: uid(), templateId: tpl.id }] } }
+                  : data.months,
+              });
+            } else if (editing) {
+              const updatedItem = { ...editing, ...fields, ...(touchesTemplate ? schedule : {}) };
+              // Rescheduled out of this period: this instance goes, the template stays.
+              const nextRecurring = touchesTemplate && !dueNow
+                ? targetMonth.recurring.filter((x) => x.id !== editing.id)
+                : targetMonth.recurring.map((x) => x.id === editing.id ? updatedItem : x);
+              save({
+                ...data, categories,
+                months: { ...data.months, [targetKey]: { ...targetMonth, recurring: nextRecurring } },
                 recurringTemplate: touchesTemplate
-                  ? data.recurringTemplate.map((t) =>
-                      t.id === editing.templateId
-                        ? { ...t, name: v.name, amount: +v.amount, dayOfMonth: +v.dayOfMonth || 1, category: category.name, autoPay: !!v.autoPay, note: cleanNote(v.note) }
-                        : t
-                    )
+                  ? data.recurringTemplate.map((x) => x.id === editing.templateId ? { ...x, ...fields, ...schedule } : x)
                   : data.recurringTemplate,
               });
             } else {
               const tid = uid();
-              const newItem = { id: uid(), templateId: tid, name: v.name, amount: +v.amount, dayOfMonth: +v.dayOfMonth || 1, category: category.name, autoPay: !!v.autoPay, note: cleanNote(v.note) };
+              const tpl = { id: tid, ...fields, ...(touchesTemplate ? schedule : {}) };
+              // A past-period add is a one-off correction with no template; a
+              // current-period add appears here only if it is due here.
+              const addHere = !touchesTemplate || dueNow;
               save({
-                ...data,
-                categories,
-                months: { ...data.months, [targetKey]: { ...targetMonth, recurring: [...targetMonth.recurring, newItem] } },
-                recurringTemplate: touchesTemplate
-                  ? [...data.recurringTemplate, { id: tid, name: v.name, amount: +v.amount, dayOfMonth: +v.dayOfMonth || 1, category: category.name, autoPay: !!v.autoPay, note: cleanNote(v.note) }]
-                  : data.recurringTemplate,
+                ...data, categories,
+                months: addHere
+                  ? { ...data.months, [targetKey]: { ...targetMonth, recurring: [...targetMonth.recurring, { ...tpl, id: uid(), templateId: tid }] } }
+                  : data.months,
+                recurringTemplate: touchesTemplate ? [...data.recurringTemplate, tpl] : data.recurringTemplate,
               });
             }
             setModal(null);
@@ -3343,39 +3408,69 @@ export default function App() {
         const targetMonth = data.months[targetKey] || emptyMonth();
         const touchesTemplate = targetKey === curKey;
         const editing = modal.editId ? (targetMonth.credits || []).find((x) => x.id === modal.editId) : null;
+        const editingTpl = modal.templateId ? (data.creditTemplate || []).find((x) => x.id === modal.templateId) : null;
+        const tplOf = editing ? (data.creditTemplate || []).find((x) => x.id === editing.templateId) : null;
+        const source = editingTpl || editing;
+        const sched = editingTpl || tplOf || editing || {};
         return (
-          <FormModal title={editing ? "Edit Recurring Credit" : "Add Recurring Credit"} fields={[
-            { key: "name", label: "Name", placeholder: "e.g. Allowance", defaultValue: editing?.name },
-            { key: "amount", label: `Amount (${currencyCode()})`, type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
-            { key: "category", label: "Source", type: "category", categories: data.creditCategories || [], defaultValue: editing?.category },
-            { key: "dayOfMonth", label: "Day of Month", type: "number", placeholder: "1", defaultValue: editing ? String(editing.dayOfMonth) : "" },
-            NOTE_FIELD(editing),
+          <FormModal title={source ? "Edit Recurring Credit" : "Add Recurring Credit"} fields={[
+            { key: "name", label: "Name", placeholder: "e.g. Allowance", defaultValue: source?.name },
+            { key: "amount", label: `Amount (${currencyCode()})`, type: "number", placeholder: "0", defaultValue: source ? String(source.amount) : "" },
+            { key: "category", label: "Source", type: "category", categories: data.creditCategories || [], defaultValue: source?.category },
+            { key: "dayOfMonth", label: "Day of Month", type: "number", placeholder: "1", defaultValue: source ? String(source.dayOfMonth) : "" },
+            // Frequency belongs to the template, so it is offered only where the
+            // template is being edited - not on a correction to a past period.
+            ...(touchesTemplate ? [
+              { key: "repeats", label: "Repeats", type: "select", options: FREQUENCIES.map((f) => f.label), defaultValue: frequencyLabel(sched.every) },
+              { key: "anchor", label: "First due in", type: "month", defaultValue: sched.anchor || targetKey },
+            ] : []),
+            NOTE_FIELD(source),
           ]} onClose={() => setModal(null)} onSave={(v) => {
             const amt = +v.amount;
             if (!v.name || !(amt > 0)) { setModal(null); return; }
             const { categories: creditCategories, category } = ensureCreditCategory(data.creditCategories || [], v.category);
-            const day = +v.dayOfMonth || 1;
-            if (editing) {
-              const updated = { ...editing, name: v.name, amount: amt, dayOfMonth: day, category: category.name, note: cleanNote(v.note) };
+            const fields = { name: v.name, amount: amt, dayOfMonth: +v.dayOfMonth || 1, category: category.name, note: cleanNote(v.note) };
+            const every = touchesTemplate ? everyFromLabel(v.repeats) : (sched.every || 1);
+            const schedule = every > 1
+              ? { every, anchor: v.anchor || sched.anchor || targetKey }
+              : { every: undefined, anchor: undefined };
+            const dueNow = isOnCycle(schedule, curKey);
+            const curCredits = cur.credits || [];
+            const tmpl = data.creditTemplate || [];
+
+            if (editingTpl) {
+              const tpl = { ...editingTpl, ...fields, ...schedule };
+              const has = curCredits.some((c) => c.templateId === tpl.id);
               save({
-                ...data,
-                creditCategories,
-                months: { ...data.months, [targetKey]: { ...targetMonth, credits: (targetMonth.credits || []).map((x) => x.id === editing.id ? updated : x) } },
+                ...data, creditCategories,
+                creditTemplate: tmpl.map((x) => x.id === tpl.id ? tpl : x),
+                months: dueNow && !has
+                  ? { ...data.months, [curKey]: { ...cur, credits: [...curCredits, { ...tpl, id: uid(), templateId: tpl.id }] } }
+                  : data.months,
+              });
+            } else if (editing) {
+              const updated = { ...editing, ...fields, ...(touchesTemplate ? schedule : {}) };
+              const credits = targetMonth.credits || [];
+              const nextCredits = touchesTemplate && !dueNow
+                ? credits.filter((x) => x.id !== editing.id)
+                : credits.map((x) => x.id === editing.id ? updated : x);
+              save({
+                ...data, creditCategories,
+                months: { ...data.months, [targetKey]: { ...targetMonth, credits: nextCredits } },
                 creditTemplate: touchesTemplate
-                  ? (data.creditTemplate || []).map((t) => t.id === editing.templateId
-                      ? { ...t, name: v.name, amount: amt, dayOfMonth: day, category: category.name, note: cleanNote(v.note) } : t)
-                  : (data.creditTemplate || []),
+                  ? tmpl.map((x) => x.id === editing.templateId ? { ...x, ...fields, ...schedule } : x)
+                  : tmpl,
               });
             } else {
               const tid = uid();
-              const newItem = { id: uid(), templateId: tid, name: v.name, amount: amt, dayOfMonth: day, category: category.name, note: cleanNote(v.note) };
+              const tpl = { id: tid, ...fields, ...(touchesTemplate ? schedule : {}) };
+              const addHere = !touchesTemplate || dueNow;
               save({
-                ...data,
-                creditCategories,
-                months: { ...data.months, [targetKey]: { ...targetMonth, credits: [...(targetMonth.credits || []), newItem] } },
-                creditTemplate: touchesTemplate
-                  ? [...(data.creditTemplate || []), { id: tid, name: v.name, amount: amt, dayOfMonth: day, category: category.name, note: cleanNote(v.note) }]
-                  : (data.creditTemplate || []),
+                ...data, creditCategories,
+                months: addHere
+                  ? { ...data.months, [targetKey]: { ...targetMonth, credits: [...(targetMonth.credits || []), { ...tpl, id: uid(), templateId: tid }] } }
+                  : data.months,
+                creditTemplate: touchesTemplate ? [...tmpl, tpl] : tmpl,
               });
             }
             setModal(null);
