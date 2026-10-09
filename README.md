@@ -87,6 +87,7 @@ npm run tauri:dev
 | `npm run tauri:build` | Produces an installer in `src-tauri/target/release/bundle/msi/` |
 | `npm run build` | Builds the web assets only |
 | `npm run lint` | ESLint |
+| `npm test` | Unit tests (Vitest) for the logic in `src/lib/` |
 
 Notifications need the installed app. Windows attributes a toast through a Start
 Menu shortcut that only the installer creates, so they may not appear under
