@@ -193,6 +193,7 @@ import { monthKey, currentMonthKey, monthLabel, periodKeyFor, currentPeriodKey, 
 import { OVERDUE_GRACE_DAYS, upcomingSettled, collectDueBills, whenLabel } from "./lib/reminders.js";
 import { periodSpending, periodIncome, creditReceived, categoryAverage } from "./lib/totals.js";
 import { envelope, withCap, withRollover, startFresh } from "./lib/envelopes.js";
+import { dueForCheck, progressPercent, describeUpdateError, agoLabel, notesToLines } from "./lib/updates.js";
 import { rangeOptions, rangeKeys, comparisonFor, buildReport, categoryChanges, percentChange, reportToCsv, periodNoun, BASE_INCOME_NAME } from "./lib/reports.js";
 
 // ---- Apple design tokens -------------------------------------------------
@@ -1206,6 +1207,166 @@ function writeSentMarker(v) {
   try { localStorage.setItem(REMINDER_SENT_KEY, JSON.stringify(v)); } catch { /* private mode or quota: a repeated reminder beats a crash */ }
 }
 
+const UPDATE_CHECK_KEY = "budget-ctrl-last-update-check";
+
+// Looks for a newer release on GitHub - shortly after launch, then at most once
+// a day while the app sits in the tray - and installs it only when asked. The
+// updater refuses anything not signed with the project's key.
+function useUpdater(autoCheck, loaded) {
+  const [status, setStatus] = useState({ phase: "idle" });
+  const [update, setUpdate] = useState(null);
+  const [dismissed, setDismissed] = useState(false);
+  const [version, setVersion] = useState("");
+  const [lastChecked, setLastChecked] = useState(() => {
+    try { return Number(localStorage.getItem(UPDATE_CHECK_KEY)) || null; } catch { return null; }
+  });
+  const updateRef = useRef(null);
+  updateRef.current = update;
+
+  useEffect(() => {
+    if (!isTauri) return;
+    let alive = true;
+    import("@tauri-apps/api/app")
+      .then((m) => m.getVersion())
+      .then((v) => { if (alive) setVersion(v); })
+      .catch(() => { /* version is cosmetic */ });
+    return () => { alive = false; };
+  }, []);
+
+  const check = useCallback(async ({ quiet = false } = {}) => {
+    if (!isTauri) return;
+    setStatus({ phase: "checking" });
+    try {
+      const { check: findUpdate } = await import("@tauri-apps/plugin-updater");
+      const found = await findUpdate();
+      const at = Date.now();
+      try { localStorage.setItem(UPDATE_CHECK_KEY, String(at)); } catch { /* unavailable */ }
+      setLastChecked(at);
+      if (found) {
+        setUpdate(found);
+        setDismissed(false);
+        setStatus({ phase: "available" });
+      } else {
+        setStatus({ phase: "current" });
+      }
+    } catch (err) {
+      // An automatic check that fails stays silent - being offline is not news -
+      // and is retried on the next hourly tick.
+      setStatus(quiet ? { phase: "idle" } : { phase: "error", message: describeUpdateError(err) });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isTauri || !loaded || !autoCheck) return;
+    const tick = () => {
+      if (updateRef.current) return;
+      let last = null;
+      try { last = Number(localStorage.getItem(UPDATE_CHECK_KEY)) || null; } catch { /* unavailable */ }
+      if (dueForCheck(last, Date.now())) check({ quiet: true });
+    };
+    // Not at the very moment of launch: starting up at login is busy enough.
+    const first = setTimeout(tick, 15000);
+    const hourly = setInterval(tick, 60 * 60 * 1000);
+    return () => { clearTimeout(first); clearInterval(hourly); };
+  }, [loaded, autoCheck, check]);
+
+  const install = useCallback(async (beforeInstall) => {
+    const found = updateRef.current;
+    if (!found) return;
+    setStatus({ phase: "downloading", percent: null });
+    try {
+      // Updates never touch the budget file, but a snapshot first is cheap.
+      try { await beforeInstall?.(found.version); } catch { /* never block an update on it */ }
+      let downloaded = 0;
+      let total = null;
+      let shown = -1;
+      await found.downloadAndInstall((ev) => {
+        if (ev.event === "Started") total = ev.data.contentLength ?? null;
+        else if (ev.event === "Progress") {
+          downloaded += ev.data.chunkLength;
+          const pct = progressPercent(downloaded, total);
+          if (pct !== shown) { shown = pct; setStatus({ phase: "downloading", percent: pct }); }
+        } else if (ev.event === "Finished") setStatus({ phase: "installing" });
+      });
+      // On Windows the installer closes the app and starts the new version
+      // itself; this restart is for when it has not.
+      const { relaunch } = await import("@tauri-apps/plugin-process");
+      await relaunch();
+    } catch (err) {
+      setStatus({ phase: "failed", message: describeUpdateError(err, "installing the update") });
+    }
+  }, []);
+
+  return {
+    supported: isTauri,
+    version,
+    status,
+    lastChecked,
+    update: update ? { version: update.version, notes: update.body || "" } : null,
+    dismissed,
+    dismiss: () => setDismissed(true),
+    check,
+    install,
+  };
+}
+
+function UpdateBanner({ updater, onInstall }) {
+  const { theme, s } = useThemed();
+  const [notesOpen, setNotesOpen] = useState(false);
+  const { status, update } = updater;
+  const busy = status.phase === "downloading" || status.phase === "installing";
+  if (!update || (updater.dismissed && !busy)) return null;
+  const notes = notesToLines(update.notes);
+  return (
+    <div role="status" style={{
+      ...TYPE.caption, background: `${theme.accent}12`, border: `1px solid ${theme.accent}40`,
+      borderRadius: RADIUS.md, padding: `${SPACE.sm}px ${SPACE.md}px`, marginBottom: SPACE.md,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: SPACE.md, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 220, color: theme.text }}>
+          {status.phase === "downloading"
+            ? `Downloading Budget Ctrl ${update.version}…${status.percent != null ? ` ${status.percent}%` : ""}`
+            : status.phase === "installing"
+              ? `Installing Budget Ctrl ${update.version}. It will restart by itself.`
+              : status.phase === "failed"
+                ? `Couldn't install the update. ${status.message}`
+                : <><strong>Budget Ctrl {update.version}</strong> is ready to install.</>}
+        </div>
+        {!busy && notes.length > 0 && (
+          <button style={s.linkBtn} onClick={() => setNotesOpen(!notesOpen)}>{notesOpen ? "Hide" : "What's new"}</button>
+        )}
+        {!busy && (
+          <button style={{ ...s.addBtn, padding: "7px 16px" }} onClick={onInstall}>
+            {status.phase === "failed" ? "Try again" : "Install and restart"}
+          </button>
+        )}
+        {!busy && <button style={s.linkBtn} onClick={updater.dismiss}>Later</button>}
+      </div>
+      {status.phase === "downloading" && (
+        <div style={{ height: 4, background: theme.border, borderRadius: 2, overflow: "hidden", marginTop: SPACE.sm }}>
+          <div style={{ height: "100%", width: `${status.percent ?? 100}%`, background: theme.accent,
+                        opacity: status.percent == null ? 0.4 : 1, transition: "width .2s" }} />
+        </div>
+      )}
+      {notesOpen && !busy && (
+        <div style={{ marginTop: SPACE.sm, maxHeight: 260, overflowY: "auto", paddingRight: SPACE.xs }}>
+          {notes.map((n, i) => (
+            <div key={i} style={{
+              ...TYPE.finePrint, lineHeight: 1.5,
+              color: n.kind === "heading" ? theme.text : theme.textMuted,
+              fontWeight: n.kind === "heading" ? 600 : 400,
+              marginTop: n.kind === "heading" && i > 0 ? SPACE.sm : 2,
+              paddingLeft: n.kind === "bullet" ? 14 : 0, textIndent: n.kind === "bullet" ? -10 : 0,
+            }}>
+              {n.kind === "bullet" ? "• " : ""}{n.text}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function useReminders(data, loaded, setTodayKey, onReminderOpened) {
   // Read through a ref so the interval is installed once instead of being torn
   // down and restarted on every keystroke that edits the budget.
@@ -1728,8 +1889,9 @@ function Toast({ message }) {
   );
 }
 
-function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onChangeLocale, onRestore, onManageCategories }) {
+function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onChangeLocale, onRestore, onManageCategories, updater, onChangeUpdates, onInstallUpdate }) {
   const { theme, s } = useThemed();
+  const [openedAt] = useState(() => Date.now());
   const rem = data.reminders || { enabled: true, leadDays: 3 };
   // null until the plugin answers; the real registry entry is the source of
   // truth, so this is never persisted into `data` where it could desync.
@@ -1875,6 +2037,36 @@ function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onC
               </select>
             )}
           </SettingRow>
+
+          <div style={divider} />
+          <div style={group}>Updates</div>
+          <SettingRow label="Check for updates automatically" hint="Once a day. Nothing installs until you say so.">
+            <Switch checked={data.updates?.auto !== false} onChange={(v) => onChangeUpdates({ ...(data.updates || {}), auto: v })} />
+          </SettingRow>
+          {(() => {
+            const { status, update, lastChecked } = updater;
+            const busy = status.phase === "downloading" || status.phase === "installing";
+            const hint = status.phase === "checking" ? "Checking…"
+              : status.phase === "current" ? "You're up to date."
+              : status.phase === "error" || status.phase === "failed" ? status.message
+              : status.phase === "downloading" ? `Downloading ${update?.version}…${status.percent != null ? ` ${status.percent}%` : ""}`
+              : status.phase === "installing" ? "Installing. Budget Ctrl will restart."
+              : update ? `Version ${update.version} is available.`
+              : lastChecked ? `Last checked ${agoLabel(lastChecked, openedAt)}.`
+              : "Not checked yet.";
+            return (
+              <SettingRow label={updater.version ? `Budget Ctrl ${updater.version}` : "Budget Ctrl"} hint={hint}>
+                {update && !busy ? (
+                  <button style={{ ...s.addBtn, padding: "7px 16px" }} onClick={onInstallUpdate}>Install {update.version}</button>
+                ) : (
+                  <button style={{ ...s.linkBtn, opacity: status.phase === "checking" || busy ? 0.5 : 1 }}
+                    disabled={status.phase === "checking" || busy} onClick={() => updater.check()}>
+                    Check now
+                  </button>
+                )}
+              </SettingRow>
+            );
+          })()}
 
           <div style={divider} />
           <div style={group}>Startup</div>
@@ -3022,6 +3214,20 @@ export default function App() {
 
   const openDueSoon = useCallback(() => setTab("duesoon"), []);
   useReminders(data, loaded, setTodayKey, openDueSoon);
+  const updater = useUpdater(data.updates?.auto !== false, loaded);
+
+  // "Start with Windows" is a login entry holding the app's path, and that path
+  // moves when the installer does (0.5.0 moved from a per-machine .msi to a
+  // per-user setup). Rewriting it at each launch keeps it pointing at this copy.
+  useEffect(() => {
+    if (!isTauri) return;
+    (async () => {
+      try {
+        const a = await import("@tauri-apps/plugin-autostart");
+        if (await a.isEnabled()) await a.enable();
+      } catch { /* the setting still shows its real state in Settings */ }
+    })();
+  }, []);
 
   useEffect(() => {
     if (!toast) return;
@@ -3169,6 +3375,10 @@ export default function App() {
     });
   };
   const todayISO = isoDay(today);
+  const installUpdate = () => updater.install(async (version) => {
+    const current = await window.storage.get(STORAGE_KEY);
+    if (current?.value) await writeBackup(current.value, `before-update-${version}`);
+  });
   const accounts = data.accounts || [];
   const saveAccounts = (next) => save({ ...data, accounts: next });
   const onRecordBalance = (id, entry) => saveAccounts(accounts.map((a) => (a.id === id ? recordBalance(a, entry) : a)));
@@ -3315,6 +3525,7 @@ export default function App() {
 
         <div style={s.content}>
           <div style={s.contentInner}>
+          <UpdateBanner updater={updater} onInstall={installUpdate} />
           {/* DASHBOARD */}
           {tab === "dashboard" && (
             <>
@@ -4363,6 +4574,9 @@ export default function App() {
           data={data}
           onClose={() => setSettingsOpen(false)}
           onChangeReminders={(reminders) => save({ ...data, reminders })}
+          updater={updater}
+          onChangeUpdates={(updates) => save({ ...data, updates })}
+          onInstallUpdate={installUpdate}
           onChangeCurrency={(currency) => save({ ...data, currency })}
           onChangeLocale={(locale) => save({ ...data, locale })}
           onManageCategories={() => { setSettingsOpen(false); setCategoriesOpen(true); }}

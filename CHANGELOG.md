@@ -101,6 +101,19 @@ piling up.
 
 For a card or loan, enter what you owe as a positive number.
 
+### Automatic updates
+Budget Ctrl now keeps itself up to date. Once a day it checks GitHub for a new
+version and, when there is one, shows a banner with **What's new** and **Install
+and restart**. Nothing installs until you click. A backup of your budget is taken
+first, and an update not signed with the project's key is refused. You can turn
+the daily check off, or check by hand, in **Settings → Updates**.
+
+The installer is now a per-user setup `.exe` instead of an `.msi`. It needs no
+admin rights, so updates install without a Windows permission prompt. **Coming
+from 0.4.x:** uninstall it from Windows Settings → Apps first, then install this
+version. Your budget is kept, and **Start with Windows** follows the app to its
+new location by itself.
+
 ### Fixes
 - A recurring bill marked **Pays itself** lost the flag when the next month began,
   and started sending reminders again

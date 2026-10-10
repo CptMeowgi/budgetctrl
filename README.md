@@ -70,7 +70,18 @@ are marked, so a hand-adjusted figure never passes for a calculated one.
 
 ## Install
 
-Download the `.msi` from [Releases](../../releases) and run it.
+Download `Budget Ctrl_x.y.z_x64-setup.exe` from [Releases](../../releases) and
+run it. It installs for your Windows account only, so it needs no admin rights.
+
+From 0.5.0 on, the app **updates itself**. It checks GitHub once a day, shows a
+banner when a new version is out, and installs it only when you click **Install
+and restart**. Every update is signed, and anything not signed with the
+project's key is refused. Turn the daily check off, or check by hand, in
+**⚙ Settings → Updates**.
+
+> **Coming from 0.4.x?** Those versions used an `.msi` installer. Uninstall 0.4.x
+> from Windows Settings → Apps first, then install 0.5.0. Your budget is kept:
+> it lives in your user profile, not in the app's folder.
 
 On first launch, open **⚙ Settings** to set your reminder lead time and, if you
 want reminders to survive a reboot, turn on **Start with Windows**.
@@ -96,7 +107,7 @@ npm run tauri:dev
 |---|---|
 | `npm run tauri:dev` | The full desktop app with hot reload |
 | `npm run dev` | Browser only at `localhost:5173` — no tray, reminders or window chrome |
-| `npm run tauri:build` | Produces an installer in `src-tauri/target/release/bundle/msi/` |
+| `npm run tauri:build` | Produces a signed installer in `src-tauri/target/release/bundle/nsis/` (needs the signing key, see below) |
 | `npm run build` | Builds the web assets only |
 | `npm run lint` | ESLint |
 | `npm test` | Unit tests (Vitest) for the logic in `src/lib/` |
@@ -176,3 +187,30 @@ only ask.
 
 See the [changelog](CHANGELOG.md) for what's in each version, and
 [RELEASE-0.4.0.md](RELEASE-0.4.0.md) for the long-form 0.4.0 notes.
+
+### Publishing a release
+
+Releases are built by GitHub Actions ([release.yml](.github/workflows/release.yml)).
+
+1. In `CHANGELOG.md`, rename `## Unreleased` to the new version, e.g. `## 0.5.1`.
+   That section becomes the release notes, and the "What's new" text in the app.
+2. Set the same version in `src-tauri/tauri.conf.json`.
+3. Commit, then tag and push the tag:
+   `git tag 0.5.1` and `git push origin 0.5.1`
+4. Actions runs the tests, then builds the signed installer and `latest.json`
+   and opens a **draft** release. Check it and press **Publish**. Installed copies
+   offer the update within a day.
+
+A build fails if the tag doesn't match the version in `tauri.conf.json`, or if the
+changelog has no section for it.
+
+### The signing key
+
+Every update is signed. The public half is in `tauri.conf.json`. The private half
+and its password are held by the maintainer, and only reach GitHub as the
+repository secrets `TAURI_SIGNING_PRIVATE_KEY` and
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. **If the private key is lost, installed
+copies can never be updated again**, so keep a backup of it.
+
+To build an installer locally, point the same two environment variables at the
+key file and its password before `npm run tauri:build`.

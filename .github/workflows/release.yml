@@ -1,0 +1,85 @@
+name: Release
+
+# Push a version tag (for example 0.5.0) and this builds the signed installer
+# and the update manifest (latest.json), then opens a draft release with that
+# version's notes from CHANGELOG.md. Publishing the draft is the moment
+# installed copies start offering the update - nothing reaches anyone before.
+#
+# Needs two repository secrets, set by the key's owner:
+#   TAURI_SIGNING_PRIVATE_KEY           contents of the private .key file
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  its password
+
+on:
+  push:
+    tags: ["[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: write
+
+# Every action is pinned to an exact commit, not a tag: this job holds the key
+# that signs updates, and a moved tag could otherwise run someone else's code
+# with it. Bump a pin by looking up the new release's commit, deliberately.
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - run: npm ci
+
+      - run: npm test
+
+      # The updater compares versions, so a tag that disagrees with the app's
+      # own version would publish an update nobody is offered - or one offered
+      # forever.
+      - name: Check the tag matches the app version
+        shell: bash
+        run: |
+          v=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          if [ "$v" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag is $GITHUB_REF_NAME but tauri.conf.json says $v"
+            exit 1
+          fi
+
+      # The same notes appear on the release page and in the app's "What's new".
+      - name: Release notes from CHANGELOG.md
+        id: notes
+        shell: bash
+        run: |
+          awk -v v="$GITHUB_REF_NAME" '
+            /^## / { if (found) exit; if ($2 == v) { found = 1; next } }
+            found && $0 != "---" { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "::error::CHANGELOG.md has no '## $GITHUB_REF_NAME' section"
+            exit 1
+          fi
+          {
+            echo "body<<END_OF_NOTES"
+            cat notes.md
+            echo "END_OF_NOTES"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Budget Ctrl ${{ github.ref_name }}
+          releaseBody: ${{ steps.notes.outputs.body }}
+          releaseDraft: true
+          uploadUpdaterJson: true

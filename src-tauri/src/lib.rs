@@ -24,6 +24,8 @@ pub fn run() {
   tauri::Builder::default()
     .plugin(tauri_plugin_notification::init())
     .plugin(tauri_plugin_fs::init())
+    // Restarts the app once an update has installed.
+    .plugin(tauri_plugin_process::init())
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(
@@ -32,6 +34,12 @@ pub fn run() {
             .build(),
         )?;
       }
+
+      // Updates are checked from the frontend, which asks before installing
+      // anything. Every update must be signed with the key whose public half
+      // is in tauri.conf.json, or it is refused.
+      #[cfg(desktop)]
+      app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
 
       #[cfg(desktop)]
       app.handle().plugin(tauri_plugin_autostart::init(
