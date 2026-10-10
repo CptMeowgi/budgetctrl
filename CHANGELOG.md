@@ -114,6 +114,24 @@ from 0.4.x:** uninstall it from Windows Settings → Apps first, then install th
 version. Your budget is kept, and **Start with Windows** follows the app to its
 new location by itself.
 
+### Savings goals
+Save toward several things at once. Each goal has a target and, if you like, a
+month to reach it by, and counts one of two things:
+
+- **the balance of an account** from the Accounts tab, such as a savings account
+- **what your budget leaves over each month**, plus anything saved before
+
+A goal shows how far along it is, what it needs a month to land on its date,
+and when you'll get there at your current pace, warning you if that misses
+the date. The Dashboard shows the total saved for goals, and when dated goals
+need more than you're setting aside it says how much, with one click to set
+that aside instead.
+
+**Upgrading:** your savings target becomes a goal called "Savings" that counts
+what your budget leaves over, starting from your old starting balance, so it
+shows exactly what it did before. The separate Starting balance setting is
+gone, and the Savings tab's history is now "Left over each month".
+
 ### A tidier layout
 - **The sidebar is just navigation now.** This month's income is set on the
   Dashboard; the day your month starts is in Settings, as a list rather than a

@@ -1,6 +1,6 @@
-import { currentMonthKey, currentPeriodKey, monthKey, monthLabel, periodKeyFor } from "./lib/periods.js";
+import { currentMonthKey, currentPeriodKey, monthKey, periodKeyFor } from "./lib/periods.js";
 import { isOnCycle } from "./lib/schedule.js";
-import { periodIncome, periodSpending } from "./lib/totals.js";
+import { migrateGoals } from "./lib/goals.js";
 import { detectCurrency } from "./money.js";
 
 const CATEGORY_COLORS = ["#ef4444", "#f59e0b", "#10b981", "#0066cc", "#8b5cf6", "#ec4899", "#14b8a6", "#f97316"];
@@ -34,10 +34,10 @@ export function defaultData() {
   const cur = currentMonthKey();
   return {
     months: { [cur]: emptyMonth() },
-    savingsGoal: { monthly: 0, target: 0 },
+    savingsGoal: { monthly: 0 },
+    goals: [],
     currency: detectCurrency(),
     locale: "",
-    startingBalance: 0,
     cutoffDay: 1,
     recurringTemplate: [],
     creditTemplate: [],
@@ -271,14 +271,14 @@ function migrateAccounts(data) {
 export function hydrate(data) {
   return migrateAccounts(
     migrateCurrency(
-    migrateSavingsGoal(
+    migrateGoals(migrateSavingsGoal(
     migrateReminders(
     migrateCreditCategories(
       migrateTemplateIds(
         migrateCredits(
           migrateCategories(
             ensureCurrentMonth(
-              migrateCutoff(data))))))))));
+              migrateCutoff(data)))))))), uid)));
 }
 
 export function ensureCurrentMonth(data) {
@@ -311,21 +311,4 @@ export function categoryBreakdown(byCategory, categories) {
     const cat = categories.find((c) => c.name === name) || { color: "#9ca3af", icon: "·" };
     return { name, value, color: cat.color, icon: cat.icon };
   }).sort((a, b) => b.value - a.value);
-}
-
-export function cumulativeSavings(data, today) {
-  const cutoffDay = data.cutoffDay || 1;
-  const cur = currentPeriodKey(cutoffDay);
-  const keys = Object.keys(data.months).filter((k) => k < cur).sort();
-  let total = data.startingBalance || 0;
-  const series = [{ key: "start", label: "Start", balance: total, delta: 0, income: 0, spent: 0 }];
-  for (const k of keys) {
-    const m = data.months[k];
-    const income = periodIncome(m, k, today, cutoffDay).total;
-    const spent = periodSpending(m, k, today, cutoffDay).total;
-    const delta = income - spent;
-    total += delta;
-    series.push({ key: k, label: monthLabel(k).slice(0, 3), balance: total, delta, income, spent, editedAt: m.editedAt || null });
-  }
-  return { total, series, monthsCounted: keys.length };
 }

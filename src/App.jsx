@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { closeAccount, recordBalance, removeBalance, reopenAccount } from "./lib/accounts.js";
 import { envelope, startFresh, withCap, withRollover } from "./lib/envelopes.js";
+import { goalStatus, goalsMonthlyNeed, leftOverHistory } from "./lib/goals.js";
 import { currentPeriodKey, isoDay, periodLabel } from "./lib/periods.js";
 import { collectDueBills, OVERDUE_GRACE_DAYS, upcomingSettled, whenLabel } from "./lib/reminders.js";
 import { periodNoun } from "./lib/reports.js";
@@ -9,8 +10,9 @@ import { categoryAverage, creditReceived, periodIncome, periodSpending } from ".
 import { AccountModal, AccountsView } from "./components/AccountsView.jsx";
 import { CategoryBudgets } from "./components/CategoryBudgets.jsx";
 import { CategoryManager } from "./components/CategoryManager.jsx";
-import { CategoryDonut, SavingsChart } from "./components/charts.jsx";
-import { CategoryPill, GoalProgress, InfoHint, InlineNumber, StatCard, TableHeader, Toast } from "./components/controls.jsx";
+import { CategoryDonut } from "./components/charts.jsx";
+import { CategoryPill, InfoHint, StatCard, TableHeader, Toast } from "./components/controls.jsx";
+import { GoalModal, SavingsView } from "./components/SavingsView.jsx";
 import { FormModal } from "./components/FormModal.jsx";
 import { ReportsView } from "./components/ReportsView.jsx";
 import { EntryName, ExpenseRow, MissingFromTemplate, NotDueThisPeriod, RecurringRow, RowActions, UpcomingRow } from "./components/rows.jsx";
@@ -24,7 +26,7 @@ import { cleanNote, NOTE_FIELD } from "./forms.js";
 import { useReminders } from "./hooks/useReminders.js";
 import { useUpdater } from "./hooks/useUpdater.js";
 import { ENTRY_COLUMNS, filterAndSort, toggleSort } from "./listView.js";
-import { categoryBreakdown, countRebucketMoves, CREDIT_UNCATEGORIZED, cumulativeSavings, defaultData, emptyMonth, ensureCategory, ensureCreditCategory, ensureCurrentMonth, hydrate, migrate, rebucketData, STORAGE_KEY, uid } from "./model.js";
+import { categoryBreakdown, countRebucketMoves, CREDIT_UNCATEGORIZED, defaultData, emptyMonth, ensureCategory, ensureCreditCategory, ensureCurrentMonth, hydrate, migrate, rebucketData, STORAGE_KEY, uid } from "./model.js";
 import { currencyCode, fmt, setMoneyFormat } from "./money.js";
 import { isTauri } from "./platform.js";
 import { readBackup, writeBackup } from "./storage.js";
@@ -40,8 +42,9 @@ const ADD_LABELS = {
   recurring: "Recurring",
   upcoming: "Payment",
   accounts: "Account",
+  savings: "Goal",
 };
-const MODAL_FOR_TAB = { expenses: "expense", accounts: "account" };
+const MODAL_FOR_TAB = { expenses: "expense", accounts: "account", savings: "goal" };
 
 const TABS = [
   { id: "dashboard", label: "Dashboard", icon: "◉" },
@@ -320,7 +323,7 @@ export default function App() {
   const totalStillScheduled = totalRecurringFuture + totalUnpaidUpcoming;
   const totalCommitted = totalActuallySpent;
   const availableAfterCommitted = Math.max(0, effectiveIncome - totalCommitted);
-  const savingsGoal = data.savingsGoal || { monthly: 0, target: 0 };
+  const savingsGoal = data.savingsGoal || { monthly: 0 };
   // Store what was typed, apply what the period can actually cover - the same
   // split the percentage version used, so a lean month cannot silently rewrite
   // the goal. The gap is surfaced rather than hidden.
@@ -345,7 +348,12 @@ export default function App() {
 
   const catBreakdown = categoryBreakdown(spending.byCategory, data.categories || []);
   const catTotal = spending.total;
-  const savings = cumulativeSavings(data, today);
+  const leftOver = leftOverHistory(data, today);
+  const goals = data.goals || [];
+  const goalStatuses = goals.map((g) => goalStatus(g, data, today, leftOver));
+  const goalsSaved = goalStatuses.reduce((a, st) => a + (st.saved || 0), 0);
+  const goalsTarget = goalStatuses.reduce((a, st) => a + (st.target || 0), 0);
+  const goalsNeed = goalsMonthlyNeed(goals, data, today);
   const spentByCat = spending.byCategory;
   const onSortExpenses = (col, shift) =>
     setExpensesView((v) => ({ ...v, sorts: toggleSort(v.sorts || [], col, shift) }));
@@ -510,10 +518,11 @@ export default function App() {
                 <StatCard label="Remaining" value={fmt(remaining)} accent={remaining >= 0 ? "#10b981" : "#ef4444"} sub={totalStillScheduled > 0 ? `${fmt(totalStillScheduled)} still scheduled` : "Everything's landed"} icon="↓" />
                 <StatCard label="Still to Pay" value={fmt(totalUpcoming)} accent="#f59e0b" sub={`${unpaidCount} upcoming payment${unpaidCount !== 1 ? "s" : ""}`} icon="◈" />
                 <StatCard label="Total Spent" value={fmt(totalActuallySpent)} accent="#ef4444" sub={`${cur.expenses.length} one-off · ${cur.recurring.length} recurring`} icon="↻" />
-                {savings.monthsCounted > 0 && (
-                  <StatCard label="Saved So Far" value={fmt(savings.total)}
-                    accent={savings.total >= 0 ? "#10b981" : "#ef4444"}
-                    sub={`Across ${savings.monthsCounted} closed month${savings.monthsCounted !== 1 ? "s" : ""}`} icon="◆" />
+                {goals.length > 0 && (
+                  <StatCard label="Saved for Goals" value={fmt(goalsSaved)} accent="#0066cc"
+                    sub={goalsTarget > 0
+                      ? `${Math.round(Math.min(1, goalsSaved / goalsTarget) * 100)}% of ${fmt(goalsTarget)} · ${goals.length} goal${goals.length !== 1 ? "s" : ""}`
+                      : `${goals.length} goal${goals.length !== 1 ? "s" : ""}`} icon="◆" />
                 )}
               </div>
               {dueBills.length > 0 && (
@@ -580,12 +589,13 @@ export default function App() {
                         Covered · {fmt(leftToSpend)} still free
                       </div>
                     ) : null}
-                    {savingsGoal.target > 0 && (
-                      <div style={{ marginTop: 14 }}>
-                        <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginBottom: 6 }}>
-                          {fmt(Math.max(0, savings.total))} of {fmt(savingsGoal.target)} saved
-                        </div>
-                        <GoalProgress saved={savings.total} target={savingsGoal.target} />
+                    {goalsNeed > 0 && Math.round(goalsNeed) !== savingsGoal.monthly && (
+                      <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginTop: 8 }}>
+                        Your dated goals need {fmt(goalsNeed)} a month.{" "}
+                        <button style={{ ...s.linkBtn, padding: 0, ...TYPE.finePrint, fontWeight: 600 }}
+                          onClick={() => save({ ...data, savingsGoal: { ...savingsGoal, monthly: Math.round(goalsNeed) } })}>
+                          Set aside that
+                        </button>
                       </div>
                     )}
                   </div>
@@ -1084,126 +1094,11 @@ export default function App() {
 
           {/* SAVINGS */}
           {tab === "savings" && (
-            <>
-              <div style={s.card}>
-                <div style={s.cardTitle}>Saved So Far</div>
-                <div style={{ fontSize: 40, fontWeight: 700, fontFamily: FONT, fontVariantNumeric: "tabular-nums",
-                              color: savings.total >= 0 ? "#10b981" : "#ef4444", margin: "12px 0 4px" }}>
-                  {fmt(savings.total)}
-                </div>
-                <div style={{ fontSize: 12, color: theme.textMuted }}>
-                  Across {savings.monthsCounted} closed period{savings.monthsCounted !== 1 ? "s" : ""}
-                </div>
-              </div>
-
-              <div style={{ ...s.card, marginTop: 16 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <div style={s.cardTitle}>Starting Balance</div>
-                  <InfoHint text="Money you'd already saved before you started using Budget Ctrl. Everything after this is calculated from your closed periods — this just sets where the count begins." />
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }}>
-                  <input type="number" value={data.startingBalance || ""}
-                    onChange={(e) => save({ ...data, startingBalance: +e.target.value || 0 })}
-                    placeholder="0" style={{ ...s.input, width: 180 }} />
-                  <span style={{ fontSize: 12, color: theme.textMuted, fontWeight: 600 }}>{data.currency}</span>
-                </div>
-              </div>
-
-              <div style={{ ...s.card, marginTop: 16 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <div style={s.cardTitle}>Savings Goal</div>
-                  <InfoHint text="The total you're saving up to. Progress is measured against everything saved across closed periods, including your starting balance." />
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }}>
-                  <input type="number" min={0} value={savingsGoal.target || ""} placeholder="0"
-                    onChange={(e) => save({ ...data, savingsGoal: { ...savingsGoal, target: Math.max(0, Math.floor(+e.target.value) || 0) } })}
-                    style={{ ...s.input, width: 180 }} />
-                  <span style={{ ...TYPE.caption, color: theme.textMuted, fontWeight: 600 }}>{data.currency}</span>
-                </div>
-                {savingsGoal.target > 0 ? (() => {
-                  const remainingToGoal = savingsGoal.target - savings.total;
-                  // Pace comes from closed periods only, so it reflects what you
-                  // actually saved rather than what you intended to.
-                  const closed = savings.series.slice(1);
-                  const avgDelta = closed.length ? closed.reduce((a, r) => a + r.delta, 0) / closed.length : 0;
-                  const periodsLeft = remainingToGoal > 0 && avgDelta > 0 ? Math.ceil(remainingToGoal / avgDelta) : null;
-                  return (
-                    <div style={{ marginTop: 16 }}>
-                      <GoalProgress saved={savings.total} target={savingsGoal.target} />
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginTop: 10, flexWrap: "wrap" }}>
-                        <span style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint }}>
-                          {fmt(Math.max(0, savings.total))} of {fmt(savingsGoal.target)}
-                        </span>
-                        <span style={{ ...TYPE.finePrint, lineHeight: 1.5, color: remainingToGoal <= 0 ? theme.success : theme.textFaint }}>
-                          {remainingToGoal <= 0
-                            ? "Goal reached"
-                            : periodsLeft
-                              ? `${fmt(remainingToGoal)} to go · about ${periodsLeft} more period${periodsLeft !== 1 ? "s" : ""} at your recent pace`
-                              : `${fmt(remainingToGoal)} to go`}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })() : (
-                  <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginTop: 8 }}>
-                    Set a target to track progress against it.
-                  </div>
-                )}
-              </div>
-
-              <div style={{ ...s.card, marginTop: 16 }}>
-                <div style={s.cardTitle}>Savings Over Time</div>
-                <SavingsChart series={savings.series} />
-              </div>
-
-              <div style={{ ...s.card, marginTop: 16 }}>
-                <div style={s.cardTitle}>Period by Period</div>
-                {savings.series.length < 2 ? (
-                  <div style={s.emptySmall}>Close out a period to start tracking savings.</div>
-                ) : (
-                  <>
-                    <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginTop: SPACE.xs }}>
-                      Income is editable here. For expenses, open the period.
-                    </div>
-                    <TableHeader columns={[
-                      { label: "PERIOD", flex: 2 }, { label: "INCOME", flex: 1, align: "right" },
-                      { label: "SPENT", flex: 1, align: "right" }, { label: "CHANGE", flex: 1, align: "right" },
-                      { label: "BALANCE", flex: 1, align: "right" }, { label: "", flex: 0.8, align: "right" },
-                    ]} />
-                    {savings.series.slice(1).map((row) => (
-                      <div key={row.key} style={s.tableRow}>
-                        <div style={{ flex: 2, fontWeight: 600, display: "flex", alignItems: "center", gap: SPACE.xs }}>
-                          {periodLabel(row.key, cutoffDay).primary}
-                          {row.editedAt && (
-                            <span
-                              title={`Edited after this period closed, on ${new Date(row.editedAt).toLocaleDateString()}`}
-                              style={{ ...TYPE.microLegal, color: theme.textFaint, border: `1px solid ${theme.border}`, borderRadius: RADIUS.pill, padding: "1px 7px", fontWeight: 400 }}
-                            >edited</span>
-                          )}
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <InlineNumber
-                            value={data.months[row.key]?.income || 0}
-                            title="Base income for this period"
-                            onChange={(v) => patchMonth(row.key, { income: v })}
-                          />
-                        </div>
-                        <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", color: theme.textMuted }}>{fmt(row.spent)}</div>
-                        <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: row.delta >= 0 ? "#10b981" : "#ef4444" }}>{row.delta >= 0 ? "+" : ""}{fmt(row.delta)}</div>
-                        <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>{fmt(row.balance)}</div>
-                        <div style={{ flex: 0.8, textAlign: "right" }}>
-                          <button
-                            style={{ ...s.linkBtn, padding: 0 }}
-                            title="Open this period to edit its expenses, recurring items and credits"
-                            onClick={() => { setTab("history"); setHistoryKey(row.key); }}
-                          >Open →</button>
-                        </div>
-                      </div>
-                    ))}
-                  </>
-                )}
-              </div>
-            </>
+            <SavingsView data={data} history={leftOver} today={today} cutoffDay={cutoffDay}
+              onAddGoal={() => setModal({ type: "goal" })}
+              onEditGoal={(g) => setModal({ type: "goal", editId: g.id })}
+              onChangeIncome={(key, v) => patchMonth(key, { income: v })}
+              onOpenPeriod={(key) => { setTab("history"); setHistoryKey(key); }} />
           )}
 
           {tab === "accounts" && (
@@ -1217,6 +1112,20 @@ export default function App() {
       </main>
 
       {/* MODALS */}
+      {modal?.type === "goal" && (() => {
+        const editing = modal.editId ? goals.find((g) => g.id === modal.editId) : null;
+        return (
+          <GoalModal goal={editing} data={data} curKey={curKey} onDismiss={() => setModal(null)}
+            onSave={(v) => {
+              const next = editing
+                ? goals.map((g) => (g.id === editing.id ? { id: g.id, ...v } : g))
+                : [...goals, { id: uid(), ...v }];
+              save({ ...data, goals: next });
+              setModal(null);
+            }}
+            onDelete={() => { save({ ...data, goals: goals.filter((g) => g.id !== editing.id) }); setModal(null); }} />
+        );
+      })()}
       {modal?.type === "account" && (() => {
         const editing = modal.editId ? accounts.find((a) => a.id === modal.editId) : null;
         const replace = (next) => saveAccounts(accounts.map((a) => (a.id === editing.id ? next : a)));

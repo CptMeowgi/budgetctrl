@@ -43,9 +43,12 @@ field and Enter. You get net worth, assets against debts, a net worth chart and
 the change over the last 30 days, with a nudge when a balance is over a month
 old.
 
-**Savings with a target.** Set an amount to put aside each period and a total
-you're saving up to. The app tracks cumulative savings across closed periods and
-estimates how long the target will take at your recent pace.
+**Savings goals.** As many as you like: a holiday, an emergency fund, a car.
+Each has a target and, if you want, a month to reach it by. A goal counts either
+the balance of one of your accounts or what your budget leaves over each month,
+and tells you what it needs per month to land on its date, or when you'll get
+there at your current pace. The Dashboard adds up what your dated goals need
+and offers to set that aside.
 
 **History you can correct.** Every past period is editable — income inline from
 the Savings table, everything else in place. Periods corrected after the fact
@@ -62,7 +65,7 @@ are marked, so a hand-adjusted figure never passes for a calculated one.
 | **Credits** | Money in — refunds, gifts, bonuses, salary |
 | **History** | Any past period, fully editable |
 | **Reports** | Any year, the last 3/6/12 months or all time: each category month by month, what changed, top payees, biggest payments, CSV export |
-| **Savings** | Cumulative total, goal progress, period-by-period table |
+| **Savings** | Your goals, and what each finished month left over |
 | **Accounts** | Balances of your accounts, cards and loans, net worth and how it moves |
 
 ---
