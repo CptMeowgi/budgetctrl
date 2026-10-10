@@ -51,8 +51,11 @@ export function periodRange(periodKey, cutoffDay) {
   const start = new Date(y, m - 1, Math.min(cd, daysInCalMonth(y, m)));
   const nextY = m === 12 ? y + 1 : y;
   const nextM = m === 12 ? 1 : m + 1;
-  const endExclusive = new Date(nextY, nextM - 1, Math.min(cd, daysInCalMonth(nextY, nextM)));
-  return { start, end: new Date(endExclusive.getTime() - 86400000) };
+  // The day before the next period starts, by the calendar. Subtracting 24
+  // hours instead ended a period a day early when the clocks went forward
+  // inside that last day (a 23-hour day). Day 0 is the previous month's last.
+  const end = new Date(nextY, nextM - 1, Math.min(cd, daysInCalMonth(nextY, nextM)) - 1);
+  return { start, end };
 }
 
 export function periodLabel(periodKey, cutoffDay) {

@@ -55,6 +55,10 @@ twice. Tick **Always** on a row and that payee is named and filed for you on
 every import after. Payments that turn out to be monthly bills are spotted and
 offered as recurring bills.
 
+**See the month ahead.** A calendar of every bill and expected credit, and a
+forecast of the money left this month - its lowest point, what's left at the
+end, and a warning if you'd run short before payday.
+
 **Split payments.** One receipt can be split across categories, and each part
 counts where it belongs.
 

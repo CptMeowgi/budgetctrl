@@ -40,6 +40,13 @@ describe("periodKeyFor", () => {
 });
 
 describe("periodRange", () => {
+  it("ends on the right day when the clocks go forward just before the end", () => {
+    // Clocks went forward on 26 March 2023. "Next start minus 24 hours" lands
+    // at 23:00 on the 25th, a day early.
+    expect(isoDay(periodRange("2023-02", 27).end)).toBe("2023-03-26");
+    expect(isoDay(periodRange("2023-02", 28).end)).toBe("2023-03-27");
+  });
+
   it("runs cutoff-to-day-before-cutoff", () => {
     const { start, end } = periodRange("2026-09", 10);
     expect([day(start), day(end)]).toEqual(["2026-09-10", "2026-10-09"]);

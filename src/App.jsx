@@ -3,6 +3,7 @@ import { closeAccount, recordBalance, removeBalance, reopenAccount } from "./lib
 import { envelope, startFresh, withCap, withRollover } from "./lib/envelopes.js";
 import { goalStatus, goalsMonthlyNeed, leftOverHistory } from "./lib/goals.js";
 import { convertToRecurring, dismissRegular, findRegularPayments } from "./lib/regular.js";
+import { forecast } from "./lib/forecast.js";
 import { currentPeriodKey, isoDay, periodLabel } from "./lib/periods.js";
 import { collectDueBills, OVERDUE_GRACE_DAYS, upcomingSettled, whenLabel } from "./lib/reminders.js";
 import { periodNoun } from "./lib/reports.js";
@@ -16,6 +17,7 @@ import { CategoryPill, InfoHint, StatCard, TableHeader, Toast } from "./componen
 import { GoalModal, SavingsView } from "./components/SavingsView.jsx";
 import { SearchModal } from "./components/SearchModal.jsx";
 import { RulesManager } from "./components/RulesManager.jsx";
+import { BillCalendar, ForecastCard } from "./components/BillCalendar.jsx";
 import { FormModal } from "./components/FormModal.jsx";
 import { ExpenseModal } from "./components/ExpenseModal.jsx";
 import { ReportsView } from "./components/ReportsView.jsx";
@@ -374,6 +376,8 @@ export default function App() {
   const goalsTarget = goalStatuses.reduce((a, st) => a + (st.target || 0), 0);
   const goalsNeed = goalsMonthlyNeed(goals, data, today);
   const regular = findRegularPayments(data, today);
+  const fc = forecast(data, curKey, today);
+  const fcDay = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
   const spentByCat = spending.byCategory;
   const onSortExpenses = (col, shift) =>
     setExpensesView((v) => ({ ...v, sorts: toggleSort(v.sorts || [], col, shift) }));
@@ -536,7 +540,12 @@ export default function App() {
                   minmax(auto, 1fr) and the largest currency value refused to
                   shrink below its own content width. */}
               <div style={s.statsRow}>
-                <StatCard label="Remaining" value={fmt(remaining)} accent={remaining >= 0 ? "#10b981" : "#ef4444"} sub={totalStillScheduled > 0 ? `${fmt(totalStillScheduled)} still scheduled` : "Everything's landed"} icon="↓" />
+                <StatCard label="Remaining" value={fmt(remaining)} accent={remaining >= 0 && !fc.runsShortOn ? "#10b981" : "#ef4444"}
+                  sub={fc.series.length < 2
+                    ? (totalStillScheduled > 0 ? `${fmt(totalStillScheduled)} still scheduled` : "Everything's landed")
+                    : fc.runsShortOn
+                      ? `Runs short around ${fcDay(fc.runsShortOn)} at this pace`
+                      : `Lowest ahead ${fmt(fc.lowestWithEveryday.amount)} on ${fcDay(fc.lowestWithEveryday.date)}`} icon="↓" />
                 <StatCard label="Still to Pay" value={fmt(totalUpcoming)} accent="#f59e0b" sub={`${unpaidCount} upcoming payment${unpaidCount !== 1 ? "s" : ""}`} icon="◈" />
                 <StatCard label="Total Spent" value={fmt(totalActuallySpent)} accent="#ef4444" sub={`${cur.expenses.length} one-off · ${cur.recurring.length} recurring`} icon="↻" />
                 {goals.length > 0 && (
@@ -852,6 +861,20 @@ export default function App() {
           )}
 
           {/* UPCOMING */}
+          {tab === "upcoming" && (
+            <>
+              <div style={{ ...s.card, marginBottom: 16 }}>
+                <div style={s.cardTitle}>Money left this {periodNoun(cutoffDay, 1)}, looking ahead</div>
+                <ForecastCard fc={fc} />
+              </div>
+              <div style={{ ...s.card, marginBottom: 16 }}>
+                <div style={s.cardTitle}>Calendar</div>
+                <BillCalendar data={data} periodKey={curKey} today={today}
+                  onOpen={(it) => setModal({ type: it.kind, editId: it.id, monthKey: curKey })} />
+              </div>
+            </>
+          )}
+
           {tab === "upcoming" && (
             <div style={s.card}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>

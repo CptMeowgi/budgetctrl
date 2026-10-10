@@ -115,6 +115,17 @@ from 0.4.x:** uninstall it from Windows Settings → Apps first, then install th
 version. Your budget is kept, and **Start with Windows** follows the app to its
 new location by itself.
 
+### Calendar and the month ahead
+The Upcoming tab now shows the month as a **calendar**: every bill, payment and
+expected credit on its day, marked done, due or overdue; click one to edit it.
+
+Above it, **Money left this month, looking ahead** follows what's left day by
+day to the end of the month: down with each bill still to come, up with each
+credit expected, and down by your usual everyday spending (your daily average
+over the last three months). It tells you the lowest point and when, what's
+left at the end, and warns if you'd run short and roughly when. The
+Dashboard's Remaining card shows the lowest point too.
+
 ### Split a payment across categories
 One receipt, several categories: in an expense, **Split across categories** turns
 the category into parts, such as 150 zł Food and 50 zł Household for one
@@ -183,6 +194,8 @@ gone, and the Savings tab's history is now "Left over each month".
   and started sending reminders again
 - Exported files were dated in UTC, so an export just after midnight carried
   yesterday's date
+- With a payday of the 27th or 28th, a budget month could end a day early
+  when the clocks went forward on one of its last days
 - Dialogs taller than the window - Settings, in a smaller window - ran off the
   screen and couldn't be scrolled. They now fit the window and scroll inside
 - Clicking a reminder did nothing on Windows; it just sat in the notification
