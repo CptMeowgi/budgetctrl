@@ -314,7 +314,6 @@ const MODAL_FOR_TAB = { expenses: "expense", accounts: "account" };
 
 const TABS = [
   { id: "dashboard", label: "Dashboard", icon: "◉" },
-  { id: "duesoon", label: "Due Soon", icon: "!" },
   { id: "expenses", label: "Expenses", icon: "↗" },
   { id: "recurring", label: "Recurring", icon: "↻" },
   { id: "upcoming", label: "Upcoming", icon: "◈" },
@@ -794,18 +793,6 @@ function categoryBreakdown(byCategory, categories) {
     const cat = categories.find((c) => c.name === name) || { color: "#9ca3af", icon: "·" };
     return { name, value, color: cat.color, icon: cat.icon };
   }).sort((a, b) => b.value - a.value);
-}
-
-function monthlyTotals(data, today) {
-  const cutoffDay = data.cutoffDay || 1;
-  return Object.keys(data.months).sort().map((key) => {
-    const m = data.months[key];
-    return {
-      key, label: monthLabel(key).slice(0, 3),
-      spent: periodSpending(m, key, today, cutoffDay).total,
-      income: periodIncome(m, key, today, cutoffDay).total,
-    };
-  });
 }
 
 function cumulativeSavings(data, today) {
@@ -1878,7 +1865,14 @@ function Toast({ message }) {
   );
 }
 
-function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onChangeLocale, onRestore, onManageCategories, updater, onChangeUpdates, onInstallUpdate }) {
+function ordinal(n) {
+  const teen = n % 100 >= 11 && n % 100 <= 13;
+  const suffix = teen ? "th" : ({ 1: "st", 2: "nd", 3: "rd" }[n % 10] || "th");
+  return `${n}${suffix}`;
+}
+
+function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onChangeLocale, onRestore, onManageCategories, updater, onChangeUpdates, onInstallUpdate,
+  onChangeCutoff, onExport, onExportCsv, onImport, onImportStatement, onReset }) {
   const { theme, s } = useThemed();
   const [openedAt] = useState(() => Date.now());
   const rem = data.reminders || { enabled: true, leadDays: 3 };
@@ -1929,7 +1923,7 @@ function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onC
 
   return (
     <Modal title="Settings" onClose={onClose}>
-      <div style={group}>Money</div>
+      <div style={group}>Budget</div>
       <SettingRow label="Currency" hint="Changes how every amount is displayed. It does not convert existing figures.">
         <select
           value={data.currency || "PLN"}
@@ -1950,6 +1944,14 @@ function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onC
         </select>
       </SettingRow>
 
+      <SettingRow label="Month starts on" hint="Your payday. Each budget period runs from this day to the day before it, a month later.">
+        <select value={data.cutoffDay || 1} onChange={(e) => onChangeCutoff(+e.target.value)} style={{ ...s.input, width: 200 }}>
+          {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+            <option key={d} value={d}>{d === 1 ? "1st (calendar month)" : ordinal(d)}</option>
+          ))}
+        </select>
+      </SettingRow>
+
       <SettingRow label="Categories" hint="Rename, merge, recolour or remove spending categories and income sources.">
         <button style={{ ...s.linkBtn, padding: 0 }} onClick={onManageCategories}>Manage…</button>
       </SettingRow>
@@ -1958,7 +1960,7 @@ function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onC
       <div style={group}>Keyboard</div>
       <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", columnGap: SPACE.md, rowGap: 6, padding: `${SPACE.xs}px 0`, ...TYPE.caption }}>
         {[
-          ["Ctrl+Z", "Undo"], ["Ctrl+Shift+Z / Ctrl+Y", "Redo"], ["Ctrl+1 … 0", "Switch tab"],
+          ["Ctrl+Z", "Undo"], ["Ctrl+Shift+Z / Ctrl+Y", "Redo"], ["Ctrl+1 … 9", "Switch tab"],
           ["N", "New entry on this tab"], ["/", "Search this tab"], ["Esc", "Close a dialog"],
         ].map(([k, v]) => (
           <Fragment key={k}>
@@ -2002,10 +2004,22 @@ function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onC
         </SettingRow>
       )}
 
+      <div style={divider} />
+      <div style={group}>Data</div>
+      <SettingRow label="Bank statement" hint="Add transactions from your bank's CSV export, without counting anything twice.">
+        <button style={{ ...s.linkBtn, padding: 0 }} onClick={onImportStatement}>Import…</button>
+      </SettingRow>
+      <SettingRow label="Back up everything" hint="Your whole budget in one file, to keep somewhere safe or move to another computer.">
+        <button style={{ ...s.linkBtn, padding: 0 }} onClick={onExport}>Export…</button>
+      </SettingRow>
+      <SettingRow label="Restore from a backup file" hint="Replaces what's here with the file's contents.">
+        <button style={{ ...s.linkBtn, padding: 0 }} onClick={onImport}>Import…</button>
+      </SettingRow>
+      <SettingRow label="Spreadsheet" hint="Every entry as a CSV, for Excel or Google Sheets.">
+        <button style={{ ...s.linkBtn, padding: 0 }} onClick={onExportCsv}>Export CSV</button>
+      </SettingRow>
       {isTauri && (
         <>
-          <div style={divider} />
-          <div style={group}>Data</div>
           {getStorageFault() && (
             <div style={{
               ...TYPE.caption, color: theme.danger, background: "rgba(239,68,68,0.1)",
@@ -2038,7 +2052,13 @@ function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onC
               </select>
             )}
           </SettingRow>
-
+        </>
+      )}
+      <SettingRow label="Start again" hint="Deletes your whole budget. It's backed up first, and Ctrl+Z brings it back.">
+        <button style={{ ...s.linkBtn, padding: 0, color: theme.danger }} onClick={onReset}>Reset…</button>
+      </SettingRow>
+      {isTauri && (
+        <>
           <div style={divider} />
           <div style={group}>Updates</div>
           <SettingRow label="Check for updates automatically" hint="Once a day. Nothing installs until you say so.">
@@ -3085,6 +3105,17 @@ export default function App() {
   const [upcomingView, setUpcomingView] = useState({ search: "", sorts: [] });
   const [creditsView, setCreditsView] = useState({ search: "", sorts: [] });
   const triggerImport = () => importInputRef.current?.click();
+  const resetAll = async () => {
+    if (!confirm("Delete your whole budget and start again?\n\nWhat you have now is backed up first, and Ctrl+Z undoes it.")) return;
+    if (isTauri) {
+      try {
+        const current = await window.storage.get(STORAGE_KEY);
+        if (current?.value) await writeBackup(current.value, "before-reset");
+      } catch { /* the undo step still holds it */ }
+    }
+    await save(hydrate(defaultData()));
+    setSettingsOpen(false);
+  };
   const onImportFile = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -3096,9 +3127,8 @@ export default function App() {
           alert("Could not read backup file. Make sure it's a valid budget-ctrl JSON export.");
           return;
         }
-        if (!confirm("Replace ALL current data with the contents of this backup? This cannot be undone.")) return;
-        // Snapshot what is about to be overwritten, so "this cannot be undone"
-        // is only true of the click, not of the data.
+        if (!confirm("Replace all your current data with this backup?\n\nWhat you have now is backed up first, and Ctrl+Z undoes it.")) return;
+        // Snapshot what is about to be overwritten, as well as the undo step.
         if (isTauri) {
           try {
             const current = await window.storage.get(STORAGE_KEY);
@@ -3213,7 +3243,8 @@ export default function App() {
     if (rolled !== data) save(rolled, { undoable: false });
   }, [loaded, todayKey, data, save]);
 
-  const openDueSoon = useCallback(() => setTab("duesoon"), []);
+  // What's due now sits at the top of Upcoming; a clicked reminder lands there.
+  const openDueSoon = useCallback(() => setTab("upcoming"), []);
   useReminders(data, loaded, setTodayKey, openDueSoon);
   const updater = useUpdater(data.updates?.auto !== false, loaded);
 
@@ -3334,7 +3365,6 @@ export default function App() {
 
   const catBreakdown = categoryBreakdown(spending.byCategory, data.categories || []);
   const catTotal = spending.total;
-  const monthlyData = monthlyTotals(data, today);
   const savings = cumulativeSavings(data, today);
   const spentByCat = spending.byCategory;
   const onSortExpenses = (col, shift) =>
@@ -3436,49 +3466,11 @@ export default function App() {
               style={tab === t.id ? { ...s.navItem, ...s.navItemActive } : s.navItem}>
               <span style={{ fontSize: 16, width: 24, textAlign: "center" }}>{t.icon}</span>
               <span>{t.label}</span>
-              {t.id === "upcoming" && unpaidCount > 0 && <span style={s.badge}>{unpaidCount}</span>}
-              {t.id === "duesoon" && dueBills.length > 0 && <span style={s.badge}>{dueBills.length}</span>}
+              {t.id === "upcoming" && dueBills.length > 0 && <span style={s.badge} title="Due soon or overdue">{dueBills.length}</span>}
             </button>
           ))}
         </nav>
-        <div style={s.sidebarIncome}>
-          <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 1.5, color: theme.outerTextMuted, marginBottom: 8, fontWeight: 600 }}>Monthly Income</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input type="number" value={cur.income || ""}
-              onChange={(e) => patchCur({ income: +e.target.value || 0 })}
-              placeholder="0" style={s.incomeInput} />
-            <span style={{ ...TYPE.finePrint, color: theme.outerTextMuted, fontWeight: 600 }}>{data.currency}</span>
-          </div>
-          {(totalCredits > 0 || totalCreditsPending > 0) && (
-            <div style={{ fontSize: 11, color: "#10b981", marginTop: 6, fontFamily: FONT, fontVariantNumeric: "tabular-nums" }}>
-              + {fmt(totalCredits)} credits
-              {totalCreditsPending > 0 && (
-                <span style={{ color: theme.outerTextMuted }}> · {fmt(totalCreditsPending)} pending</span>
-              )}
-            </div>
-          )}
-          <div style={{ marginTop: 14 }}>
-            <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 1.5, color: theme.outerTextMuted, marginBottom: 8, fontWeight: 600 }}>Month Starts On</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <input type="number" min={1} max={28} value={cutoffDay}
-                onChange={(e) => onChangeCutoff(+e.target.value)}
-                style={s.incomeInput} />
-              <span style={{ ...TYPE.finePrint, color: theme.outerTextMuted, fontWeight: 600 }}>day</span>
-            </div>
-            <div style={{ fontSize: 10, color: theme.outerTextMuted, marginTop: 4 }}>1–28 · e.g. payday</div>
-          </div>
-        </div>
-        <div style={{ padding: "12px 20px 16px", borderTop: "1px solid " + theme.outerBorder, flexShrink: 0 }}>
-          <div style={{ fontSize: 10, color: theme.outerTextMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>DATA</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <button style={s.dataLink} onClick={() => exportData(data)} title="Full backup, for restoring with Import">EXPORT</button>
-            <button style={s.dataLink} onClick={() => exportCsv(data)} title="Every entry as a spreadsheet">EXPORT CSV</button>
-            <button style={s.dataLink} onClick={() => setStatementOpen(true)} title="Add transactions from a bank CSV">IMPORT STATEMENT</button>
-            <button style={s.dataLink} onClick={triggerImport}>IMPORT</button>
-            <button style={s.dataLink} onClick={async () => { if (confirm("Reset all data?")) await save(hydrate(defaultData())); }}>RESET</button>
-          </div>
-          <input type="file" accept=".json" ref={importInputRef} onChange={onImportFile} style={{ display: "none" }} />
-        </div>
+        <input type="file" accept=".json" ref={importInputRef} onChange={onImportFile} style={{ display: "none" }} />
       </aside>
 
       {/* MAIN */}
@@ -3544,12 +3536,53 @@ export default function App() {
                     sub={`Across ${savings.monthsCounted} closed month${savings.monthsCounted !== 1 ? "s" : ""}`} icon="◆" />
                 )}
               </div>
-              {/* Savings goal + income breakdown strip */}
+              {dueBills.length > 0 && (
+                <div style={{ ...s.card, marginBottom: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={s.cardTitle}>Due soon</div>
+                    <button style={s.linkBtn} onClick={() => setTab("upcoming")}>View all →</button>
+                  </div>
+                  {dueBills.slice(0, 5).map((b) => (
+                    <div key={b.id} style={s.miniRow}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>{b.name}</div>
+                        <div style={{ fontSize: 11, color: b.inDays < 0 ? theme.danger : theme.textMuted }}>
+                          {whenLabel(b.inDays)} · {b.kind === "recurring" ? "recurring bill" : "payment"}
+                        </div>
+                      </div>
+                      <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: theme.warning, fontSize: 13 }}>{fmt(b.amount)}</div>
+                    </div>
+                  ))}
+                  {dueBills.length > 5 && (
+                    <div style={{ ...TYPE.finePrint, color: theme.textFaint, marginTop: SPACE.xs }}>+{dueBills.length - 5} more</div>
+                  )}
+                </div>
+              )}
+
+              {/* This period's income, what to set aside, and where it is going */}
               <div style={{ ...s.card, marginBottom: 16 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.4fr)", gap: 32, alignItems: "start" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 0.85fr) minmax(0, 0.95fr) minmax(0, 1.5fr)", gap: 28, alignItems: "start" }}>
                   <div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <div style={s.cardTitle}>Set Aside Each Period</div>
+                      <div style={s.cardTitle}>Income this {periodNoun(cutoffDay, 1)}</div>
+                      <InfoHint text="Your pay for this period. A new period starts with the last one's figure, so change it here when your pay changes. Credits are added on top." />
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
+                      <input type="number" min={0} value={cur.income || ""} placeholder="0" aria-label="Income this period"
+                        onChange={(e) => patchCur({ income: Math.max(0, +e.target.value || 0) })}
+                        style={{ ...s.input, width: 130, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 18, color: theme.success }} />
+                      <span style={{ ...TYPE.caption, color: theme.textMuted, fontWeight: 600 }}>{data.currency}</span>
+                    </div>
+                    {(totalCredits > 0 || totalCreditsPending > 0) && (
+                      <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.success, marginTop: 8, fontVariantNumeric: "tabular-nums" }}>
+                        + {fmt(totalCredits)} credits
+                        {totalCreditsPending > 0 && <span style={{ color: theme.textFaint }}> · {fmt(totalCreditsPending)} pending</span>}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <div style={s.cardTitle}>Set aside each {periodNoun(cutoffDay, 1)}</div>
                       <InfoHint text="How much you mean to save out of this period's money. It is taken off before Left to Spend, so what remains is genuinely free." />
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
@@ -3636,72 +3669,16 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Charts row 2: monthly bars */}
-              <div style={{ ...s.card, marginBottom: 16 }}>
-                <div style={s.cardTitle}>Monthly Totals</div>
-                <MonthlyBarChart
-                  data={monthlyData}
-                  curKey={curKey}
-                  onBarClick={(key) => { setTab("history"); setHistoryKey(key); }}
-                />
-              </div>
-
-              {/* Recent expenses + upcoming payments */}
-              <div style={{ display: "grid", gridTemplateColumns: totalCredits > 0 ? "minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)" : "minmax(0, 1fr) minmax(0, 1fr)", gap: 16 }}>
-                <div style={s.card}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={s.cardTitle}>Recent Expenses</div>
-                    <button style={s.linkBtn} onClick={() => setTab("expenses")}>View all →</button>
-                  </div>
-                  {cur.expenses.length === 0 ? (
-                    <div style={s.emptySmall}>No expenses logged</div>
-                  ) : cur.expenses.slice(-4).reverse().map((e) => (
-                    <div key={e.id} style={s.miniRow}>
-                      <div><div style={{ fontWeight: 600, fontSize: 13 }}>{e.name}</div><div style={{ fontSize: 11, color: theme.textMuted }}>{e.date}</div></div>
-                      <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444", fontSize: 13 }}>{fmt(e.amount)}</div>
-                    </div>
-                  ))}
-                </div>
-                <div style={s.card}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={s.cardTitle}>Upcoming Payments</div>
-                    <button style={s.linkBtn} onClick={() => setTab("upcoming")}>View all →</button>
-                  </div>
-                  {cur.upcoming.filter((u) => !upcomingSettled(u, today)).length === 0 ? (
-                    <div style={s.emptySmall}>All caught up!</div>
-                  ) : cur.upcoming.filter((u) => !upcomingSettled(u, today)).slice(0, 4).map((u) => (
-                    <div key={u.id} style={s.miniRow}>
-                      <div><div style={{ fontWeight: 600, fontSize: 13 }}>{u.name}</div><div style={{ fontSize: 11, color: theme.textMuted }}>Due {u.dueDate}</div></div>
-                      <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#f59e0b", fontSize: 13 }}>{fmt(u.amount)}</div>
-                    </div>
-                  ))}
-                </div>
-                {totalCredits > 0 && (
-                  <div style={s.card}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div style={s.cardTitle}>Recent Credits</div>
-                      <button style={s.linkBtn} onClick={() => setTab("credits")}>View all →</button>
-                    </div>
-                    {[...cur.credits].sort((a, b) => (b.date || "").localeCompare(a.date || "")).slice(0, 4).map((c) => (
-                      <div key={c.id} style={s.miniRow}>
-                        <div>
-                          <div style={{ fontWeight: 600, fontSize: 13 }}>{c.name}</div>
-                          <div style={{ fontSize: 11, color: theme.textMuted }}>{c.source} · {c.date}</div>
-                        </div>
-                        <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#10b981", fontSize: 13 }}>+{fmt(c.amount)}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
             </>
           )}
 
           {/* EXPENSES */}
-          {tab === "duesoon" && (
-            <div style={s.card}>
+          {/* Due soon and overdue, above the period's payments: what a reminder
+              would fire for, recurring bills included, from any period. */}
+          {tab === "upcoming" && dueBills.length > 0 && (
+            <div style={{ ...s.card, marginBottom: 16 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                <div style={s.cardTitle}>Due Soon</div>
+                <div style={s.cardTitle}>Due soon and overdue</div>
                 <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: theme.warning, fontSize: 16 }}>
                   {fmt(dueBills.reduce((a, b) => a + b.amount, 0))}
                 </div>
@@ -3711,9 +3688,7 @@ export default function App() {
                 plus anything still unpaid past its date. Entries marked <em>pays itself</em> are excluded.
                 {" "}<button style={{ ...s.linkBtn, padding: 0, ...TYPE.finePrint, fontWeight: 600 }} onClick={() => setSettingsOpen(true)}>Change the window</button>
               </div>
-              {dueBills.length === 0 ? (
-                <div style={s.empty}>Nothing due in the next {reminderLeadDays} day{reminderLeadDays !== 1 ? "s" : ""}.</div>
-              ) : (
+              {(
                 <>
                   <TableHeader columns={[
                     { label: "NAME", flex: 2 }, { label: "TYPE", flex: 0.9 },
@@ -4578,6 +4553,12 @@ export default function App() {
           updater={updater}
           onChangeUpdates={(updates) => save({ ...data, updates })}
           onInstallUpdate={installUpdate}
+          onChangeCutoff={onChangeCutoff}
+          onExport={() => exportData(data)}
+          onExportCsv={() => exportCsv(data)}
+          onImport={triggerImport}
+          onImportStatement={() => { setSettingsOpen(false); setStatementOpen(true); }}
+          onReset={resetAll}
           onChangeCurrency={(currency) => save({ ...data, currency })}
           onChangeLocale={(locale) => save({ ...data, locale })}
           onManageCategories={() => { setSettingsOpen(false); setCategoriesOpen(true); }}
@@ -4622,8 +4603,6 @@ function makeStyles(theme) {
     navItem: { display: "flex", alignItems: "center", gap: SPACE.sm, padding: `${SPACE.xs}px ${SPACE.md}px`, borderRadius: RADIUS.md, border: "none", background: "transparent", color: theme.outerTextMuted, ...TYPE.caption, cursor: "pointer", fontFamily: FONT, textAlign: "left", width: "100%", flexShrink: 0, minHeight: 44, boxSizing: "border-box" },
     navItemActive: { background: theme.outerAccentSoft, color: theme.outerText, fontWeight: 600 },
     badge: { background: theme.warning, color: "#fff", ...TYPE.microLegal, fontWeight: 600, borderRadius: RADIUS.pill, padding: "2px 8px", marginLeft: "auto" },
-    sidebarIncome: { padding: `${SPACE.md}px ${SPACE.lg}px`, borderTop: `1px solid ${theme.outerBorder}`, flexShrink: 0 },
-    incomeInput: { background: "transparent", border: `1px solid ${theme.outerBorder}`, borderRadius: RADIUS.md, padding: `${SPACE.xs}px ${SPACE.sm}px`, color: theme.success, fontFamily: FONT, fontVariantNumeric: "tabular-nums", ...TYPE.bodyStrong, width: "100%", textAlign: "right", outline: "none", boxSizing: "border-box" },
     main: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: theme.outerBg },
     topbar: { padding: `${SPACE.lg}px ${SPACE.xl}px ${SPACE.md}px`, borderBottom: "none", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0, background: theme.outerBg },
     content: { flex: 1, overflow: "auto", background: theme.bg, borderRadius: RADIUS.lg, margin: `0 ${SPACE.md}px ${SPACE.md}px 0`, padding: SPACE.xl },
@@ -4637,7 +4616,6 @@ function makeStyles(theme) {
     cardTitle: { ...TYPE.finePrint, textTransform: "uppercase", letterSpacing: "0.8px", color: theme.textFaint, fontWeight: 600 },
     linkBtn: { background: "none", border: "none", color: theme.accent, ...TYPE.buttonUtility, cursor: "pointer", fontFamily: FONT, padding: `${SPACE.xs}px 0` },
     searchInput: { width: "100%", boxSizing: "border-box", height: 44, background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: RADIUS.pill, padding: `0 ${SPACE.lg}px`, ...TYPE.caption, color: theme.text, outline: "none", marginBottom: SPACE.sm, fontFamily: FONT },
-    dataLink: { background: "none", border: "none", color: theme.outerTextMuted, ...TYPE.finePrint, textTransform: "uppercase", letterSpacing: "0.6px", cursor: "pointer", fontFamily: FONT, fontWeight: 400, padding: `${SPACE.xs}px 0`, textAlign: "left" },
     breakdownBar: { display: "flex", height: SPACE.sm, borderRadius: RADIUS.pill, overflow: "hidden", background: theme.bg, marginTop: SPACE.sm },
     tableHeader: { display: "flex", padding: `${SPACE.sm}px ${SPACE.md}px`, borderBottom: hairline, marginTop: SPACE.md, ...TYPE.finePrint, textTransform: "uppercase", letterSpacing: "0.6px", color: theme.textFaint, fontWeight: 600 },
     tableRow: { display: "flex", alignItems: "center", padding: `${SPACE.md}px ${SPACE.md}px`, borderBottom: hairline, ...TYPE.caption },

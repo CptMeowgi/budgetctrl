@@ -114,6 +114,17 @@ from 0.4.x:** uninstall it from Windows Settings → Apps first, then install th
 version. Your budget is kept, and **Start with Windows** follows the app to its
 new location by itself.
 
+### A tidier layout
+- **The sidebar is just navigation now.** This month's income is set on the
+  Dashboard; the day your month starts is in Settings, as a list rather than a
+  number box; backups, restoring, spreadsheet export and starting again are in
+  **Settings → Data**
+- **Due Soon is part of Upcoming**: what's due or overdue sits at the top of the
+  Upcoming tab, which carries the badge, and a clicked reminder opens there
+- **The Dashboard is about this month**: a Due soon card replaces the monthly
+  chart (now in Reports) and the recent-entry lists that repeated the tabs
+- **Start again** backs up your budget first, and Ctrl+Z brings it back
+
 ### Fixes
 - A recurring bill marked **Pays itself** lost the flag when the next month began,
   and started sending reminders again
@@ -217,7 +228,7 @@ The release that turned Budget Ctrl from a window you open into an app that
 lives on your machine: system tray, bill reminders, payday-aligned budget
 periods, the Savings tab, custom window chrome and a full visual rebuild.
 
-See [RELEASE-0.4.0.md](RELEASE-0.4.0.md) for the detail.
+See [the 0.4.0 notes](docs/releases/0.4.0.md) for the detail.
 
 ---
 

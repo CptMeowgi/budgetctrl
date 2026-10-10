@@ -55,11 +55,10 @@ are marked, so a hand-adjusted figure never passes for a calculated one.
 
 | Tab | What it's for |
 |---|---|
-| **Dashboard** | Remaining, still to pay, total spent, savings goal, category breakdown |
-| **Due Soon** | Exactly what a reminder would fire for, with dates and which period each came from |
+| **Dashboard** | This month at a glance: remaining, what's due soon, income, savings, category budgets |
 | **Expenses** | One-off spending |
 | **Recurring** | Bills that repeat each period |
-| **Upcoming** | Scheduled one-off payments |
+| **Upcoming** | What's due soon or overdue (exactly what a reminder fires for), then scheduled one-off payments |
 | **Credits** | Money in — refunds, gifts, bonuses, salary |
 | **History** | Any past period, fully editable |
 | **Reports** | Any year, the last 3/6/12 months or all time: each category month by month, what changed, top payees, biggest payments, CSV export |
@@ -158,8 +157,9 @@ day doesn't invalidate existing keys. Schema changes go through a single
 `hydrate()` pipeline that every entry point — load, import, reset — runs, so a
 new migration is added in exactly one place.
 
-Use **Export** in the sidebar for a backup; **Import** replaces everything after
-a confirmation.
+Backups, restoring, spreadsheet export and starting again are in **Settings →
+Data**. Restoring or starting again backs up what you have first, and Ctrl+Z
+undoes either.
 
 ---
 
@@ -186,7 +186,7 @@ only ask.
 ## Releases
 
 See the [changelog](CHANGELOG.md) for what's in each version, and
-[RELEASE-0.4.0.md](RELEASE-0.4.0.md) for the long-form 0.4.0 notes.
+[the long-form 0.4.0 notes](docs/releases/0.4.0.md).
 
 ### Publishing a release
 
