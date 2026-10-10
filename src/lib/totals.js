@@ -20,6 +20,7 @@
 
 import { isRecurringDue, isoDay } from "./periods.js";
 import { upcomingSettled } from "./reminders.js";
+import { splitParts } from "./splits.js";
 
 export const UNCATEGORIZED_NAME = "Uncategorized";
 export const OTHER_SOURCE_NAME = "Other";
@@ -37,7 +38,8 @@ export function periodSpending(month, periodKey, today, cutoffDay) {
   let upcoming = 0;
   for (const e of month?.expenses || []) {
     expenses += e.amount || 0;
-    add(e.category, e.amount);
+    // A split receipt counts toward each of its categories.
+    for (const p of splitParts(e)) add(p.category, p.amount);
     items.push({ kind: "expense", entry: e });
   }
   for (const r of month?.recurring || []) {

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { TYPE, useThemed } from "../theme.js";
 import { Modal } from "./Modal.jsx";
 
-function CategoryPicker({ value, onChange, categories }) {
+export function CategoryPicker({ value, onChange, categories }) {
   const { s } = useThemed();
   const [open, setOpen] = useState(false);
   const suggestions = categories.filter((c) => {

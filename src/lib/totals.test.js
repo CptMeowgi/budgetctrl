@@ -63,6 +63,16 @@ describe("periodSpending", () => {
   });
 });
 
+describe("periodSpending with a split expense", () => {
+  it("counts each part toward its own category, the total once", () => {
+    const m = { expenses: [{ amount: 200, category: "Food", splits: [{ category: "Food", amount: 150 }, { category: "Home", amount: 50 }] }] };
+    const s = periodSpending(m, "2026-10", D(2026, 10, 9), 1);
+    expect(s.byCategory.get("Food")).toBe(150);
+    expect(s.byCategory.get("Home")).toBe(50);
+    expect(s.total).toBe(200);
+  });
+});
+
 describe("categoryAverage", () => {
   const data = {
     cutoffDay: 1,

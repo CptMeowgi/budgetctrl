@@ -77,6 +77,15 @@ describe("matches / search", () => {
   });
 });
 
+describe("a split receipt", () => {
+  it("is found under any of its categories", () => {
+    const d = { cutoffDay: 1, months: { "2026-09": { expenses: [{ id: "s", name: "Tesco", amount: 100, date: "2026-09-02", category: "Food",
+      splits: [{ category: "Food", amount: 70 }, { category: "Home", amount: 30 }] }] } } };
+    expect(search(d, { category: "Home" }).count).toBe(1);
+    expect(search(d, { text: "home" }).count).toBe(1);
+  });
+});
+
 describe("isEmptyQuery", () => {
   it("is empty with nothing typed or chosen", () => {
     expect(isEmptyQuery({ text: "  ", kinds: [], min: "" })).toBe(true);

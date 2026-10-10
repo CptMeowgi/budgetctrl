@@ -55,6 +55,9 @@ twice. Tick **Always** on a row and that payee is named and filed for you on
 every import after. Payments that turn out to be monthly bills are spotted and
 offered as recurring bills.
 
+**Split payments.** One receipt can be split across categories, and each part
+counts where it belongs.
+
 **Search everything.** Ctrl+F finds any entry in any month by name, category,
 note or amount, with filters for type, category, dates and amount, and the total
 spent and received across what it finds.

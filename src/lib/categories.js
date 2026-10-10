@@ -6,6 +6,8 @@
 // the recurring template - or those entries quietly fall back to "Uncategorized"
 // on screen while still carrying the old name on disk.
 
+import { isSplit, renameInSplits } from "./splits.js";
+
 export const CATEGORY_KINDS = {
   spend: {
     list: "categories",
@@ -30,9 +32,13 @@ function kindOf(kind) {
   return k;
 }
 
-// Rewrite the category on every entry and template item matching `from`.
+// Rewrite the category on every entry and template item matching `from` -
+// including the parts of a split receipt.
 function reassign(data, k, from, to) {
-  const swap = (e) => (sameName(e.category, from) ? { ...e, category: to } : e);
+  const swap = (e) => {
+    if (isSplit(e)) return renameInSplits(e, (c) => sameName(c, from), to);
+    return sameName(e.category, from) ? { ...e, category: to } : e;
+  };
   const months = {};
   for (const [key, m] of Object.entries(data.months || {})) {
     const next = { ...m };
@@ -60,7 +66,10 @@ export function countUsage(data, kind, name) {
   let entries = 0;
   for (const m of Object.values(data.months || {})) {
     for (const list of k.entryLists) {
-      for (const e of m[list] || []) if (sameName(e.category, name)) entries++;
+      for (const e of m[list] || []) {
+        const uses = isSplit(e) ? e.splits.some((p) => sameName(p.category, name)) : sameName(e.category, name);
+        if (uses) entries++;
+      }
     }
   }
   const templates = (data[k.template] || []).filter((e) => sameName(e.category, name)).length;

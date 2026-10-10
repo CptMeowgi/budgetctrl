@@ -87,6 +87,14 @@ describe("budgetToRows", () => {
   });
 });
 
+describe("budgetToRows with a split receipt", () => {
+  it("writes one row per part, so totals by category add up", () => {
+    const rows = budgetToRows({ months: { "2026-09": { expenses: [{ name: "Tesco", amount: 100, date: "2026-09-02", category: "Food",
+      splits: [{ category: "Food", amount: 70 }, { category: "Home", amount: 30 }] }] } } }, {});
+    expect(rows.map((r) => [r.type, r.category, r.amount])).toEqual([["Expense (split)", "Food", -70], ["Expense (split)", "Home", -30]]);
+  });
+});
+
 describe("rowsToCsv", () => {
   it("writes a header, CRLF line endings and a UTF-8 BOM", () => {
     const csv = rowsToCsv([]);

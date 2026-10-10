@@ -2,6 +2,7 @@
 // the current period, so "what did I spend at Orlen this year" had no answer.
 
 import { recurringDateInPeriod, isoDay } from "./periods.js";
+import { splitParts } from "./splits.js";
 
 export const ENTRY_KINDS = ["expense", "recurring", "upcoming", "credit"];
 
@@ -26,7 +27,10 @@ export function allEntries(data) {
   const cutoffDay = data.cutoffDay || 1;
   const out = [];
   for (const [periodKey, m] of Object.entries(data.months || {})) {
-    for (const e of m.expenses || []) out.push({ kind: "expense", entry: e, periodKey, date: e.date || "", amount: e.amount || 0, category: e.category });
+    for (const e of m.expenses || []) {
+      out.push({ kind: "expense", entry: e, periodKey, date: e.date || "", amount: e.amount || 0, category: e.category,
+        categories: splitParts(e).map((p) => p.category) });
+    }
     for (const r of m.recurring || []) {
       out.push({ kind: "recurring", entry: r, periodKey, amount: r.amount || 0, category: r.category,
         date: isoDay(recurringDateInPeriod(r.dayOfMonth, periodKey, cutoffDay)) });
@@ -46,14 +50,14 @@ export function allEntries(data) {
 export function matches(item, query) {
   const q = query || {};
   if (q.kinds && q.kinds.length && !q.kinds.includes(item.kind)) return false;
-  if (q.category && (item.category || "") !== q.category) return false;
+  if (q.category && !(item.categories || [item.category || ""]).includes(q.category)) return false;
   if (q.from && item.date < q.from) return false;
   if (q.to && item.date > q.to) return false;
   if (q.min != null && q.min !== "" && item.amount < Number(q.min)) return false;
   if (q.max != null && q.max !== "" && item.amount > Number(q.max)) return false;
   const words = fold(q.text).split(/\s+/).filter(Boolean);
   if (!words.length) return true;
-  const hay = fold([item.entry.name, item.category, item.entry.note].filter(Boolean).join(" "));
+  const hay = fold([item.entry.name, ...(item.categories || [item.category]), item.entry.note].filter(Boolean).join(" "));
   return words.every((w) => {
     if (hay.includes(w)) return true;
     const n = asAmount(w);

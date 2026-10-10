@@ -17,6 +17,7 @@ import { GoalModal, SavingsView } from "./components/SavingsView.jsx";
 import { SearchModal } from "./components/SearchModal.jsx";
 import { RulesManager } from "./components/RulesManager.jsx";
 import { FormModal } from "./components/FormModal.jsx";
+import { ExpenseModal } from "./components/ExpenseModal.jsx";
 import { ReportsView } from "./components/ReportsView.jsx";
 import { EntryName, ExpenseRow, MissingFromTemplate, NotDueThisPeriod, RecurringRow, RowActions, UpcomingRow } from "./components/rows.jsx";
 import { SettingsModal } from "./components/SettingsModal.jsx";
@@ -1192,38 +1193,25 @@ export default function App() {
         const targetMonth = data.months[targetKey] || emptyMonth();
         const editing = modal.editId ? targetMonth.expenses.find((x) => x.id === modal.editId) : null;
         return (
-          <FormModal title={editing ? "Edit Expense" : "Add Expense"} fields={[
-            { key: "name", label: "Name", placeholder: "e.g. Groceries", defaultValue: editing?.name },
-            { key: "amount", label: `Amount (${currencyCode()})`, type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
-            { key: "category", label: "Category", type: "category", categories: data.categories, defaultValue: editing?.category },
-            { key: "date", label: "Date", type: "date", defaultValue: editing?.date || `${targetKey}-01` },
-            NOTE_FIELD(editing),
-          ]} onClose={() => setModal(null)} onSave={(v) => {
-            const { categories, category } = ensureCategory(data.categories, v.category);
-            if (editing) {
-              save({
-                ...data,
-                categories,
-                months: {
-                  ...data.months,
-                  [targetKey]: {
-                    ...targetMonth,
-                    expenses: targetMonth.expenses.map((x) => x.id === editing.id
-                      ? { ...x, name: v.name, amount: +v.amount, date: v.date, category: category.name, note: cleanNote(v.note) }
-                      : x),
-                  },
-                },
-              });
-            } else {
-              const newExp = { id: uid(), name: v.name, amount: +v.amount, date: v.date, category: category.name, note: cleanNote(v.note) };
-              save({
-                ...data,
-                categories,
-                months: { ...data.months, [targetKey]: { ...targetMonth, expenses: [...targetMonth.expenses, newExp] } },
-              });
-            }
-            setModal(null);
-          }} />
+          <ExpenseModal editing={editing} categories={data.categories} defaultDate={`${targetKey}-01`}
+            onClose={() => setModal(null)}
+            onSave={(v) => {
+              // Every category named - the one, or each part's - is created if new.
+              let categories = data.categories;
+              const resolve = (n) => { const r = ensureCategory(categories, n); categories = r.categories; return r.category.name; };
+              const fields = { name: v.name, amount: v.amount, date: v.date, note: v.note, category: resolve(v.category) };
+              if (v.splits) fields.splits = v.splits.map((p) => ({ ...p, category: resolve(p.category) }));
+              const build = (base) => {
+                const e = { ...base, ...fields };
+                if (!v.splits) delete e.splits;
+                return e;
+              };
+              const expenses = editing
+                ? targetMonth.expenses.map((x) => (x.id === editing.id ? build(x) : x))
+                : [...targetMonth.expenses, build({ id: uid() })];
+              save({ ...data, categories, months: { ...data.months, [targetKey]: { ...targetMonth, expenses } } });
+              setModal(null);
+            }} />
         );
       })()}
       {modal?.type === "recurring" && (() => {

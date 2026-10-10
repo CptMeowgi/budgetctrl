@@ -102,6 +102,16 @@ describe("renameCategory", () => {
     expect(() => renameCategory(fixture(), "spend", "Nope", "X")).toThrow();
   });
 
+  it("renames a category inside split receipts too", () => {
+    const d = fixture();
+    d.months["2026-09"].expenses.push({ id: "sp", name: "Tesco", amount: 100, category: "Food",
+      splits: [{ category: "Food", amount: 70 }, { category: "Fun", amount: 30 }] });
+    const out = renameCategory(d, "spend", "Fun", "Leisure");
+    expect(out.months["2026-09"].expenses.find((e) => e.id === "sp").splits).toEqual([
+      { category: "Food", amount: 70 }, { category: "Leisure", amount: 30 }]);
+    expect(countUsage(out, "spend", "Leisure").entries).toBeGreaterThan(0);
+  });
+
   it("does not mutate its input", () => {
     const d = fixture();
     const snapshot = JSON.stringify(d);

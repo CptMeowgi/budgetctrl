@@ -6,6 +6,7 @@ import { DeleteArmContext } from "../contexts.js";
 import { fmt } from "../money.js";
 import { FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
 import { CategoryPill } from "./controls.jsx";
+import { isSplit } from "../lib/splits.js";
 
 // The trailing edit/delete cell on every entry row. Previously eight
 // near-identical copies. onDelete stays a callback because the action really
@@ -81,7 +82,15 @@ export function ExpenseRow({ entry: e, categories, onEdit, onDelete }) {
   return (
     <div style={s.tableRow}>
       <EntryName name={e.name} note={e.note} />
-      <div style={{ flex: 1.2 }}><CategoryPill categoryName={e.category} categories={categories} /></div>
+      <div style={{ flex: 1.2 }}>
+        {isSplit(e) ? (
+          <span title={e.splits.map((p) => `${p.category}: ${fmt(p.amount)}`).join("\n")}
+            style={{ ...s.catPill, background: theme.bg, color: theme.textMuted, cursor: "help" }}>
+            <span style={{ ...s.catDot, background: theme.border }}>⑂</span>
+            Split · {e.splits.length}
+          </span>
+        ) : <CategoryPill categoryName={e.category} categories={categories} />}
+      </div>
       <div style={{ flex: 1, color: theme.textMuted, ...TYPE.caption }}>{e.date}</div>
       <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: theme.danger }}>{fmt(e.amount)}</div>
       <RowActions id={e.id} onEdit={onEdit} onDelete={onDelete} />

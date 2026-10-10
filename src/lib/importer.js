@@ -15,6 +15,7 @@
 
 import { periodKeyFor, recurringDateInPeriod, daysBetween, isoDay } from "./periods.js";
 import { applyRule } from "./rules.js";
+import { isSplit } from "./splits.js";
 
 // ---------------------------------------------------------------- decoding
 
@@ -255,7 +256,8 @@ function categoryIndex(data) {
   const periods = Object.keys(data.months || {}).sort();
   for (const k of periods) {
     for (const e of data.months[k].expenses || []) {
-      if (!e.category || e.category === "Uncategorized") continue;
+      // A split receipt has no one category to learn from.
+      if (!e.category || e.category === "Uncategorized" || isSplit(e)) continue;
       const n = normName(e.name);
       if (!n) continue;
       exact.set(n, e.category);

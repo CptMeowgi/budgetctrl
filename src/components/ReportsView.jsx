@@ -6,6 +6,7 @@ import { currencyCode, fmt, fmtWhole } from "../money.js";
 import { FONT, SPACE, TYPE, useThemed } from "../theme.js";
 import { CategoryDonut, MonthlyBarChart } from "./charts.jsx";
 import { CategoryPill, StatCard } from "./controls.jsx";
+import { isSplit } from "../lib/splits.js";
 
 // Two-digit alpha suffix for a #rrggbb colour.
 function alphaHex(a) {
@@ -255,7 +256,7 @@ export function ReportsView({ data, today, curKey, range, onRange, onOpenPeriod 
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ ...ellipsis, fontWeight: 600 }} title={entry.name}>{entry.name}</div>
                       <div style={{ ...ellipsis, ...TYPE.finePrint, color: theme.textFaint, marginTop: 2 }}>
-                        {entry.category || "Uncategorized"} · {shortDate(entry.date || entry.dueDate)}
+                        {isSplit(entry) ? `Split · ${entry.splits.map((p) => p.category).join(", ")}` : (entry.category || "Uncategorized")} · {shortDate(entry.date || entry.dueDate)}
                       </div>
                     </div>
                     <div style={{ fontWeight: 700, color: "#ef4444", whiteSpace: "nowrap", ...money }}>{fmt(entry.amount)}</div>

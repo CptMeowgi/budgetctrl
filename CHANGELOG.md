@@ -115,6 +115,15 @@ from 0.4.x:** uninstall it from Windows Settings → Apps first, then install th
 version. Your budget is kept, and **Start with Windows** follows the app to its
 new location by itself.
 
+### Split a payment across categories
+One receipt, several categories: in an expense, **Split across categories** turns
+the category into parts, such as 150 zł Food and 50 zł Household for one
+supermarket shop. Type the price of the items you're splitting off and the
+first part shrinks to match; it won't save until the parts add up. Each part
+counts toward its own category in budgets, reports and the category chart, search
+finds the receipt under any of them, the spreadsheet export writes a row per
+part, and renaming or merging a category updates the parts too.
+
 ### Import rules
 Tell the statement import how to handle a payee once, and it remembers. While
 reviewing an import, tick **Always** next to a row and every future

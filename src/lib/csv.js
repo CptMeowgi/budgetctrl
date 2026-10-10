@@ -9,6 +9,8 @@
 // 2. Excel assumes the system codepage unless a UTF-8 byte order mark is
 //    present, which mangles "ł", "ż" and friends. The BOM is on by default.
 
+import { isSplit, splitParts } from "./splits.js";
+
 export const CSV_COLUMNS = ["Period", "Date", "Type", "Name", "Category", "Amount", "Currency", "Status", "Note"];
 
 // The decimal mark the locale uses, and the column separator that goes with it.
@@ -53,8 +55,11 @@ export function budgetToRows(data, { resolveRecurringDate, currency }) {
   const cur = currency || data.currency || "";
   for (const [period, m] of Object.entries(data.months || {})) {
     for (const e of m.expenses || []) {
-      rows.push({ period, date: e.date || "", type: "Expense", name: e.name, category: e.category,
-                  amount: -(e.amount || 0), status: "", note: e.note });
+      // A split receipt is one row per part, so a pivot by category adds up.
+      for (const p of splitParts(e)) {
+        rows.push({ period, date: e.date || "", type: isSplit(e) ? "Expense (split)" : "Expense", name: e.name,
+                    category: p.category, amount: -(p.amount || 0), status: "", note: e.note });
+      }
     }
     for (const r of m.recurring || []) {
       rows.push({ period, date: resolveRecurringDate ? resolveRecurringDate(r.dayOfMonth, period) : "",
