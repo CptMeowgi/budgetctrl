@@ -102,7 +102,7 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
       <div style={group}>Keyboard</div>
       <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", columnGap: SPACE.md, rowGap: 6, padding: `${SPACE.xs}px 0`, ...TYPE.caption }}>
         {[
-          ["Ctrl+Z", "Undo"], ["Ctrl+Shift+Z / Ctrl+Y", "Redo"], ["Ctrl+1 … 9", "Switch tab"],
+          ["Ctrl+Z", "Undo"], ["Ctrl+Shift+Z / Ctrl+Y", "Redo"], ["Ctrl+1 … 9", "Switch tab"], ["Ctrl+F", "Search everything"],
           ["N", "New entry on this tab"], ["/", "Search this tab"], ["Esc", "Close a dialog"],
         ].map(([k, v]) => (
           <Fragment key={k}>

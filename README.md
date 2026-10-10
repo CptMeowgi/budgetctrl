@@ -50,6 +50,10 @@ and tells you what it needs per month to land on its date, or when you'll get
 there at your current pace. The Dashboard adds up what your dated goals need
 and offers to set that aside.
 
+**Search everything.** Ctrl+F finds any entry in any month by name, category,
+note or amount, with filters for type, category, dates and amount, and the total
+spent and received across what it finds.
+
 **History you can correct.** Every past period is editable — income inline from
 the Savings table, everything else in place. Periods corrected after the fact
 are marked, so a hand-adjusted figure never passes for a calculated one.

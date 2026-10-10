@@ -54,7 +54,8 @@ new month starting, are never undone.
 
 | Key | Does |
 |---|---|
-| Ctrl+1 … 0 | Switch tab |
+| Ctrl+1 … 9 | Switch tab |
+| Ctrl+F | Search everything |
 | N | New entry on this tab |
 | / | Search this tab |
 | Esc | Close a dialog |
@@ -113,6 +114,13 @@ admin rights, so updates install without a Windows permission prompt. **Coming
 from 0.4.x:** uninstall it from Windows Settings → Apps first, then install this
 version. Your budget is kept, and **Start with Windows** follows the app to its
 new location by itself.
+
+### Search everything
+**Ctrl+F**, or the ⌕ button, searches every month at once: expenses, recurring
+bills, payments and credits. Type part of a name, category or note (accents
+don't matter, so "zabka" finds Żabka), or an amount, and narrow it down by type,
+category, dates or amount. The total spent and received across the results is
+shown as you type, and clicking one opens it to edit.
 
 ### Savings goals
 Save toward several things at once. Each goal has a target and, if you like, a

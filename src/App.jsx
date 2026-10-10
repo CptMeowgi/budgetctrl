@@ -13,6 +13,7 @@ import { CategoryManager } from "./components/CategoryManager.jsx";
 import { CategoryDonut } from "./components/charts.jsx";
 import { CategoryPill, InfoHint, StatCard, TableHeader, Toast } from "./components/controls.jsx";
 import { GoalModal, SavingsView } from "./components/SavingsView.jsx";
+import { SearchModal } from "./components/SearchModal.jsx";
 import { FormModal } from "./components/FormModal.jsx";
 import { ReportsView } from "./components/ReportsView.jsx";
 import { EntryName, ExpenseRow, MissingFromTemplate, NotDueThisPeriod, RecurringRow, RowActions, UpcomingRow } from "./components/rows.jsx";
@@ -80,6 +81,9 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [statementOpen, setStatementOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  // Kept while the dialog is closed, so reopening it carries on where you were.
+  const [searchQuery, setSearchQuery] = useState({ text: "", kinds: [] });
   // Bumped by the reminder tick when the calendar date rolls over; `today`
   // below is keyed to it so a long-lived tray session doesn't show a stale date.
   const [todayKey, setTodayKey] = useState(() => isoDay(new Date()));
@@ -272,10 +276,11 @@ export default function App() {
       const el = e.target;
       const tag = (el?.tagName || "").toLowerCase();
       const typing = tag === "input" || tag === "textarea" || tag === "select" || el?.isContentEditable;
-      const dialogOpen = !!modal || settingsOpen || categoriesOpen || statementOpen;
+      const dialogOpen = !!modal || settingsOpen || categoriesOpen || statementOpen || searchOpen;
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
       if (dialogOpen) return;
+      if (mod && key === "f") { e.preventDefault(); setSearchOpen(true); return; }
       if (mod && key === "z" && !typing) { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
       if (mod && key === "y" && !typing) { e.preventDefault(); redo(); return; }
       if (mod && /^[0-9]$/.test(e.key)) {
@@ -293,7 +298,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [modal, settingsOpen, categoriesOpen, statementOpen, tab, undo, redo]);
+  }, [modal, settingsOpen, categoriesOpen, statementOpen, searchOpen, tab, undo, redo]);
 
   // Derived from todayKey rather than recomputed per render: stable within a
   // day, and guaranteed to refresh when the tick above crosses midnight. Local
@@ -485,6 +490,7 @@ export default function App() {
                 + Add {ADD_LABELS[tab]}
               </button>
             )}
+            <button className="icon-btn" style={s.themeToggle} onClick={() => setSearchOpen(true)} title="Search everything (Ctrl+F)">⌕</button>
             <button
               className="icon-btn"
               style={{ ...s.themeToggle, opacity: historySize.past ? 1 : 0.35, cursor: historySize.past ? "pointer" : "default" }}
@@ -1407,6 +1413,17 @@ export default function App() {
       })()}
 
       <Toast message={toast} />
+
+      {searchOpen && (
+        <SearchModal data={data} query={searchQuery} onQueryChange={setSearchQuery}
+          onClose={() => setSearchOpen(false)}
+          onOpen={(r) => {
+            // Each kind opens in its own dialog, in the period it belongs to.
+            const type = { expense: "expense", recurring: "recurring", upcoming: "upcoming", credit: "credit" }[r.kind];
+            setSearchOpen(false);
+            setModal({ type, editId: r.entry.id, monthKey: r.periodKey });
+          }} />
+      )}
 
       {statementOpen && (
         <StatementImport data={data} onClose={() => setStatementOpen(false)}
