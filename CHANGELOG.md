@@ -56,6 +56,7 @@ new month starting, are never undone.
 |---|---|
 | Ctrl+1 … 9 | Switch tab |
 | Ctrl+F | Search everything |
+| Ctrl+L | Lock, when a PIN is set |
 | N | New entry on this tab |
 | / | Search this tab |
 | Esc | Close a dialog |
@@ -114,6 +115,18 @@ admin rights, so updates install without a Windows permission prompt. **Coming
 from 0.4.x:** uninstall it from Windows Settings → Apps first, then install this
 version. Your budget is kept, and **Start with Windows** follows the app to its
 new location by itself.
+
+### App lock
+**Settings → Privacy → Lock with a PIN** keeps Budget Ctrl closed to anyone else
+using your computer. It locks when the app starts, after a spell of not using it
+(you choose how long), when the window is minimised or hidden to the tray, and
+whenever you press **Ctrl+L** or the lock button. Nothing of your budget shows
+behind the lock screen, and repeated wrong tries make you wait.
+
+The PIN itself is never stored, only a salted, deliberately slow hash of it, in
+a small `lock.json` beside your budget. The lock doesn't encrypt your budget
+file. Forgot the PIN? Delete `lock.json` and the lock is gone, with your
+budget untouched.
 
 ### A welcome for new budgets
 A fresh install opens with three short screens: your currency and number format,

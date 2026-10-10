@@ -20,6 +20,7 @@ import { SearchModal } from "./components/SearchModal.jsx";
 import { RulesManager } from "./components/RulesManager.jsx";
 import { BillCalendar, ForecastCard } from "./components/BillCalendar.jsx";
 import { SetupWizard } from "./components/SetupWizard.jsx";
+import { LockScreen, PinDialog } from "./components/LockScreen.jsx";
 import { FormModal } from "./components/FormModal.jsx";
 import { ExpenseModal } from "./components/ExpenseModal.jsx";
 import { ReportsView } from "./components/ReportsView.jsx";
@@ -38,7 +39,7 @@ import { categoryBreakdown, countRebucketMoves, CREDIT_UNCATEGORIZED, defaultDat
 import { currencyCode, fmt, setMoneyFormat } from "./money.js";
 import { isTauri } from "./platform.js";
 import { ordinal } from "./text.js";
-import { readBackup, writeBackup } from "./storage.js";
+import { readBackup, readLock, writeBackup, writeLock } from "./storage.js";
 import { CHIP_GRAY, DARK_THEME, FOCUS_BLUE, FONT, LIGHT_THEME, makeStyles, RADIUS, SPACE, ThemeContext, TYPE } from "./theme.js";
 
 const UNDO_LIMIT = 50;
@@ -96,6 +97,11 @@ export default function App() {
   const [rulesOpen, setRulesOpen] = useState(false);
   // The welcome screens: shown once, for a budget created on this launch.
   const [setupOpen, setSetupOpen] = useState(false);
+  // App lock: undefined until lock.json has been read, so the budget is never
+  // drawn for a moment before the lock screen.
+  const [lockCfg, setLockCfg] = useState(undefined);
+  const [locked, setLocked] = useState(false);
+  const [pinDialog, setPinDialog] = useState(null);
   const [statementOpen, setStatementOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   // Kept while the dialog is closed, so reopening it carries on where you were.
@@ -293,9 +299,11 @@ export default function App() {
       const el = e.target;
       const tag = (el?.tagName || "").toLowerCase();
       const typing = tag === "input" || tag === "textarea" || tag === "select" || el?.isContentEditable;
-      const dialogOpen = !!modal || settingsOpen || categoriesOpen || statementOpen || searchOpen || rulesOpen || setupOpen;
+      const dialogOpen = !!modal || settingsOpen || categoriesOpen || statementOpen || searchOpen || rulesOpen || setupOpen || !!pinDialog;
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
+      // Locking works from anywhere, open dialog or not.
+      if (mod && key === "l" && lockCfg) { e.preventDefault(); setLocked(true); return; }
       if (dialogOpen) return;
       if (mod && key === "f") { e.preventDefault(); setSearchOpen(true); return; }
       if (mod && key === "z" && !typing) { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
@@ -315,7 +323,32 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [modal, settingsOpen, categoriesOpen, statementOpen, searchOpen, rulesOpen, setupOpen, tab, undo, redo]);
+  }, [modal, settingsOpen, categoriesOpen, statementOpen, searchOpen, rulesOpen, setupOpen, pinDialog, lockCfg, tab, undo, redo]);
+
+  useEffect(() => {
+    let alive = true;
+    readLock().then((cfg) => { if (!alive) return; setLockCfg(cfg); setLocked(!!cfg); });
+    return () => { alive = false; };
+  }, []);
+
+  // Lock after a spell of not using the app.
+  useEffect(() => {
+    if (!lockCfg || locked || !(lockCfg.idleMinutes > 0)) return;
+    let last = Date.now();
+    const bump = () => { last = Date.now(); };
+    const events = ["pointerdown", "pointermove", "keydown", "wheel"];
+    events.forEach((ev) => window.addEventListener(ev, bump, { passive: true }));
+    const iv = setInterval(() => { if (Date.now() - last > lockCfg.idleMinutes * 60000) setLocked(true); }, 15000);
+    return () => { events.forEach((ev) => window.removeEventListener(ev, bump)); clearInterval(iv); };
+  }, [lockCfg, locked]);
+
+  // And when the window is minimised or hidden to the tray.
+  useEffect(() => {
+    if (!lockCfg || lockCfg.lockWhenHidden === false) return;
+    const onVis = () => { if (document.visibilityState === "hidden") setLocked(true); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [lockCfg]);
 
   // Derived from todayKey rather than recomputed per render: stable within a
   // day, and guaranteed to refresh when the tick above crosses midnight. Local
@@ -323,7 +356,20 @@ export default function App() {
   // isRecurringDue, which treat period bounds as whole days.
   const today = useMemo(() => new Date(`${todayKey}T00:00:00`), [todayKey]);
 
-  if (!loaded) return <div style={s.shell}><div style={{ color: "#6b7280", textAlign: "center", marginTop: 200, fontSize: 14 }}>Loading...</div></div>;
+  if (!loaded || lockCfg === undefined) return <div style={s.shell}><div style={{ color: "#6b7280", textAlign: "center", marginTop: 200, fontSize: 14 }}>Loading...</div></div>;
+
+  if (lockCfg && locked) {
+    return (
+      <ThemeContext.Provider value={themedValue}>
+        {/* The window has no system title bar, so the lock screen keeps the
+            app's own: it can still be moved, minimised and closed. */}
+        <div data-tauri-drag-region style={{ position: "fixed", top: 0, left: 0, right: 0, height: 40, zIndex: 2 }}>
+          <WindowControls />
+        </div>
+        <LockScreen lock={lockCfg} onUnlock={() => setLocked(false)} />
+      </ThemeContext.Provider>
+    );
+  }
 
   const cutoffDay = data.cutoffDay || 1;
   const curKey = currentPeriodKey(cutoffDay);
@@ -526,6 +572,9 @@ export default function App() {
             >
               {themeMode === "dark" ? "☀" : "☾"}
             </button>
+            {lockCfg && (
+              <button className="icon-btn" style={{ ...s.themeToggle, filter: "grayscale(1)" }} onClick={() => setLocked(true)} title="Lock now (Ctrl+L)">🔒</button>
+            )}
             <button className="icon-btn" style={s.themeToggle} onClick={() => setSettingsOpen(true)} title="Settings">⚙</button>
           </div>
         </header>
@@ -1515,6 +1564,20 @@ export default function App() {
           }} />
       )}
 
+      {pinDialog && (
+        <PinDialog mode={pinDialog} lock={lockCfg} onClose={() => setPinDialog(null)}
+          onDone={async (cfg) => {
+            try {
+              await writeLock(cfg);
+              setLockCfg(cfg);
+              setToast(cfg ? (pinDialog === "set" ? "Lock is on" : "PIN changed") : "Lock is off");
+            } catch (err) {
+              alert(`Couldn't save the lock: ${err}`);
+            }
+            setPinDialog(null);
+          }} />
+      )}
+
       {rulesOpen && (
         <RulesManager data={data} onChange={(importRules) => save({ ...data, importRules })} onClose={() => setRulesOpen(false)} />
       )}
@@ -1541,6 +1604,9 @@ export default function App() {
           onChangeLocale={(locale) => save({ ...data, locale })}
           onManageCategories={() => { setSettingsOpen(false); setCategoriesOpen(true); }}
           onManageRules={() => { setSettingsOpen(false); setRulesOpen(true); }}
+          lockCfg={lockCfg}
+          onPinAction={(mode) => { setSettingsOpen(false); setPinDialog(mode); }}
+          onChangeLock={(cfg) => { writeLock(cfg).then(() => setLockCfg(cfg)).catch((err) => alert(`Couldn't save the lock: ${err}`)); }}
           onRestore={async (name) => {
             if (!confirm(`Replace all current data with the backup "${name}"?
 

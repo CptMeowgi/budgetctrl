@@ -9,7 +9,7 @@ import { Modal } from "./Modal.jsx";
 import { ordinal } from "../text.js";
 
 export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onChangeLocale, onRestore, onManageCategories, updater, onChangeUpdates, onInstallUpdate,
-  onChangeCutoff, onExport, onExportCsv, onImport, onImportStatement, onReset, onManageRules }) {
+  onChangeCutoff, onExport, onExportCsv, onImport, onImportStatement, onReset, onManageRules, lockCfg, onPinAction, onChangeLock }) {
   const { theme, s } = useThemed();
   const [openedAt] = useState(() => Date.now());
   const rem = data.reminders || { enabled: true, leadDays: 3 };
@@ -97,7 +97,7 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
       <div style={group}>Keyboard</div>
       <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", columnGap: SPACE.md, rowGap: 6, padding: `${SPACE.xs}px 0`, ...TYPE.caption }}>
         {[
-          ["Ctrl+Z", "Undo"], ["Ctrl+Shift+Z / Ctrl+Y", "Redo"], ["Ctrl+1 … 9", "Switch tab"], ["Ctrl+F", "Search everything"],
+          ["Ctrl+Z", "Undo"], ["Ctrl+Shift+Z / Ctrl+Y", "Redo"], ["Ctrl+1 … 9", "Switch tab"], ["Ctrl+F", "Search everything"], ["Ctrl+L", "Lock, when a PIN is set"],
           ["N", "New entry on this tab"], ["/", "Search this tab"], ["Esc", "Close a dialog"],
         ].map(([k, v]) => (
           <Fragment key={k}>
@@ -139,6 +139,30 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
             }
           }}>Send a test reminder</button>
         </SettingRow>
+      )}
+
+      <div style={divider} />
+      <div style={group}>Privacy</div>
+      <SettingRow label="Lock with a PIN" hint="Keeps Budget Ctrl closed to anyone else using this computer. It doesn't encrypt your budget file.">
+        <Switch checked={!!lockCfg} onChange={(v) => onPinAction(v ? "set" : "disable")} />
+      </SettingRow>
+      {lockCfg && (
+        <>
+          <SettingRow label="Lock after" hint="This long without using the app.">
+            <select value={lockCfg.idleMinutes ?? 5} onChange={(e) => onChangeLock({ ...lockCfg, idleMinutes: +e.target.value })}
+              style={{ ...s.input, width: 160 }}>
+              {[[0, "Never"], [1, "1 minute"], [5, "5 minutes"], [15, "15 minutes"], [30, "30 minutes"], [60, "1 hour"]].map(([v, l]) => (
+                <option key={v} value={v}>{l}</option>
+              ))}
+            </select>
+          </SettingRow>
+          <SettingRow label="Lock when hidden" hint="When the window is minimised or closed to the tray.">
+            <Switch checked={lockCfg.lockWhenHidden !== false} onChange={(v) => onChangeLock({ ...lockCfg, lockWhenHidden: v })} />
+          </SettingRow>
+          <SettingRow label="PIN" hint="Ctrl+L locks straight away.">
+            <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => onPinAction("change")}>Change…</button>
+          </SettingRow>
+        </>
       )}
 
       <div style={divider} />

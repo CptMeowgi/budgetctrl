@@ -34,6 +34,38 @@ async function fsApi() {
   return { fs, base: fs.BaseDirectory.AppData };
 }
 
+// The app lock lives in its own small file beside the budget, not inside it:
+// a backup carried to another computer should not arrive locked, and deleting
+// this one file is the documented way out of a forgotten PIN.
+export const LOCK_FILE = "lock.json";
+const LOCK_KEY = "budget-ctrl-lock";
+
+export async function readLock() {
+  try {
+    if (isTauri) {
+      const { fs, base } = await fsApi();
+      if (!(await fs.exists(LOCK_FILE, { baseDir: base }))) return null;
+      return JSON.parse(await fs.readTextFile(LOCK_FILE, { baseDir: base }));
+    }
+    return JSON.parse(localStorage.getItem(LOCK_KEY) || "null");
+  } catch {
+    // An unreadable lock opens the app rather than shutting you out of it.
+    return null;
+  }
+}
+
+export async function writeLock(lock) {
+  if (isTauri) {
+    const { fs, base } = await fsApi();
+    await ensureStoreDir();
+    if (lock) await fs.writeTextFile(LOCK_FILE, JSON.stringify(lock), { baseDir: base });
+    else if (await fs.exists(LOCK_FILE, { baseDir: base })) await fs.remove(LOCK_FILE, { baseDir: base });
+    return;
+  }
+  if (lock) localStorage.setItem(LOCK_KEY, JSON.stringify(lock));
+  else localStorage.removeItem(LOCK_KEY);
+}
+
 async function readStoreFile() {
   const { fs, base } = await fsApi();
   if (!(await fs.exists(STORE_FILE, { baseDir: base }))) return null;

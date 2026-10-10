@@ -62,6 +62,9 @@ end, and a warning if you'd run short before payday.
 **Split payments.** One receipt can be split across categories, and each part
 counts where it belongs.
 
+**A PIN lock.** Optional: locks at start, when idle and when hidden, and keeps
+the budget out of sight until you enter it.
+
 **Search everything.** Ctrl+F finds any entry in any month by name, category,
 note or amount, with filters for type, category, dates and amount, and the total
 spent and received across what it finds.
