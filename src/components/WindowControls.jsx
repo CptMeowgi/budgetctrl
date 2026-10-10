@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getAppWindow, isTauri } from "../platform.js";
 import { useThemed } from "../theme.js";
+import { t } from "../i18n.js";
 
 const WIN_GLYPHS = {
   minimize: "M19 13H5v-2h14z",
@@ -68,9 +69,9 @@ export function WindowControls() {
 
   return (
     <div style={{ position: "absolute", top: 0, right: 0, display: "flex", alignItems: "center", zIndex: 10 }}>
-      {btn("minimize", "minimize", "Minimize", WIN_GLYPHS.minimize)}
-      {btn("maximize", "toggle", maximized ? "Restore" : "Maximize", maximized ? WIN_GLYPHS.restore : WIN_GLYPHS.maximize)}
-      {btn("close", "close", "Close", WIN_GLYPHS.close)}
+      {btn("minimize", "minimize", t("Minimize"), WIN_GLYPHS.minimize)}
+      {btn("maximize", "toggle", maximized ? t("Restore") : t("Maximize"), maximized ? WIN_GLYPHS.restore : WIN_GLYPHS.maximize)}
+      {btn("close", "close", t("Close"), WIN_GLYPHS.close)}
     </div>
   );
 }

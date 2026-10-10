@@ -8,6 +8,7 @@ import { FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
 import { SavingsChart } from "./charts.jsx";
 import { GoalProgress, InfoHint, InlineNumber, TableHeader } from "./controls.jsx";
 import { Modal } from "./Modal.jsx";
+import { fmtDate, t, tn } from "../i18n.js";
 
 const money = { fontFamily: FONT, fontVariantNumeric: "tabular-nums" };
 
@@ -15,27 +16,30 @@ const money = { fontFamily: FONT, fontVariantNumeric: "tabular-nums" };
 // land on its date, or when it gets there at the current pace.
 function planLine(goal, st) {
   if (st.saved == null) return null;
-  if (st.target <= 0) return "No target set";
-  if (st.reached) return "Goal reached";
-  if (st.overdue) return `Was due ${monthLabel(goal.targetDate)} · ${fmt(st.remaining)} still to go`;
+  if (st.target <= 0) return t("No target set");
+  if (st.reached) return t("Goal reached");
+  if (st.overdue) return t("Was due {month} · {amount} still to go", { month: monthLabel(goal.targetDate), amount: fmt(st.remaining) });
   if (st.neededPerMonth != null) {
-    const late = st.behind ? ` · at your current pace, ${monthLabel(st.eta)}` : "";
-    return `${fmt(st.neededPerMonth)} a month gets you there by ${monthLabel(goal.targetDate)}${late}`;
+    const needed = t("{amount} a month gets you there by {month}", { amount: fmt(st.neededPerMonth), month: monthLabel(goal.targetDate) });
+    return st.behind ? `${needed} · ${t("at your current pace, {month}", { month: monthLabel(st.eta) })}` : needed;
   }
-  if (st.eta) return `At your current pace (${fmt(st.pace)} a month), ${monthLabel(st.eta)}`;
-  return `${fmt(st.remaining)} to go`;
+  if (st.eta) return t("At your current pace ({amount} a month), {month}", { amount: fmt(st.pace), month: monthLabel(st.eta) });
+  return t("{amount} to go", { amount: fmt(st.remaining) });
 }
 
 function sourceLine(goal, data, todayIso) {
   if (goal.source === "budget") {
-    return `Counts what your budget leaves over each month${goal.startAmount ? `, plus ${fmt(goal.startAmount)} saved before` : ""}`;
+    return goal.startAmount
+      ? t("Counts what your budget leaves over each month, plus {amount} saved before", { amount: fmt(goal.startAmount) })
+      : t("Counts what your budget leaves over each month");
   }
   const acc = goalAccount(goal, data);
-  if (!acc) return "Its account was removed. Edit the goal to choose another.";
+  if (!acc) return t("Its account was removed. Edit the goal to choose another.");
   const last = latestBalance(acc);
-  if (!last) return `Tracks ${acc.name} · no balance entered yet`;
+  if (!last) return t("Tracks {name} · no balance entered yet", { name: acc.name });
   const days = daysBetweenISO(last.date, todayIso);
-  return `Tracks ${acc.name} · balance from ${days <= 0 ? "today" : days === 1 ? "yesterday" : `${days} days ago`}`;
+  const when = days <= 0 ? t("today") : days === 1 ? t("yesterday") : tn(days, "{n} day ago", "{n} days ago");
+  return t("Tracks {name} · balance from {when}", { name: acc.name, when });
 }
 
 function GoalCard({ goal, status, data, todayIso, onEdit }) {
@@ -46,13 +50,13 @@ function GoalCard({ goal, status, data, todayIso, onEdit }) {
     <div style={s.card}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: SPACE.sm }}>
         <div style={{ ...TYPE.bodyStrong, fontWeight: 600, color: theme.text }}>{goal.name}</div>
-        <button style={s.editBtn} onClick={onEdit} title="Edit goal">✎</button>
+        <button style={s.editBtn} onClick={onEdit} title={t("Edit goal")}>✎</button>
       </div>
       <div style={{ display: "flex", alignItems: "baseline", gap: SPACE.xs, margin: `${SPACE.sm}px 0 ${SPACE.sm}px`, flexWrap: "wrap" }}>
         <span style={{ ...money, fontSize: 26, fontWeight: 700, color: status.reached ? theme.success : theme.text }}>
           {status.saved == null ? "—" : fmt(status.saved)}
         </span>
-        {status.target > 0 && <span style={{ ...money, ...TYPE.caption, color: theme.textMuted }}>of {fmt(status.target)}</span>}
+        {status.target > 0 && <span style={{ ...money, ...TYPE.caption, color: theme.textMuted }}>{t("of {amount}", { amount: fmt(status.target) })}</span>}
         {status.pct != null && (
           <span style={{ ...TYPE.caption, fontWeight: 600, marginLeft: "auto", color: status.reached ? theme.success : theme.textMuted }}>
             {Math.round(status.pct * 100)}%
@@ -81,12 +85,9 @@ export function SavingsView({ data, history, today, cutoffDay, onAddGoal, onEdit
     <>
       {goals.length === 0 ? (
         <div style={{ ...s.card, textAlign: "center", padding: SPACE.xxl }}>
-          <div style={{ ...TYPE.lead, fontWeight: 600, marginBottom: SPACE.xs }}>Save toward something</div>
-          <div style={{ ...TYPE.caption, color: theme.textMuted, maxWidth: 460, margin: "0 auto", lineHeight: 1.5 }}>
-            A holiday, an emergency fund, a new car. Give it a target and a date, and see what it needs each month
-            and when you'll get there at your current pace.
-          </div>
-          <button style={{ ...s.addBtn, marginTop: SPACE.lg }} onClick={onAddGoal}>+ Add goal</button>
+          <div style={{ ...TYPE.lead, fontWeight: 600, marginBottom: SPACE.xs }}>{t("Save toward something")}</div>
+          <div style={{ ...TYPE.caption, color: theme.textMuted, maxWidth: 460, margin: "0 auto", lineHeight: 1.5 }}>{t("A holiday, an emergency fund, a new car. Give it a target and a date, and see what it needs each month and when you'll get there at your current pace.")}</div>
+          <button style={{ ...s.addBtn, marginTop: SPACE.lg }} onClick={onAddGoal}>{t("+ Add goal")}</button>
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
@@ -99,25 +100,23 @@ export function SavingsView({ data, history, today, cutoffDay, onAddGoal, onEdit
 
       <div style={{ ...s.card, marginTop: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <div style={s.cardTitle}>Left over each month</div>
-          <InfoHint text="Income less spending for every finished month, and the running total. A goal set to count what your budget leaves over uses this." />
+          <div style={s.cardTitle}>{t("Left over each month")}</div>
+          <InfoHint text={t("Income less spending for every finished month, and the running total. A goal set to count what your budget leaves over uses this.")} />
         </div>
         <SavingsChart series={history.series} />
       </div>
 
       <div style={{ ...s.card, marginTop: 16 }}>
-        <div style={s.cardTitle}>Month by month</div>
+        <div style={s.cardTitle}>{t("Month by month")}</div>
         {history.series.length < 2 ? (
-          <div style={s.emptySmall}>Each month appears here once it has finished.</div>
+          <div style={s.emptySmall}>{t("Each month appears here once it has finished.")}</div>
         ) : (
           <>
-            <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginTop: SPACE.xs }}>
-              Income is editable here. For expenses, open the month.
-            </div>
+            <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginTop: SPACE.xs }}>{t("Income is editable here. For expenses, open the month.")}</div>
             <TableHeader columns={[
-              { label: "PERIOD", flex: 2 }, { label: "INCOME", flex: 1, align: "right" },
-              { label: "SPENT", flex: 1, align: "right" }, { label: "LEFT OVER", flex: 1, align: "right" },
-              { label: "RUNNING TOTAL", flex: 1, align: "right" }, { label: "", flex: 0.8, align: "right" },
+              { label: t("PERIOD"), flex: 2 }, { label: t("INCOME"), flex: 1, align: "right" },
+              { label: t("SPENT"), flex: 1, align: "right" }, { label: t("LEFT OVER"), flex: 1, align: "right" },
+              { label: t("RUNNING TOTAL"), flex: 1, align: "right" }, { label: "", flex: 0.8, align: "right" },
             ]} />
             {history.series.slice(1).map((row) => (
               <div key={row.key} style={s.tableRow}>
@@ -125,13 +124,13 @@ export function SavingsView({ data, history, today, cutoffDay, onAddGoal, onEdit
                   {periodLabel(row.key, cutoffDay).primary}
                   {row.editedAt && (
                     <span
-                      title={`Edited after this period closed, on ${new Date(row.editedAt).toLocaleDateString()}`}
+                      title={t("Edited after this period closed, on {date}", { date: fmtDate(new Date(row.editedAt)) })}
                       style={{ ...TYPE.microLegal, color: theme.textFaint, border: `1px solid ${theme.border}`, borderRadius: RADIUS.pill, padding: "1px 7px", fontWeight: 400 }}
-                    >edited</span>
+                    >{t("edited")}</span>
                   )}
                 </div>
                 <div style={{ flex: 1 }}>
-                  <InlineNumber value={data.months[row.key]?.income || 0} title="Base income for this period"
+                  <InlineNumber value={data.months[row.key]?.income || 0} title={t("Base income for this period")}
                     onChange={(v) => onChangeIncome(row.key, v)} />
                 </div>
                 <div style={{ flex: 1, textAlign: "right", ...money, color: theme.textMuted }}>{fmt(row.spent)}</div>
@@ -140,8 +139,8 @@ export function SavingsView({ data, history, today, cutoffDay, onAddGoal, onEdit
                 </div>
                 <div style={{ flex: 1, textAlign: "right", ...money, fontWeight: 700 }}>{fmt(row.balance)}</div>
                 <div style={{ flex: 0.8, textAlign: "right" }}>
-                  <button style={{ ...s.linkBtn, padding: 0 }} title="Open this period to edit its expenses, recurring items and credits"
-                    onClick={() => onOpenPeriod(row.key)}>Open →</button>
+                  <button style={{ ...s.linkBtn, padding: 0 }} title={t("Open this period to edit its expenses, recurring items and credits")}
+                    onClick={() => onOpenPeriod(row.key)}>{t("Open →")}</button>
                 </div>
               </div>
             ))}
@@ -184,47 +183,45 @@ export function GoalModal({ goal, data, curKey, onDismiss, onSave, onDelete }) {
   };
 
   return (
-    <Modal title={editing ? "Edit Goal" : "Add Goal"} onClose={onDismiss}>
+    <Modal title={editing ? t("Edit Goal") : t("Add Goal")} onClose={onDismiss}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, padding: "20px 0 12px" }}>
         <div style={{ gridColumn: "1 / -1" }}>
-          <label style={label}>Name</label>
-          <input autoFocus value={name} placeholder="e.g. Holiday in Portugal" onChange={(e) => setName(e.target.value)} style={s.input} />
+          <label style={label}>{t("Name")}</label>
+          <input autoFocus value={name} placeholder={t("e.g. Holiday in Portugal")} onChange={(e) => setName(e.target.value)} style={s.input} />
         </div>
         <div>
-          <label style={label}>Target ({currencyCode()})</label>
+          <label style={label}>{t("Target ({currency})", { currency: currencyCode() })}</label>
           <input inputMode="decimal" value={target} placeholder="0" onChange={(e) => setTarget(e.target.value)} style={s.input} />
         </div>
         <div>
-          <label style={label}>By (optional)</label>
+          <label style={label}>{t("By (optional)")}</label>
           <input type="month" value={by} min={curKey} onChange={(e) => setBy(e.target.value)} style={s.input} />
         </div>
         <div style={{ gridColumn: "1 / -1" }}>
-          <label style={label}>Counts</label>
+          <label style={label}>{t("Counts")}</label>
           <select value={source} onChange={(e) => setSource(e.target.value)} style={s.input}>
-            {options.map((a) => <option key={a.id} value={`account:${a.id}`}>The balance of {a.name}</option>)}
-            {currentMissing && <option value={`account:${goal.accountId}`}>Its old account (removed)</option>}
-            <option value="budget">What my budget leaves over each month</option>
+            {options.map((a) => <option key={a.id} value={`account:${a.id}`}>{t("The balance of {name}", { name: a.name })}</option>)}
+            {currentMissing && <option value={`account:${goal.accountId}`}>{t("Its old account (removed)")}</option>}
+            <option value="budget">{t("What my budget leaves over each month")}</option>
           </select>
           {options.length === 0 && !currentMissing && (
-            <div style={{ ...TYPE.finePrint, color: theme.textFaint, marginTop: 6 }}>
-              Keeping the money in a savings account? Add it on the Accounts tab and this goal can track its balance.
-            </div>
+            <div style={{ ...TYPE.finePrint, color: theme.textFaint, marginTop: 6 }}>{t("Keeping the money in a savings account? Add it on the Accounts tab and this goal can track its balance.")}</div>
           )}
         </div>
         {source === "budget" && (
           <div style={{ gridColumn: "1 / -1" }}>
-            <label style={label}>Already saved before ({currencyCode()}, optional)</label>
+            <label style={label}>{t("Already saved before ({currency}, optional)", { currency: currencyCode() })}</label>
             <input inputMode="decimal" value={start} placeholder="0" onChange={(e) => setStart(e.target.value)} style={s.input} />
           </div>
         )}
       </div>
       <button style={{ ...s.saveBtn, opacity: valid ? 1 : 0.5, cursor: valid ? "pointer" : "not-allowed" }} disabled={!valid} onClick={submit}>
-        {valid ? "Save" : "Fill in a name and a target"}
+        {valid ? t("Save") : t("Fill in a name and a target")}
       </button>
       {editing && (
         <div style={{ display: "flex", justifyContent: "flex-end", marginTop: SPACE.md }}>
           <button style={{ ...s.linkBtn, color: theme.danger }} onClick={() => (armDelete ? onDelete() : setArmDelete(true))}>
-            {armDelete ? "Click again to delete this goal" : "Delete goal"}
+            {armDelete ? t("Click again to delete this goal") : t("Delete goal")}
           </button>
         </div>
       )}

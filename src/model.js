@@ -11,7 +11,7 @@ export const UNCATEGORIZED = { name: "Uncategorized", color: "#9ca3af", icon: "�
 export const PICKER_COLORS = [...CATEGORY_COLORS, "#06b6d4", "#84cc16", "#a855f7", "#64748b", "#e11d48", "#0ea5e9"];
 export const PICKER_ICONS = [...CATEGORY_ICONS, "🎓", "🐾", "💡", "🏋️", "🍷", "🧾", "💳", "🚌", "👶", "🎵", "🛠️", "💼"];
 
-const DEFAULT_CREDIT_CATEGORIES = [
+export const DEFAULT_CREDIT_CATEGORIES = [
   { name: "Refund", color: "#10b981", icon: "↩" },
   { name: "Gift",   color: "#ec4899", icon: "🎁" },
   { name: "Bonus",  color: "#f59e0b", icon: "⭐" },

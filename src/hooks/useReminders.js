@@ -1,8 +1,10 @@
 import { useEffect, useRef } from "react";
 import { isoDay } from "../lib/periods.js";
-import { collectDueBills, whenLabel } from "../lib/reminders.js";
+import { collectDueBills } from "../lib/reminders.js";
+import { fmtDate, t, tn } from "../i18n.js";
 import { fmt } from "../money.js";
 import { isTauri } from "../platform.js";
+import { due } from "../text.js";
 
 /* ---- Bill reminders ------------------------------------------------------
    The checker runs here, in the webview, rather than in Rust. Closing the
@@ -16,16 +18,16 @@ const REMINDER_STARTUP_DELAY_MS = 10 * 1000;
 function buildDigest(bills) {
   if (bills.length === 1) {
     const b = bills[0];
-    return { title: `${b.name} — ${whenLabel(b.inDays)}`, body: `${fmt(b.amount)} · due ${b.dueISO}` };
+    return { title: `${b.name} — ${due(b.inDays)}`, body: `${fmt(b.amount)} · ${t("due {date}", { date: fmtDate(b.dueISO, { day: "numeric", month: "long" }) })}` };
   }
   const total = bills.reduce((a, b) => a + b.amount, 0);
   const overdue = bills.filter((b) => b.inDays < 0).length;
   // Each line carries its own date. A bare list of names gave no way to tell
   // why something had been included, which made a wrong reminder unfalsifiable.
-  const lines = bills.slice(0, 3).map((b) => `${b.name} · ${fmt(b.amount)} · ${whenLabel(b.inDays)}`);
-  if (bills.length > 3) lines.push(`+${bills.length - 3} more`);
+  const lines = bills.slice(0, 3).map((b) => `${b.name} · ${fmt(b.amount)} · ${due(b.inDays)}`);
+  if (bills.length > 3) lines.push(t("+{n} more", { n: bills.length - 3 }));
   return {
-    title: `${bills.length} bills due${overdue ? ` · ${overdue} overdue` : ""} · ${fmt(total)}`,
+    title: [tn(bills.length, "{n} bill due", "{n} bills due"), overdue ? tn(overdue, "{n} overdue", "{n} overdue") : "", fmt(total)].filter(Boolean).join(" · "),
     body: lines.join("\n"),
   };
 }

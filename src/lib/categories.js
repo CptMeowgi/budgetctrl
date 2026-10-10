@@ -24,6 +24,15 @@ export const CATEGORY_KINDS = {
 };
 
 const norm = (s) => (s || "").trim();
+
+// Errors carry their wording as a template and its values, so the screen can
+// show them in the reader's language; the message itself stays English.
+function fail(template, vars = {}) {
+  const err = new Error(template.replace(/\{(\w+)\}/g, (_, k) => vars[k]));
+  err.key = template;
+  err.vars = vars;
+  return err;
+}
 const sameName = (a, b) => norm(a).toLowerCase() === norm(b).toLowerCase();
 
 function kindOf(kind) {
@@ -90,12 +99,12 @@ function adoptBudget(target, source) {
 export function renameCategory(data, kind, from, to) {
   const k = kindOf(kind);
   const target = norm(to);
-  if (!target) throw new Error("A category needs a name.");
-  if (isFallback(kind, from)) throw new Error(`"${k.fallback}" cannot be renamed.`);
+  if (!target) throw fail("A category needs a name.");
+  if (isFallback(kind, from)) throw fail('"{name}" cannot be renamed.', { name: k.fallback });
 
   const list = data[k.list] || [];
   const source = list.find((c) => sameName(c.name, from));
-  if (!source) throw new Error(`No category named "${from}".`);
+  if (!source) throw fail('No category named "{name}".', { name: from });
 
   const existing = list.find((c) => sameName(c.name, target) && c !== source);
 
@@ -130,13 +139,13 @@ export function restyleCategory(data, kind, name, style) {
 // in - and is recreated if it has somehow gone missing.
 export function deleteCategory(data, kind, name, moveTo) {
   const k = kindOf(kind);
-  if (isFallback(kind, name)) throw new Error(`"${k.fallback}" cannot be deleted.`);
+  if (isFallback(kind, name)) throw fail('"{name}" cannot be deleted.', { name: k.fallback });
   const dest = norm(moveTo) || k.fallback;
-  if (sameName(dest, name)) throw new Error("Cannot move entries into the category being deleted.");
+  if (sameName(dest, name)) throw fail("Cannot move entries into the category being deleted.");
 
   const list = data[k.list] || [];
   const victim = list.find((c) => sameName(c.name, name));
-  if (!victim) throw new Error(`No category named "${name}".`);
+  if (!victim) throw fail('No category named "{name}".', { name });
 
   let nextList = list.filter((c) => c !== victim);
   const destEntry = nextList.find((c) => sameName(c.name, dest));

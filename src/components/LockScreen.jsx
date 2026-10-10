@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { checkPin, makeLock, PIN_MAX, PIN_MIN, retryDelayMs, validPin } from "../lib/lock.js";
 import { isTauri } from "../platform.js";
 import { LOCK_FILE } from "../storage.js";
 import { ELEVATION, FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
 import { Modal } from "./Modal.jsx";
+import { t } from "../i18n.js";
 
 const FAILS_KEY = "budget-ctrl-lock-fails";
 
@@ -53,7 +54,7 @@ export function LockScreen({ lock, onUnlock }) {
     record(next);
     setNow(Date.now());
     setPin("");
-    setError(retryDelayMs(next.n) ? "Wrong PIN. Too many tries - wait a moment." : "Wrong PIN.");
+    setError(retryDelayMs(next.n) ? t("Wrong PIN. Too many tries - wait a moment.") : t("Wrong PIN."));
   };
 
   return (
@@ -63,23 +64,24 @@ export function LockScreen({ lock, onUnlock }) {
                     boxShadow: ELEVATION, padding: SPACE.xl, boxSizing: "border-box", textAlign: "center" }}>
         <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.5 }}>BUDGET</div>
         <div style={{ fontSize: 10, letterSpacing: 3, color: theme.accent, fontWeight: 700, marginBottom: SPACE.lg }}>CTRL</div>
-        <div style={{ ...TYPE.caption, color: theme.textMuted, marginBottom: SPACE.md }}>Locked. Enter your PIN to open.</div>
-        <input type="password" inputMode="numeric" autoFocus aria-label="PIN" maxLength={PIN_MAX} value={pin}
+        <div style={{ ...TYPE.caption, color: theme.textMuted, marginBottom: SPACE.md }}>{t("Locked. Enter your PIN to open.")}</div>
+        <input type="password" inputMode="numeric" autoFocus aria-label={t("PIN")} maxLength={PIN_MAX} value={pin}
           onChange={(e) => { setPin(e.target.value.replace(/\D/g, "")); setError(""); }}
           onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
           disabled={waiting}
           style={{ ...s.input, textAlign: "center", fontSize: 22, letterSpacing: 8 }} />
         <div style={{ ...TYPE.finePrint, minHeight: 18, marginTop: SPACE.xs, color: theme.danger }}>
-          {waiting ? `Try again in ${Math.ceil((waitUntil - now) / 1000)} s` : error}
+          {waiting ? t("Try again in {n} s", { n: Math.ceil((waitUntil - now) / 1000) }) : error}
         </div>
         <button style={{ ...s.saveBtn, opacity: pin && !waiting ? 1 : 0.5 }} disabled={!pin || waiting || busy} onClick={submit}>
-          {busy ? "Checking…" : "Unlock"}
+          {busy ? t("Checking…") : t("Unlock")}
         </button>
-        <button style={{ ...s.linkBtn, ...TYPE.finePrint, marginTop: SPACE.md }} onClick={() => setForgot(!forgot)}>Forgot your PIN?</button>
+        <button style={{ ...s.linkBtn, ...TYPE.finePrint, marginTop: SPACE.md }} onClick={() => setForgot(!forgot)}>{t("Forgot your PIN?")}</button>
         {forgot && (
           <div style={{ ...TYPE.finePrint, color: theme.textMuted, lineHeight: 1.55, textAlign: "left", marginTop: SPACE.xs }}>
-            The lock is a small file, <strong>{LOCK_FILE}</strong>, next to your budget{folder ? <> in <code style={{ wordBreak: "break-all" }}>{folder}</code></> : ""}.
-            Quit Budget Ctrl from its tray icon, delete that file, and open it again: the lock is gone and your budget is untouched.
+            {t("The lock is a small file, {file}, next to your budget.", { file: <strong key="f">{LOCK_FILE}</strong> })}
+            {folder && <Fragment> {t("It's in {folder}.", { folder: <code key="c" style={{ wordBreak: "break-all" }}>{folder}</code> })}</Fragment>}
+            {" "}{t("Quit Budget Ctrl from its tray icon, delete that file, and open it again: the lock is gone and your budget is untouched.")}
           </div>
         )}
       </div>
@@ -98,16 +100,16 @@ export function PinDialog({ mode, lock, onDone, onClose }) {
   const [busy, setBusy] = useState(false);
   const needCurrent = mode !== "set";
   const needNew = mode !== "disable";
-  const title = mode === "set" ? "Lock with a PIN" : mode === "change" ? "Change PIN" : "Turn off the lock";
+  const title = mode === "set" ? t("Lock with a PIN") : mode === "change" ? t("Change PIN") : t("Turn off the lock");
   const digits = (set) => (e) => { set(e.target.value.replace(/\D/g, "").slice(0, PIN_MAX)); setError(""); };
 
   const submit = async () => {
     if (busy) return;
-    if (needNew && !validPin(pin)) return setError(`Use ${PIN_MIN} to ${PIN_MAX} digits.`);
-    if (needNew && pin !== again) return setError("The two PINs don't match.");
+    if (needNew && !validPin(pin)) return setError(t("Use {min} to {max} digits.", { min: PIN_MIN, max: PIN_MAX }));
+    if (needNew && pin !== again) return setError(t("The two PINs don't match."));
     setBusy(true);
     try {
-      if (needCurrent && !(await checkPin(lock, current))) { setError("That isn't your current PIN."); return; }
+      if (needCurrent && !(await checkPin(lock, current))) { setError(t("That isn't your current PIN.")); return; }
       onDone(mode === "disable" ? null : await makeLock(pin, lock || {}));
     } finally {
       setBusy(false);
@@ -126,17 +128,14 @@ export function PinDialog({ mode, lock, onDone, onClose }) {
   return (
     <Modal title={title} onClose={onClose}>
       {mode === "set" && (
-        <div style={{ ...TYPE.caption, color: theme.textMuted, lineHeight: 1.5, marginTop: SPACE.xs }}>
-          Keeps Budget Ctrl closed to anyone else using this computer. It doesn't encrypt your budget file, and reminders
-          still appear while it's locked.
-        </div>
+        <div style={{ ...TYPE.caption, color: theme.textMuted, lineHeight: 1.5, marginTop: SPACE.xs }}>{t("Keeps Budget Ctrl closed to anyone else using this computer. It doesn't encrypt your budget file, and reminders still appear while it's locked.")}</div>
       )}
-      {needCurrent && field("Current PIN", current, digits(setCurrent), true)}
-      {needNew && field(mode === "change" ? "New PIN" : `PIN (${PIN_MIN}–${PIN_MAX} digits)`, pin, digits(setPin), !needCurrent)}
-      {needNew && field("Again", again, digits(setAgain), false)}
+      {needCurrent && field(t("Current PIN"), current, digits(setCurrent), true)}
+      {needNew && field(mode === "change" ? t("New PIN") : t("PIN ({min}–{max} digits)", { min: PIN_MIN, max: PIN_MAX }), pin, digits(setPin), !needCurrent)}
+      {needNew && field(t("Again"), again, digits(setAgain), false)}
       <div style={{ ...TYPE.finePrint, color: theme.danger, minHeight: 18, marginTop: SPACE.xs }}>{error}</div>
       <button style={{ ...s.saveBtn, opacity: busy ? 0.6 : 1 }} disabled={busy} onClick={submit}>
-        {busy ? "Checking…" : mode === "disable" ? "Turn off" : "Save"}
+        {busy ? t("Checking…") : mode === "disable" ? t("Turn off") : t("Save")}
       </button>
     </Modal>
   );

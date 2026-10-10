@@ -7,6 +7,7 @@ import { fmt } from "../money.js";
 import { FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
 import { CategoryPill } from "./controls.jsx";
 import { isSplit } from "../lib/splits.js";
+import { t, tn } from "../i18n.js";
 
 // The trailing edit/delete cell on every entry row. Previously eight
 // near-identical copies. onDelete stays a callback because the action really
@@ -17,10 +18,10 @@ export function RowActions({ id, onEdit, onDelete }) {
   const armed = armedId === id;
   return (
     <div style={{ flex: 0.6, textAlign: "center", display: "flex", justifyContent: "center", gap: SPACE.xxs }}>
-      <button style={s.editBtn} onClick={onEdit} title="Edit">✎</button>
+      <button style={s.editBtn} onClick={onEdit} title={t("Edit")}>✎</button>
       <button
         style={{ ...s.delBtn, color: armed ? theme.danger : theme.textFaint, fontWeight: armed ? 700 : 400 }}
-        title={armed ? "Click again to confirm" : "Delete"}
+        title={armed ? t("Click again to confirm") : t("Delete")}
         onClick={() => { if (armed) { onDelete(); arm(null); } else arm(id); }}
       >✕</button>
     </div>
@@ -37,7 +38,7 @@ export function EntryName({ name, note, strike, every, children }) {
       <div style={{ fontWeight: 600, textDecoration: strike ? "line-through" : "none" }}>
         {name}
         {(every || 1) > 1 && (
-          <span style={{ ...TYPE.microLegal, color: theme.textFaint, marginLeft: 6 }}>{frequencyLabel(every).toLowerCase()}</span>
+          <span style={{ ...TYPE.microLegal, color: theme.textFaint, marginLeft: 6 }}>{t(frequencyLabel(every)).toLowerCase()}</span>
         )}
         {children}
       </div>
@@ -57,13 +58,13 @@ export function NotDueThisPeriod({ items, curKey, cutoffDay, categories, fallbac
   if (!items.length) return null;
   return (
     <div style={{ marginTop: SPACE.lg }}>
-      <div style={{ ...s.cardTitle, marginBottom: SPACE.xxs }}>Not due this period</div>
+      <div style={{ ...s.cardTitle, marginBottom: SPACE.xxs }}>{t("Not due this period")}</div>
       {items.map((tpl) => (
         <div key={tpl.id} style={{ ...s.tableRow, opacity: 0.8 }}>
           <EntryName name={tpl.name} note={tpl.note} />
           <div style={{ flex: 1.2 }}><CategoryPill categoryName={tpl.category} categories={categories} fallback={fallback} /></div>
           <div style={{ flex: 1.5, color: theme.textMuted, ...TYPE.caption }}>
-            {frequencyLabel(tpl.every)} · next {periodLabel(nextOnCycle(tpl, curKey), cutoffDay).primary}
+            {t("{frequency} · next {period}", { frequency: t(frequencyLabel(tpl.every)), period: periodLabel(nextOnCycle(tpl, curKey), cutoffDay).primary })}
           </div>
           <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700,
                         color: positive ? theme.success : theme.accent }}>{positive ? "+" : ""}{fmt(tpl.amount)}</div>
@@ -87,7 +88,7 @@ export function ExpenseRow({ entry: e, categories, onEdit, onDelete }) {
           <span title={e.splits.map((p) => `${p.category}: ${fmt(p.amount)}`).join("\n")}
             style={{ ...s.catPill, background: theme.bg, color: theme.textMuted, cursor: "help" }}>
             <span style={{ ...s.catDot, background: theme.border }}>⑂</span>
-            Split · {e.splits.length}
+            {t("Split · {n}", { n: e.splits.length })}
           </span>
         ) : <CategoryPill categoryName={e.category} categories={categories} />}
       </div>
@@ -103,7 +104,7 @@ export function RecurringRow({ entry: r, categories, onEdit, onDelete }) {
   return (
     <div style={s.tableRow}>
       <EntryName name={r.name} note={r.note} every={r.every}>
-        {r.autoPay && <span title="Pays itself" style={{ ...TYPE.microLegal, color: theme.textFaint, marginLeft: 6 }}>auto</span>}
+        {r.autoPay && <span title={t("Pays itself")} style={{ ...TYPE.microLegal, color: theme.textFaint, marginLeft: 6 }}>{t("auto")}</span>}
       </EntryName>
       <div style={{ flex: 1.2 }}><CategoryPill categoryName={r.category} categories={categories} /></div>
       <div style={{ flex: 0.5, textAlign: "center", color: theme.textMuted, ...TYPE.caption }}>{r.dayOfMonth || "—"}</div>
@@ -120,11 +121,11 @@ export function UpcomingRow({ entry: u, categories, today, onTogglePaid, onEdit,
     <div style={{ ...s.tableRow, opacity: settled ? 0.4 : 1 }}>
       <div style={{ flex: 0.3 }}>
         <input type="checkbox" checked={settled} onChange={onTogglePaid} disabled={!!u.autoPay}
-          title={u.autoPay ? "Pays itself - settles on its due date" : undefined}
+          title={u.autoPay ? t("Pays itself - settles on its due date") : undefined}
           style={{ accentColor: theme.success, width: 16, height: 16, cursor: u.autoPay ? "default" : "pointer" }} />
       </div>
       <EntryName name={u.name} note={u.note} strike={settled}>
-        {u.autoPay && <span title="Pays itself" style={{ ...TYPE.microLegal, color: theme.textFaint, marginLeft: 6 }}>auto</span>}
+        {u.autoPay && <span title={t("Pays itself")} style={{ ...TYPE.microLegal, color: theme.textFaint, marginLeft: 6 }}>{t("auto")}</span>}
       </EntryName>
       <div style={{ flex: 1.2 }}><CategoryPill categoryName={u.category} categories={categories} /></div>
       <div style={{ flex: 1, color: theme.textMuted, ...TYPE.caption }}>{u.dueDate}</div>
@@ -132,7 +133,7 @@ export function UpcomingRow({ entry: u, categories, today, onTogglePaid, onEdit,
       <div style={{ flex: 0.7, textAlign: "center" }}>
         <span style={{ ...TYPE.microLegal, padding: "3px 10px", borderRadius: RADIUS.pill, fontWeight: 600,
           background: settled ? "rgba(16,185,129,0.12)" : "rgba(245,158,11,0.12)",
-          color: settled ? theme.success : theme.warning }}>{settled ? "Paid" : "Pending"}</span>
+          color: settled ? theme.success : theme.warning }}>{settled ? t("Paid") : t("Pending")}</span>
       </div>
       <RowActions id={u.id} onEdit={onEdit} onDelete={onDelete} />
     </div>
@@ -141,7 +142,7 @@ export function UpcomingRow({ entry: u, categories, today, onTogglePaid, onEdit,
 
 // Recovery for a period created before the rollover fix landed, or one whose
 // entries were deleted by accident: the template still knows what belongs here.
-export function MissingFromTemplate({ missing, noun, onAdd }) {
+export function MissingFromTemplate({ missing, kind, onAdd }) {
   const { theme, s } = useThemed();
   if (!missing.length) return null;
   return (
@@ -151,10 +152,12 @@ export function MissingFromTemplate({ missing, noun, onAdd }) {
       borderRadius: RADIUS.md, padding: `${SPACE.sm}px ${SPACE.md}px`, marginBottom: SPACE.sm,
     }}>
       <span style={{ ...TYPE.caption, color: theme.text }}>
-        {missing.length} {noun}{missing.length !== 1 ? "s" : ""} from your template {missing.length !== 1 ? "are" : "is"} not in this period: {missing.map((x) => x.name).join(", ")}
+        {kind === "credit"
+          ? tn(missing.length, "{n} recurring credit isn't in this period yet: {names}", "{n} recurring credits aren't in this period yet: {names}", { names: missing.map((x) => x.name).join(", ") })
+          : tn(missing.length, "{n} recurring bill isn't in this period yet: {names}", "{n} recurring bills aren't in this period yet: {names}", { names: missing.map((x) => x.name).join(", ") })}
       </span>
       <button style={{ ...s.linkBtn, padding: 0, marginLeft: "auto" }} onClick={onAdd}>
-        Add {missing.length !== 1 ? "them" : "it"} →
+        {tn(missing.length, "Add it →", "Add them →")}
       </button>
     </div>
   );

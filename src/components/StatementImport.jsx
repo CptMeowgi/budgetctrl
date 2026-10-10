@@ -6,8 +6,10 @@ import { SPACE, TYPE, useThemed } from "../theme.js";
 import { SettingRow } from "./controls.jsx";
 import { Modal } from "./Modal.jsx";
 import { suggestMatch, upsertRule } from "../lib/rules.js";
+import { t, tk, tn } from "../i18n.js";
+import { catName } from "../text.js";
 
-const ACTION_LABEL = { expense: "Expense", credit: "Credit", markPaid: "Marks paid", skip: "Skip" };
+const ACTION_LABEL = { expense: tk("Expense"), credit: tk("Credit"), markPaid: tk("Marks paid"), skip: tk("Skip") };
 
 // Bank statement import. The parsing and the double-count matching live in
 // lib/importer.js where they are tested; this is the wizard over them:
@@ -30,7 +32,7 @@ export function StatementImport({ data, onClose, onImport }) {
       const { text, encoding } = decodeBytes(new Uint8Array(await f.arrayBuffer()));
       const delimiter = sniffDelimiter(text);
       const parsed = parseCsv(text, delimiter);
-      if (parsed.length < 2) { setError("That file doesn't contain a table of transactions."); return; }
+      if (parsed.length < 2) { setError(t("That file doesn't contain a table of transactions.")); return; }
       const headerIndex = findHeaderRow(parsed);
       const m = guessMapping(parsed[headerIndex]);
       setFile({ name: f.name, encoding, delimiter, rows: parsed, headerIndex });
@@ -40,7 +42,7 @@ export function StatementImport({ data, onClose, onImport }) {
       setError("");
       setStep("map");
     } catch {
-      setError("Couldn't read that file. Export a CSV from your bank and try again.");
+      setError(t("Couldn't read that file. Export a CSV from your bank and try again."));
     }
   };
 
@@ -52,8 +54,8 @@ export function StatementImport({ data, onClose, onImport }) {
     <SettingRow label={label}>
       <select value={mapping[key]} onChange={(e) => setMapping({ ...mapping, [key]: +e.target.value })}
         style={{ ...s.input, width: 230, minHeight: 36, padding: "6px 10px" }}>
-        <option value={-1}>— none —</option>
-        {header.map((h, i) => <option key={i} value={i}>{h || `Column ${i + 1}`}</option>)}
+        <option value={-1}>{t("— none —")}</option>
+        {header.map((h, i) => <option key={i} value={i}>{h || t("Column {n}", { n: i + 1 })}</option>)}
       </select>
     </SettingRow>
   );
@@ -116,50 +118,44 @@ export function StatementImport({ data, onClose, onImport }) {
   const hint = { ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint };
 
   return (
-    <Modal title="Import bank statement" onClose={onClose} width={step === "review" ? 820 : 560}>
+    <Modal title={t("Import bank statement")} onClose={onClose} width={step === "review" ? 820 : 560}>
       {step === "pick" && (
         <div style={{ padding: `${SPACE.sm}px 0` }}>
-          <div style={{ ...TYPE.caption, color: theme.textMuted, lineHeight: 1.5, marginBottom: SPACE.md }}>
-            Export your transactions from online banking as CSV, then choose the file. You'll check every
-            row before anything is added.
-          </div>
+          <div style={{ ...TYPE.caption, color: theme.textMuted, lineHeight: 1.5, marginBottom: SPACE.md }}>{t("Export your transactions from online banking as CSV, then choose the file. You'll check every row before anything is added.")}</div>
           <label style={{ ...s.addBtn, display: "inline-block" }}>
-            Choose CSV file…
+            {t("Choose CSV file…")}
             <input type="file" accept=".csv,.txt,text/csv" onChange={onFile} style={{ display: "none" }} />
           </label>
           {error && <div style={{ ...TYPE.caption, color: theme.danger, marginTop: SPACE.sm }}>{error}</div>}
-          <div style={{ ...hint, marginTop: SPACE.md }}>
-            Payments already in your budget — recurring bills, your salary, things you entered by hand — are
-            recognised and left unticked, so nothing is counted twice.
-          </div>
+          <div style={{ ...hint, marginTop: SPACE.md }}>{t("Payments already in your budget — recurring bills, your salary, things you entered by hand — are recognised and left unticked, so nothing is counted twice.")}</div>
         </div>
       )}
 
       {step === "map" && file && (
         <div>
           <div style={{ ...hint, marginBottom: SPACE.xs }}>
-            {file.name} · {file.encoding === "utf-8" ? "UTF-8" : "Windows-1250"} · separated by{" "}
-            {file.delimiter === "\t" ? "tabs" : `"${file.delimiter}"`} · {file.rows.length - file.headerIndex - 1} rows
+            {file.name} · {file.encoding === "utf-8" ? "UTF-8" : "Windows-1250"} · {t("separated by {sep}", { sep: file.delimiter === "\t" ? t("tabs") : `"${file.delimiter}"` })}
+            {" · "}{tn(file.rows.length - file.headerIndex - 1, "{n} row", "{n} rows")}
           </div>
-          {col("date", "Date")}
-          {col("payee", "Name (who was paid)")}
-          {col("title", "Description")}
-          <SettingRow label="Amounts" hint={splitAmounts ? "Money out and money in are in separate columns." : "One column; spending is negative."}>
+          {col("date", t("Date"))}
+          {col("payee", t("Name (who was paid)"))}
+          {col("title", t("Description"))}
+          <SettingRow label={t("Amounts")} hint={splitAmounts ? t("Money out and money in are in separate columns.") : t("One column; spending is negative.")}>
             <select value={splitAmounts ? "split" : "single"} onChange={(e) => setSplitAmounts(e.target.value === "split")}
               style={{ ...s.input, width: 230, minHeight: 36, padding: "6px 10px" }}>
-              <option value="single">One amount column</option>
-              <option value="split">Separate out / in columns</option>
+              <option value="single">{t("One amount column")}</option>
+              <option value="split">{t("Separate out / in columns")}</option>
             </select>
           </SettingRow>
-          {splitAmounts ? (<>{col("debit", "Money out")}{col("credit", "Money in")}</>) : col("amount", "Amount")}
+          {splitAmounts ? (<>{col("debit", t("Money out"))}{col("credit", t("Money in"))}</>) : col("amount", t("Amount"))}
           {!splitAmounts && (
             <label style={{ display: "flex", alignItems: "center", gap: 8, ...TYPE.caption, color: theme.text, padding: "6px 0" }}>
               <input type="checkbox" checked={invert} onChange={(e) => setInvert(e.target.checked)} style={{ accentColor: theme.accent }} />
-              My bank shows spending as positive numbers
+              {t("My bank shows spending as positive numbers")}
             </label>
           )}
 
-          <div style={{ ...s.cardTitle, marginTop: SPACE.md }}>Preview</div>
+          <div style={{ ...s.cardTitle, marginTop: SPACE.md }}>{t("Preview")}</div>
           {preview && preview.transactions.length ? (
             <div style={{ marginTop: SPACE.xs }}>
               {preview.transactions.slice(0, 5).map((tx, i) => (
@@ -172,21 +168,19 @@ export function StatementImport({ data, onClose, onImport }) {
                 </div>
               ))}
               <div style={{ ...hint, marginTop: 6 }}>
-                {preview.transactions.length} transaction{preview.transactions.length !== 1 ? "s" : ""} read
-                {preview.skipped ? ` · ${preview.skipped} row${preview.skipped !== 1 ? "s" : ""} without a date or amount ignored` : ""}
-                {` · dates read as ${preview.dateOrder === "MDY" ? "month/day" : preview.dateOrder === "YMD" ? "year-month-day" : "day/month"}`}
+                {tn(preview.transactions.length, "{n} transaction read", "{n} transactions read")}
+                {preview.skipped ? ` · ${tn(preview.skipped, "{n} row without a date or amount ignored", "{n} rows without a date or amount ignored")}` : ""}
+                {` · ${t("dates read as {order}", { order: preview.dateOrder === "MDY" ? t("month/day") : preview.dateOrder === "YMD" ? t("year-month-day") : t("day/month") })}`}
               </div>
             </div>
           ) : (
-            <div style={{ ...TYPE.caption, color: theme.danger, marginTop: SPACE.xs }}>
-              No transactions found with these columns. Check which column holds the date and the amount.
-            </div>
+            <div style={{ ...TYPE.caption, color: theme.danger, marginTop: SPACE.xs }}>{t("No transactions found with these columns. Check which column holds the date and the amount.")}</div>
           )}
 
           <div style={{ display: "flex", justifyContent: "space-between", marginTop: SPACE.lg }}>
-            <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => setStep("pick")}>← Choose another file</button>
+            <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => setStep("pick")}>{t("← Choose another file")}</button>
             <button style={{ ...s.addBtn, opacity: preview?.transactions.length ? 1 : 0.5 }}
-              disabled={!preview?.transactions.length} onClick={toReview}>Review transactions →</button>
+              disabled={!preview?.transactions.length} onClick={toReview}>{t("Review transactions →")}</button>
           </div>
         </div>
       )}
@@ -195,12 +189,12 @@ export function StatementImport({ data, onClose, onImport }) {
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: SPACE.sm, flexWrap: "wrap", margin: `${SPACE.xs}px 0` }}>
             <div style={{ ...TYPE.caption, color: theme.textMuted }}>
-              {tally.expense} expense{tally.expense !== 1 ? "s" : ""} · {tally.credit} credit{tally.credit !== 1 ? "s" : ""}
-              {tally.markPaid ? ` · ${tally.markPaid} marked paid` : ""} · {tally.skip} skipped
+              {tn(tally.expense, "{n} expense", "{n} expenses")} · {tn(tally.credit, "{n} credit", "{n} credits")}
+              {tally.markPaid ? ` · ${tn(tally.markPaid, "{n} marked paid", "{n} marked paid")}` : ""} · {tn(tally.skip, "{n} skipped", "{n} skipped")}
             </div>
             <div style={{ display: "flex", gap: SPACE.md }}>
-              <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => setAll(true)}>Tick suggested</button>
-              <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => setAll(false)}>Untick all</button>
+              <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => setAll(true)}>{t("Tick suggested")}</button>
+              <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => setAll(false)}>{t("Untick all")}</button>
             </div>
           </div>
           <div style={{ maxHeight: "50vh", overflowY: "auto", borderTop: `1px solid ${theme.border}` }}>
@@ -215,21 +209,21 @@ export function StatementImport({ data, onClose, onImport }) {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ ...TYPE.caption, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.name}>{r.name}</div>
                     <div style={{ ...TYPE.microLegal, color: r.action === "skip" ? theme.textFaint : r.action === "markPaid" ? theme.success : theme.textFaint,
-                                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.reason || r.note}>
-                      {ACTION_LABEL[r.action]}{r.rule ? " · by your rule" : ""}{r.reason ? ` · ${r.reason}` : r.note ? ` · ${r.note}` : ""}
+                                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={(r.reasonKey ? t(r.reasonKey, r.reasonVars) : r.reason) || r.note}>
+                      {t(ACTION_LABEL[r.action])}{r.rule ? ` · ${t("by your rule")}` : ""}{r.reason ? ` · ${r.reasonKey ? t(r.reasonKey, r.reasonVars) : r.reason}` : r.note ? ` · ${r.note}` : ""}
                     </div>
                   </div>
                   {(r.action === "expense" || r.action === "credit") ? (
                     <select value={r.category || fallbackCat} onChange={(e) => setCategory(r.id, e.target.value)}
                       disabled={!r.include} style={{ ...s.input, width: 150, minHeight: 32, padding: "4px 8px", ...TYPE.finePrint }}>
-                      {[...new Set([fallbackCat, ...cats.map((c) => c.name)])].map((n) => <option key={n} value={n}>{n}</option>)}
+                      {[...new Set([fallbackCat, ...cats.map((c) => c.name)])].map((n) => <option key={n} value={n}>{catName(n)}</option>)}
                     </select>
                   ) : <span style={{ width: 150 }} />}
                   {(r.action === "expense" || r.action === "credit") && !r.rule ? (
-                    <label title={`Always file "${suggestMatch(r.bankName || r.name)}" this way when importing`}
+                    <label title={t('Always file "{match}" this way when importing', { match: suggestMatch(r.bankName || r.name) })}
                       style={{ display: "flex", alignItems: "center", gap: 4, width: 62, ...TYPE.microLegal, color: theme.textMuted, cursor: "pointer", opacity: r.include ? 1 : 0.5 }}>
                       <input type="checkbox" checked={!!r.remember} disabled={!r.include} onChange={() => toggleRemember(r.id)} />
-                      Always
+                      {t("Always")}
                     </label>
                   ) : <span style={{ width: 62 }} />}
                   <span style={{ width: 110, textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 700, ...TYPE.caption,
@@ -241,9 +235,9 @@ export function StatementImport({ data, onClose, onImport }) {
             })}
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: SPACE.md }}>
-            <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => setStep("map")}>← Columns</button>
+            <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => setStep("map")}>{t("← Columns")}</button>
             <button style={{ ...s.addBtn, opacity: kept.length ? 1 : 0.5 }} disabled={!kept.length} onClick={doImport}>
-              Import {kept.length} item{kept.length !== 1 ? "s" : ""}
+              {tn(kept.length, "Import {n} item", "Import {n} items")}
             </button>
           </div>
         </div>

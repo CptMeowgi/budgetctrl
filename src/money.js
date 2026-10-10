@@ -1,3 +1,4 @@
+import { getLanguage } from "./i18n.js";
 
 
 // Currency was hardcoded to PLN, which made the app unusable outside Poland.
@@ -96,7 +97,7 @@ export function currencyOptions() {
     codes = Object.values(REGION_CURRENCY).filter((c, i, a) => a.indexOf(c) === i).sort();
   }
   let names = null;
-  try { names = new Intl.DisplayNames([activeLocale], { type: "currency" }); } catch { /* names are a nicety */ }
+  try { names = new Intl.DisplayNames([getLanguage()], { type: "currency" }); } catch { /* names are a nicety */ }
   return codes.map((code) => {
     let label = code;
     try { const n = names && names.of(code); if (n && n !== code) label = `${code} — ${n}`; } catch { /* keep the bare code */ }

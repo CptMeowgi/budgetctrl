@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { collectDueBills, upcomingSettled, whenLabel, OVERDUE_GRACE_DAYS } from "./reminders.js";
+import { collectDueBills, upcomingSettled, OVERDUE_GRACE_DAYS } from "./reminders.js";
 
 const D = (y, m, d) => new Date(y, m - 1, d);
 const names = (bills) => bills.map((b) => `${b.name}(${b.inDays})`);
@@ -101,11 +101,5 @@ describe("collectDueBills", () => {
 
   it("is empty when there is no data for the period", () => {
     expect(collectDueBills({ cutoffDay: 1, months: {} }, today, 3)).toEqual([]);
-  });
-});
-
-describe("whenLabel", () => {
-  it("phrases overdue, today, tomorrow and later", () => {
-    expect([-3, 0, 1, 5].map(whenLabel)).toEqual(["3d overdue", "due today", "due tomorrow", "due in 5d"]);
   });
 });

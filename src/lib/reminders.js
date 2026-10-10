@@ -58,10 +58,3 @@ export function collectDueBills(data, now, leadDays, graceDays = OVERDUE_GRACE_D
 
   return out.sort((a, b) => a.inDays - b.inDays);
 }
-
-export function whenLabel(inDays) {
-  if (inDays < 0) return `${-inDays}d overdue`;
-  if (inDays === 0) return "due today";
-  if (inDays === 1) return "due tomorrow";
-  return `due in ${inDays}d`;
-}

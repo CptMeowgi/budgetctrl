@@ -1,4 +1,4 @@
-
+import { t } from "./i18n.js";
 
 // Optional free text on any entry. Blank is stored as absent, not "".
 export function cleanNote(s) {
@@ -6,4 +6,4 @@ export function cleanNote(s) {
   return v || undefined;
 }
 
-export const NOTE_FIELD = (editing) => ({ key: "note", label: "Note", type: "textarea", placeholder: "Optional — reference, who, why", defaultValue: editing?.note });
+export const NOTE_FIELD = (editing) => ({ key: "note", label: t("Note"), type: "textarea", placeholder: t("Optional — reference, who, why"), defaultValue: editing?.note });

@@ -5,6 +5,7 @@ import { currencyCode, fmt } from "../money.js";
 import { SPACE, TYPE, useThemed } from "../theme.js";
 import { CategoryPicker } from "./FormModal.jsx";
 import { Modal } from "./Modal.jsx";
+import { t } from "../i18n.js";
 
 const blankPart = () => ({ category: "", amount: "" });
 
@@ -27,6 +28,9 @@ export function ExpenseModal({ editing, categories, defaultDate, onClose, onSave
   const numericParts = parts.map((p) => ({ category: p.category, amount: parseAmount(p.amount) || 0 }));
   const left = total != null ? remainder(total, numericParts) : null;
   const split = splitting && total != null ? cleanSplit(total, numericParts) : null;
+  // What is left to assign, in words - shown under the parts and on the button.
+  const leftText = left == null || Math.abs(left) < 0.005 ? ""
+    : left > 0 ? t("{amount} left to assign", { amount: fmt(left) }) : t("{amount} too much", { amount: fmt(-left) });
   const valid = !!name.trim() && total != null && total > 0 && !!date && (!splitting || (split && !split.error));
 
   const setPart = (i, patch) => setParts((ps) => ps.map((p, j) => (j === i ? { ...p, ...patch } : p)));
@@ -61,61 +65,61 @@ export function ExpenseModal({ editing, categories, defaultDate, onClose, onSave
 
   const label = { fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 6, display: "block", fontWeight: 600 };
   return (
-    <Modal title={editing ? "Edit Expense" : "Add Expense"} onClose={onClose}>
+    <Modal title={editing ? t("Edit Expense") : t("Add Expense")} onClose={onClose}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, padding: "20px 0" }}>
         <div>
-          <label style={label}>Name</label>
-          <input autoFocus value={name} placeholder="e.g. Groceries" onChange={(e) => setName(e.target.value)} style={s.input} />
+          <label style={label}>{t("Name")}</label>
+          <input autoFocus value={name} placeholder={t("e.g. Groceries")} onChange={(e) => setName(e.target.value)} style={s.input} />
         </div>
         <div>
-          <label style={label}>Amount ({currencyCode()})</label>
+          <label style={label}>{t("Amount ({currency})", { currency: currencyCode() })}</label>
           <input inputMode="decimal" value={amount} placeholder="0" onChange={(e) => setAmount(e.target.value)} style={s.input} />
         </div>
         {!splitting ? (
           <div>
-            <label style={label}>Category</label>
+            <label style={label}>{t("Category")}</label>
             <CategoryPicker value={category} onChange={setCategory} categories={categories} />
-            <button style={{ ...s.linkBtn, padding: 0, marginTop: 6, ...TYPE.finePrint }} onClick={startSplit}>Split across categories</button>
+            <button style={{ ...s.linkBtn, padding: 0, marginTop: 6, ...TYPE.finePrint }} onClick={startSplit}>{t("Split across categories")}</button>
           </div>
         ) : (
           <div style={{ gridColumn: "1 / -1" }}>
-            <label style={label}>Split across categories</label>
+            <label style={label}>{t("Split across categories")}</label>
             {parts.map((p, i) => (
               <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 130px 28px", gap: SPACE.sm, alignItems: "center", marginBottom: SPACE.xs }}>
                 <CategoryPicker value={p.category} onChange={(v) => setPart(i, { category: v })} categories={categories} />
-                <input inputMode="decimal" value={p.amount} placeholder="0" aria-label={`Part ${i + 1} amount`}
+                <input inputMode="decimal" value={p.amount} placeholder="0" aria-label={t("Part {n} amount", { n: i + 1 })}
                   onChange={(e) => setPartAmount(i, e.target.value)} style={{ ...s.input, textAlign: "right" }} />
                 {parts.length > 2
-                  ? <button style={s.delBtn} title="Remove this part" onClick={() => setParts((ps) => ps.filter((_, j) => j !== i))}>✕</button>
+                  ? <button style={s.delBtn} title={t("Remove this part")} onClick={() => setParts((ps) => ps.filter((_, j) => j !== i))}>✕</button>
                   : <span />}
               </div>
             ))}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: SPACE.xs }}>
               <div style={{ display: "flex", gap: SPACE.md }}>
-                <button style={{ ...s.linkBtn, padding: 0, ...TYPE.finePrint }} onClick={() => setParts((ps) => [...ps, blankPart()])}>+ Add part</button>
-                <button style={{ ...s.linkBtn, padding: 0, ...TYPE.finePrint }} onClick={stopSplit}>Don't split</button>
+                <button style={{ ...s.linkBtn, padding: 0, ...TYPE.finePrint }} onClick={() => setParts((ps) => [...ps, blankPart()])}>{t("+ Add part")}</button>
+                <button style={{ ...s.linkBtn, padding: 0, ...TYPE.finePrint }} onClick={stopSplit}>{t("Don't split")}</button>
               </div>
               <span style={{ ...TYPE.finePrint, fontWeight: 600, fontVariantNumeric: "tabular-nums",
                              color: left == null ? theme.textFaint : Math.abs(left) < 0.005 ? theme.success : theme.warning }}>
-                {left == null ? "Enter the amount first"
-                  : Math.abs(left) < 0.005 ? "Adds up"
-                  : left > 0 ? `${fmt(left)} left to assign` : `${fmt(-left)} too much`}
+                {left == null ? t("Enter the amount first")
+                  : Math.abs(left) < 0.005 ? t("Adds up")
+                  : leftText}
               </span>
             </div>
           </div>
         )}
         <div>
-          <label style={label}>Date</label>
+          <label style={label}>{t("Date")}</label>
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={s.input} />
         </div>
         <div style={{ gridColumn: "1 / -1" }}>
-          <label style={label}>Note</label>
-          <textarea rows={2} value={note} placeholder="Optional — reference, who, why" onChange={(e) => setNote(e.target.value)}
+          <label style={label}>{t("Note")}</label>
+          <textarea rows={2} value={note} placeholder={t("Optional — reference, who, why")} onChange={(e) => setNote(e.target.value)}
             style={{ ...s.input, resize: "vertical", minHeight: 44, lineHeight: 1.4 }} />
         </div>
       </div>
       <button style={{ ...s.saveBtn, opacity: valid ? 1 : 0.5, cursor: valid ? "pointer" : "not-allowed" }} disabled={!valid} onClick={submit}>
-        {valid ? "Save" : splitting && split?.error ? `Parts don't add up: ${split.error}` : "Fill in name and a positive amount"}
+        {valid ? t("Save") : splitting && split?.error && leftText ? t("Parts don't add up: {detail}", { detail: leftText }) : t("Fill in name and a positive amount")}
       </button>
     </Modal>
   );

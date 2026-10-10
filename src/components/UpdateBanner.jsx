@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { notesToLines } from "../lib/updates.js";
 import { RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
+import { t } from "../i18n.js";
 
 export function UpdateBanner({ updater, onInstall }) {
   const { theme, s } = useThemed();
@@ -17,22 +18,22 @@ export function UpdateBanner({ updater, onInstall }) {
       <div style={{ display: "flex", alignItems: "center", gap: SPACE.md, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 220, color: theme.text }}>
           {status.phase === "downloading"
-            ? `Downloading Budget Ctrl ${update.version}…${status.percent != null ? ` ${status.percent}%` : ""}`
+            ? `${t("Downloading Budget Ctrl {version}…", { version: update.version })}${status.percent != null ? ` ${status.percent}%` : ""}`
             : status.phase === "installing"
-              ? `Installing Budget Ctrl ${update.version}. It will restart by itself.`
+              ? t("Installing Budget Ctrl {version}. It will restart by itself.", { version: update.version })
               : status.phase === "failed"
-                ? `Couldn't install the update. ${status.message}`
-                : <><strong>Budget Ctrl {update.version}</strong> is ready to install.</>}
+                ? t("Couldn't install the update. {reason}", { reason: t(status.message) })
+                : t("{name} is ready to install.", { name: <strong key="v">Budget Ctrl {update.version}</strong> })}
         </div>
         {!busy && notes.length > 0 && (
-          <button style={s.linkBtn} onClick={() => setNotesOpen(!notesOpen)}>{notesOpen ? "Hide" : "What's new"}</button>
+          <button style={s.linkBtn} onClick={() => setNotesOpen(!notesOpen)}>{notesOpen ? t("Hide") : t("What's new")}</button>
         )}
         {!busy && (
           <button style={{ ...s.addBtn, padding: "7px 16px" }} onClick={onInstall}>
-            {status.phase === "failed" ? "Try again" : "Install and restart"}
+            {status.phase === "failed" ? t("Try again") : t("Install and restart")}
           </button>
         )}
-        {!busy && <button style={s.linkBtn} onClick={updater.dismiss}>Later</button>}
+        {!busy && <button style={s.linkBtn} onClick={updater.dismiss}>{t("Later")}</button>}
       </div>
       {status.phase === "downloading" && (
         <div style={{ height: 4, background: theme.border, borderRadius: 2, overflow: "hidden", marginTop: SPACE.sm }}>

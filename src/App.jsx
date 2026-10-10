@@ -5,9 +5,8 @@ import { goalStatus, goalsMonthlyNeed, leftOverHistory } from "./lib/goals.js";
 import { convertToRecurring, dismissRegular, findRegularPayments } from "./lib/regular.js";
 import { forecast } from "./lib/forecast.js";
 import { applySetup } from "./lib/setup.js";
-import { currentPeriodKey, isoDay, periodLabel } from "./lib/periods.js";
-import { collectDueBills, OVERDUE_GRACE_DAYS, upcomingSettled, whenLabel } from "./lib/reminders.js";
-import { periodNoun } from "./lib/reports.js";
+import { currentPeriodKey, isoDay, periodLabel, setLabelLocale } from "./lib/periods.js";
+import { collectDueBills, OVERDUE_GRACE_DAYS, upcomingSettled } from "./lib/reminders.js";
 import { everyFromLabel, FREQUENCIES, frequencyLabel, isOnCycle } from "./lib/schedule.js";
 import { categoryAverage, creditReceived, periodIncome, periodSpending } from "./lib/totals.js";
 import { AccountModal, AccountsView } from "./components/AccountsView.jsx";
@@ -38,39 +37,40 @@ import { ENTRY_COLUMNS, filterAndSort, toggleSort } from "./listView.js";
 import { categoryBreakdown, countRebucketMoves, CREDIT_UNCATEGORIZED, defaultData, emptyMonth, ensureCategory, ensureCreditCategory, ensureCurrentMonth, hydrate, migrate, rebucketData, STORAGE_KEY, uid } from "./model.js";
 import { currencyCode, fmt, setMoneyFormat } from "./money.js";
 import { isTauri } from "./platform.js";
-import { ordinal } from "./text.js";
+import { due, ordinal } from "./text.js";
 import { readBackup, readLock, writeBackup, writeLock } from "./storage.js";
 import { CHIP_GRAY, DARK_THEME, FOCUS_BLUE, FONT, LIGHT_THEME, makeStyles, RADIUS, SPACE, ThemeContext, TYPE } from "./theme.js";
+import { dateLocale, fmtDate, setLanguage, t, tk, tn } from "./i18n.js";
 
 const UNDO_LIMIT = 50;
 
 function monthShort(key) {
   const [y, m] = key.split("-").map(Number);
-  return new Date(y, m - 1, 1).toLocaleDateString("en-US", { month: "short" });
+  return fmtDate(new Date(y, m - 1, 1), { month: "short" });
 }
 
 // Which tabs offer an "+ Add" CTA, what it is called, and which modal it opens.
 // Previously three parallel inline ternaries in the header that had to be kept
 // in sync by hand.
 const ADD_LABELS = {
-  expenses: "Expense",
-  recurring: "Recurring",
-  upcoming: "Payment",
-  accounts: "Account",
-  savings: "Goal",
+  expenses: tk("+ Add Expense"),
+  recurring: tk("+ Add Recurring"),
+  upcoming: tk("+ Add Payment"),
+  accounts: tk("+ Add Account"),
+  savings: tk("+ Add Goal"),
 };
 const MODAL_FOR_TAB = { expenses: "expense", accounts: "account", savings: "goal" };
 
 const TABS = [
-  { id: "dashboard", label: "Dashboard", icon: "◉" },
-  { id: "expenses", label: "Expenses", icon: "↗" },
-  { id: "recurring", label: "Recurring", icon: "↻" },
-  { id: "upcoming", label: "Upcoming", icon: "◈" },
-  { id: "credits", label: "Credits", icon: "+" },
-  { id: "history", label: "History", icon: "◷" },
-  { id: "reports", label: "Reports", icon: "▦" },
-  { id: "savings", label: "Savings", icon: "◆" },
-  { id: "accounts", label: "Accounts", icon: "¤" },
+  { id: "dashboard", label: tk("Dashboard"), icon: "◉" },
+  { id: "expenses", label: tk("Expenses"), icon: "↗" },
+  { id: "recurring", label: tk("Recurring"), icon: "↻" },
+  { id: "upcoming", label: tk("Upcoming"), icon: "◈" },
+  { id: "credits", label: tk("Credits"), icon: "+" },
+  { id: "history", label: tk("History"), icon: "◷" },
+  { id: "reports", label: tk("Reports"), icon: "▦" },
+  { id: "savings", label: tk("Savings"), icon: "◆" },
+  { id: "accounts", label: tk("Accounts"), icon: "¤" },
 ];
 
 export default function App() {
@@ -115,7 +115,7 @@ export default function App() {
   const [creditsView, setCreditsView] = useState({ search: "", sorts: [] });
   const triggerImport = () => importInputRef.current?.click();
   const resetAll = async () => {
-    if (!confirm("Delete your whole budget and start again?\n\nWhat you have now is backed up first, and Ctrl+Z undoes it.")) return;
+    if (!confirm(t("Delete your whole budget and start again?\n\nWhat you have now is backed up first, and Ctrl+Z undoes it."))) return;
     if (isTauri) {
       try {
         const current = await window.storage.get(STORAGE_KEY);
@@ -133,10 +133,10 @@ export default function App() {
       try {
         const parsed = JSON.parse(reader.result);
         if (!parsed || typeof parsed !== "object" || !parsed.months || typeof parsed.months !== "object") {
-          alert("Could not read backup file. Make sure it's a valid budget-ctrl JSON export.");
+          alert(t("Could not read backup file. Make sure it's a valid budget-ctrl JSON export."));
           return;
         }
-        if (!confirm("Replace all your current data with this backup?\n\nWhat you have now is backed up first, and Ctrl+Z undoes it.")) return;
+        if (!confirm(t("Replace all your current data with this backup?\n\nWhat you have now is backed up first, and Ctrl+Z undoes it."))) return;
         // Snapshot what is about to be overwritten, as well as the undo step.
         if (isTauri) {
           try {
@@ -147,7 +147,7 @@ export default function App() {
         const migrated = hydrate(migrate(parsed));
         save(migrated);
       } catch {
-        alert("Could not read backup file. Make sure it's a valid budget-ctrl JSON export.");
+        alert(t("Could not read backup file. Make sure it's a valid budget-ctrl JSON export."));
       } finally {
         e.target.value = "";
       }
@@ -235,9 +235,12 @@ export default function App() {
     patchMonth(currentPeriodKey(data.cutoffDay || 1), patch);
   }, [patchMonth, data.cutoffDay]);
 
-  // Applied during render so every fmt() below this line uses the chosen
-  // currency, including the ones inside helpers called from the JSX.
+  // Applied during render so every fmt() and t() below this line uses the
+  // chosen currency and language, including the ones inside helpers called
+  // from the JSX.
   setMoneyFormat(data.currency, data.locale || navigator.language || "en-US");
+  setLanguage(data.language);
+  setLabelLocale(dateLocale());
 
   const deleteArm = useMemo(() => ({ armedId: pendingDelete, arm: setPendingDelete }), [pendingDelete]);
 
@@ -279,14 +282,14 @@ export default function App() {
 
   const restore = useCallback(async (from, to, label) => {
     const h = historyRef.current;
-    if (!h[from].length) { setToast(`Nothing to ${label.toLowerCase()}`); return; }
+    if (!h[from].length) { setToast(label === "Undo" ? t("Nothing to undo") : t("Nothing to redo")); return; }
     const target = h[from].pop();
     h[to].push(dataRef.current);
     h.lastPushAt = 0; // the next edit starts a fresh undo step
     setHistorySize({ past: h.past.length, future: h.future.length });
     setData(target);
     try { await window.storage.set(STORAGE_KEY, JSON.stringify(target)); } catch { /* in-memory state still updated */ }
-    setToast(label === "Undo" ? "Undone" : "Redone");
+    setToast(label === "Undo" ? t("Undone") : t("Redone"));
   }, []);
   const undo = useCallback(() => restore("past", "future", "Undo"), [restore]);
   const redo = useCallback(() => restore("future", "past", "Redo"), [restore]);
@@ -358,7 +361,7 @@ export default function App() {
   // isRecurringDue, which treat period bounds as whole days.
   const today = useMemo(() => new Date(`${todayKey}T00:00:00`), [todayKey]);
 
-  if (!loaded || lockCfg === undefined) return <div style={s.shell}><div style={{ color: "#6b7280", textAlign: "center", marginTop: 200, fontSize: 14 }}>Loading...</div></div>;
+  if (!loaded || lockCfg === undefined) return <div style={s.shell}><div style={{ color: "#6b7280", textAlign: "center", marginTop: 200, fontSize: 14 }}>{t("Loading...")}</div></div>;
 
   if (lockCfg && locked) {
     return (
@@ -426,7 +429,7 @@ export default function App() {
   const goalsNeed = goalsMonthlyNeed(goals, data, today);
   const regular = findRegularPayments(data, today);
   const fc = forecast(data, curKey, today);
-  const fcDay = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  const fcDay = (iso) => fmtDate(iso, { day: "numeric", month: "short" });
   const spentByCat = spending.byCategory;
   const onSortExpenses = (col, shift) =>
     setExpensesView((v) => ({ ...v, sorts: toggleSort(v.sorts || [], col, shift) }));
@@ -446,10 +449,9 @@ export default function App() {
     const moves = countRebucketMoves(data, clamped);
     if (moves === 0) { save({ ...data, cutoffDay: clamped }); return; }
     const ok = confirm(
-      `Re-bucket ${moves} ${moves === 1 ? "entry" : "entries"} to match the new cutoff?\n\n` +
-      `Expenses, one-off credits and upcoming payments will move to the period their date falls in. ` +
-      `Recurring items and income stay where they are.\n\n` +
-      `Choose Cancel to change the cutoff without moving anything.`
+      tn(moves, "Move {n} entry to match the new start day?", "Move {n} entries to match the new start day?") + "\n\n" +
+      t("Expenses, one-off credits and upcoming payments will move to the period their date falls in. Recurring items and income stay where they are.") + "\n\n" +
+      t("Choose Cancel to change the start day without moving anything.")
     );
     save(ok ? { ...rebucketData(data, clamped), cutoffDay: clamped } : { ...data, cutoffDay: clamped });
   };
@@ -522,12 +524,12 @@ export default function App() {
           <div data-tauri-drag-region style={{ fontSize: 10, letterSpacing: 3, color: theme.accent, fontWeight: 700 }}>CTRL</div>
         </div>
         <nav style={s.nav}>
-          {TABS.map((t) => (
-            <button key={t.id} onClick={() => { setTab(t.id); if (t.id !== "history") setHistoryKey(null); }}
-              style={tab === t.id ? { ...s.navItem, ...s.navItemActive } : s.navItem}>
-              <span style={{ fontSize: 16, width: 24, textAlign: "center" }}>{t.icon}</span>
-              <span>{t.label}</span>
-              {t.id === "upcoming" && dueBills.length > 0 && <span style={s.badge} title="Due soon or overdue">{dueBills.length}</span>}
+          {TABS.map((tb) => (
+            <button key={tb.id} onClick={() => { setTab(tb.id); if (tb.id !== "history") setHistoryKey(null); }}
+              style={tab === tb.id ? { ...s.navItem, ...s.navItemActive } : s.navItem}>
+              <span style={{ fontSize: 16, width: 24, textAlign: "center" }}>{tb.icon}</span>
+              <span>{t(tb.label)}</span>
+              {tb.id === "upcoming" && dueBills.length > 0 && <span style={s.badge} title={t("Due soon or overdue")}>{dueBills.length}</span>}
             </button>
           ))}
         </nav>
@@ -541,12 +543,12 @@ export default function App() {
           {/* The whole bar drags; interactive children opt out via app-region: no-drag */}
           <div data-tauri-drag-region style={{ flex: 1, alignSelf: "stretch", display: "flex", flexDirection: "column", justifyContent: "center" }}>
             <h1 data-tauri-drag-region style={{ ...TYPE.tagline, margin: 0, color: theme.outerText }}>
-              {TABS.find((t) => t.id === tab)?.label}
+              {t(TABS.find((tb) => tb.id === tab)?.label || "")}
             </h1>
             <div data-tauri-drag-region style={{ ...TYPE.navLink, color: theme.outerTextMuted, marginTop: 6 }}>
-              {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+              {fmtDate(new Date(), { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
               {cutoffDay > 1 && (
-                <span style={{ color: theme.outerTextMuted }}> · period {periodLabel(curKey, cutoffDay).range}</span>
+                <span style={{ color: theme.outerTextMuted }}> · {t("period {range}", { range: periodLabel(curKey, cutoffDay).range })}</span>
               )}
             </div>
           </div>
@@ -555,29 +557,29 @@ export default function App() {
           <div style={{ display: "flex", alignItems: "center", gap: SPACE.xs, flexShrink: 0 }}>
             {ADD_LABELS[tab] && (
               <button style={s.addBtn} onClick={() => setModal({ type: MODAL_FOR_TAB[tab] || tab })}>
-                + Add {ADD_LABELS[tab]}
+                {t(ADD_LABELS[tab])}
               </button>
             )}
-            <button className="icon-btn" style={s.themeToggle} onClick={() => setSearchOpen(true)} title="Search everything (Ctrl+F)">⌕</button>
+            <button className="icon-btn" style={s.themeToggle} onClick={() => setSearchOpen(true)} title={t("Search everything (Ctrl+F)")}>⌕</button>
             <button
               className="icon-btn"
               style={{ ...s.themeToggle, opacity: historySize.past ? 1 : 0.35, cursor: historySize.past ? "pointer" : "default" }}
               disabled={!historySize.past}
               onClick={undo}
-              title="Undo (Ctrl+Z)"
+              title={t("Undo (Ctrl+Z)")}
             >↶</button>
             <button
               className="icon-btn"
               style={s.themeToggle}
               onClick={() => setThemeMode((m) => m === "dark" ? "light" : "dark")}
-              title={themeMode === "dark" ? "Switch to light panel" : "Switch to dark panel"}
+              title={themeMode === "dark" ? t("Switch to light panel") : t("Switch to dark panel")}
             >
               {themeMode === "dark" ? "☀" : "☾"}
             </button>
             {lockCfg && (
-              <button className="icon-btn" style={{ ...s.themeToggle, filter: "grayscale(1)" }} onClick={() => setLocked(true)} title="Lock now (Ctrl+L)">🔒</button>
+              <button className="icon-btn" style={{ ...s.themeToggle, filter: "grayscale(1)" }} onClick={() => setLocked(true)} title={t("Lock now (Ctrl+L)")}>🔒</button>
             )}
-            <button className="icon-btn" style={s.themeToggle} onClick={() => setSettingsOpen(true)} title="Settings">⚙</button>
+            <button className="icon-btn" style={s.themeToggle} onClick={() => setSettingsOpen(true)} title={t("Settings")}>⚙</button>
           </div>
         </header>
 
@@ -592,17 +594,17 @@ export default function App() {
                   minmax(auto, 1fr) and the largest currency value refused to
                   shrink below its own content width. */}
               <div style={s.statsRow}>
-                <StatCard label="Remaining" value={fmt(remaining)} accent={remaining >= 0 && !fc.runsShortOn ? "#10b981" : "#ef4444"}
+                <StatCard label={t("Remaining")} value={fmt(remaining)} accent={remaining >= 0 && !fc.runsShortOn ? "#10b981" : "#ef4444"}
                   sub={fc.series.length < 2 || fc.lowestWithEveryday.date === fc.series[0].date
                     // Nothing ahead brings it lower than now: no dip worth naming.
-                    ? (totalStillScheduled > 0 ? `${fmt(totalStillScheduled)} still scheduled` : "Everything's landed")
+                    ? (totalStillScheduled > 0 ? t("{amount} still scheduled", { amount: fmt(totalStillScheduled) }) : t("Everything's landed"))
                     : fc.runsShortOn
-                      ? `Runs short around ${fcDay(fc.runsShortOn)} at this pace`
-                      : `Lowest ahead ${fmt(fc.lowestWithEveryday.amount)} on ${fcDay(fc.lowestWithEveryday.date)}`} icon="↓" />
-                <StatCard label="Still to Pay" value={fmt(totalUpcoming)} accent="#f59e0b" sub={`${unpaidCount} upcoming payment${unpaidCount !== 1 ? "s" : ""}`} icon="◈" />
-                <StatCard label="Total Spent" value={fmt(totalActuallySpent)} accent="#ef4444" sub={`${cur.expenses.length} one-off · ${cur.recurring.length} recurring`} icon="↻" />
+                      ? t("Runs short around {date} at this pace", { date: fcDay(fc.runsShortOn) })
+                      : t("Lowest ahead {amount} on {date}", { amount: fmt(fc.lowestWithEveryday.amount), date: fcDay(fc.lowestWithEveryday.date) })} icon="↓" />
+                <StatCard label={t("Still to Pay")} value={fmt(totalUpcoming)} accent="#f59e0b" sub={tn(unpaidCount, "{n} upcoming payment", "{n} upcoming payments")} icon="◈" />
+                <StatCard label={t("Total Spent")} value={fmt(totalActuallySpent)} accent="#ef4444" sub={t("{oneOff} one-off · {recurring} recurring", { oneOff: cur.expenses.length, recurring: cur.recurring.length })} icon="↻" />
                 {goals.length > 0 && (
-                  <StatCard label="Saved for Goals" value={fmt(goalsSaved)} accent="#0066cc"
+                  <StatCard label={t("Saved for Goals")} value={fmt(goalsSaved)} accent="#0066cc"
                     sub={goalsTarget > 0
                       ? `${Math.round(Math.min(1, goalsSaved / goalsTarget) * 100)}% of ${fmt(goalsTarget)} · ${goals.length} goal${goals.length !== 1 ? "s" : ""}`
                       : `${goals.length} goal${goals.length !== 1 ? "s" : ""}`} icon="◆" />
@@ -611,22 +613,22 @@ export default function App() {
               {dueBills.length > 0 && (
                 <div style={{ ...s.card, marginBottom: 16 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={s.cardTitle}>Due soon</div>
-                    <button style={s.linkBtn} onClick={() => setTab("upcoming")}>View all →</button>
+                    <div style={s.cardTitle}>{t("Due soon")}</div>
+                    <button style={s.linkBtn} onClick={() => setTab("upcoming")}>{t("View all →")}</button>
                   </div>
                   {dueBills.slice(0, 5).map((b) => (
                     <div key={b.id} style={s.miniRow}>
                       <div>
                         <div style={{ fontWeight: 600, fontSize: 13 }}>{b.name}</div>
                         <div style={{ fontSize: 11, color: b.inDays < 0 ? theme.danger : theme.textMuted }}>
-                          {whenLabel(b.inDays)} · {b.kind === "recurring" ? "recurring bill" : "payment"}
+                          {due(b.inDays)} · {b.kind === "recurring" ? t("recurring bill") : t("payment")}
                         </div>
                       </div>
                       <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: theme.warning, fontSize: 13 }}>{fmt(b.amount)}</div>
                     </div>
                   ))}
                   {dueBills.length > 5 && (
-                    <div style={{ ...TYPE.finePrint, color: theme.textFaint, marginTop: SPACE.xs }}>+{dueBills.length - 5} more</div>
+                    <div style={{ ...TYPE.finePrint, color: theme.textFaint, marginTop: SPACE.xs }}>{t("+{n} more", { n: dueBills.length - 5 })}</div>
                   )}
                 </div>
               )}
@@ -636,26 +638,26 @@ export default function App() {
                 <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 0.85fr) minmax(0, 0.95fr) minmax(0, 1.5fr)", gap: 28, alignItems: "start" }}>
                   <div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <div style={s.cardTitle}>Income this {periodNoun(cutoffDay, 1)}</div>
-                      <InfoHint text="Your pay for this period. A new period starts with the last one's figure, so change it here when your pay changes. Credits are added on top." />
+                      <div style={s.cardTitle}>{cutoffDay === 1 ? t("Income this month") : t("Income this period")}</div>
+                      <InfoHint text={t("Your pay for this period. A new period starts with the last one's figure, so change it here when your pay changes. Credits are added on top.")} />
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
-                      <input type="number" min={0} value={cur.income || ""} placeholder="0" aria-label="Income this period"
+                      <input type="number" min={0} value={cur.income || ""} placeholder="0" aria-label={t("Income this period")}
                         onChange={(e) => patchCur({ income: Math.max(0, +e.target.value || 0) })}
                         style={{ ...s.input, width: 130, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 18, color: theme.success }} />
                       <span style={{ ...TYPE.caption, color: theme.textMuted, fontWeight: 600 }}>{data.currency}</span>
                     </div>
                     {(totalCredits > 0 || totalCreditsPending > 0) && (
                       <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.success, marginTop: 8, fontVariantNumeric: "tabular-nums" }}>
-                        + {fmt(totalCredits)} credits
-                        {totalCreditsPending > 0 && <span style={{ color: theme.textFaint }}> · {fmt(totalCreditsPending)} pending</span>}
+                        {t("+ {amount} credits", { amount: fmt(totalCredits) })}
+                        {totalCreditsPending > 0 && <span style={{ color: theme.textFaint }}> · {t("{amount} pending", { amount: fmt(totalCreditsPending) })}</span>}
                       </div>
                     )}
                   </div>
                   <div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <div style={s.cardTitle}>Set aside each {periodNoun(cutoffDay, 1)}</div>
-                      <InfoHint text="How much you mean to save out of this period's money. It is taken off before Left to Spend, so what remains is genuinely free." />
+                      <div style={s.cardTitle}>{cutoffDay === 1 ? t("Set aside each month") : t("Set aside each period")}</div>
+                      <InfoHint text={t("How much you mean to save out of this period's money. It is taken off before Left to Spend, so what remains is genuinely free.")} />
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
                       <input type="number" min={0} value={savingsGoal.monthly || ""} placeholder="0"
@@ -665,25 +667,23 @@ export default function App() {
                     </div>
                     {savingsShortfall > 0 ? (
                       <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.warning, marginTop: 8 }}>
-                        {fmt(savingsShortfall)} short this period · setting aside {fmt(savingsTarget)}
+                        {t("{short} short this period · setting aside {amount}", { short: fmt(savingsShortfall), amount: fmt(savingsTarget) })}
                       </div>
                     ) : savingsGoal.monthly > 0 ? (
                       <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginTop: 8 }}>
-                        Covered · {fmt(leftToSpend)} still free
+                        {t("Covered · {amount} still free", { amount: fmt(leftToSpend) })}
                       </div>
                     ) : null}
                     {goalsNeed > 0 && Math.round(goalsNeed) !== savingsGoal.monthly && (
                       <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginTop: 8 }}>
-                        Your dated goals need {fmt(goalsNeed)} a month.{" "}
+                        {t("Your dated goals need {amount} a month.", { amount: fmt(goalsNeed) })}{" "}
                         <button style={{ ...s.linkBtn, padding: 0, ...TYPE.finePrint, fontWeight: 600 }}
-                          onClick={() => save({ ...data, savingsGoal: { ...savingsGoal, monthly: Math.round(goalsNeed) } })}>
-                          Set aside that
-                        </button>
+                          onClick={() => save({ ...data, savingsGoal: { ...savingsGoal, monthly: Math.round(goalsNeed) } })}>{t("Set aside that")}</button>
                       </div>
                     )}
                   </div>
                   <div>
-                    <div style={s.cardTitle}>Income Breakdown</div>
+                    <div style={s.cardTitle}>{t("Income Breakdown")}</div>
                     {effectiveIncome > 0 ? (
                       <>
                         <div style={s.breakdownBar}>
@@ -698,21 +698,21 @@ export default function App() {
                         </div>
                         <div style={{ display: "flex", gap: 20, marginTop: 10, flexWrap: "wrap" }}>
                           {[
-                            { color: "#ef4444", label: "Spent", val: totalActuallySpent },
-                            { color: "#f59e0b", label: "Upcoming", val: totalStillScheduled },
-                            { color: "#0066cc", label: "Savings", val: savingsTarget },
-                            { color: "#10b981", label: "Left to spend", val: leftToSpend },
+                            { color: "#ef4444", label: tk("Spent"), val: totalActuallySpent },
+                            { color: "#f59e0b", label: tk("Upcoming"), val: totalStillScheduled },
+                            { color: "#0066cc", label: tk("Savings"), val: savingsTarget },
+                            { color: "#10b981", label: tk("Left to spend"), val: leftToSpend },
                           ].map((l) => (
                             <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
                               <div style={{ width: 10, height: 10, borderRadius: 3, background: l.color }} />
-                              <span style={{ color: theme.textFaint }}>{l.label}</span>
+                              <span style={{ color: theme.textFaint }}>{t(l.label)}</span>
                               <span style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 600, color: theme.text }}>{fmt(l.val)}</span>
                             </div>
                           ))}
                         </div>
                       </>
                     ) : (
-                      <div style={s.emptySmall}>Set income to see breakdown</div>
+                      <div style={s.emptySmall}>{t("Set income to see breakdown")}</div>
                     )}
                   </div>
                 </div>
@@ -722,8 +722,8 @@ export default function App() {
               <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)", gap: 16, marginBottom: 16 }}>
                 <div style={s.card}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={s.cardTitle}>Category Budgets</div>
-                    <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => setCategoriesOpen(true)}>Manage</button>
+                    <div style={s.cardTitle}>{t("Category Budgets")}</div>
+                    <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => setCategoriesOpen(true)}>{t("Manage")}</button>
                   </div>
                   <div style={{ marginTop: 12 }}>
                     <CategoryBudgets
@@ -737,7 +737,7 @@ export default function App() {
                   </div>
                 </div>
                 <div style={s.card}>
-                  <div style={s.cardTitle}>By Category</div>
+                  <div style={s.cardTitle}>{t("By Category")}</div>
                   <CategoryDonut data={catBreakdown} total={catTotal} />
                 </div>
               </div>
@@ -751,15 +751,16 @@ export default function App() {
           {tab === "upcoming" && dueBills.length > 0 && (
             <div style={{ ...s.card, marginBottom: 16 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                <div style={s.cardTitle}>Due soon and overdue</div>
+                <div style={s.cardTitle}>{t("Due soon and overdue")}</div>
                 <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: theme.warning, fontSize: 16 }}>
                   {fmt(dueBills.reduce((a, b) => a + b.amount, 0))}
                 </div>
               </div>
               <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginBottom: 4 }}>
-                Everything a reminder would fire for: due within {reminderLeadDays} day{reminderLeadDays !== 1 ? "s" : ""},
-                plus anything still unpaid past its date. Entries marked <em>pays itself</em> are excluded.
-                {" "}<button style={{ ...s.linkBtn, padding: 0, ...TYPE.finePrint, fontWeight: 600 }} onClick={() => setSettingsOpen(true)}>Change the window</button>
+                {tn(reminderLeadDays, "Everything a reminder would fire for: due within {n} day, plus anything still unpaid past its date. Entries marked {paysItself} are excluded.",
+                  "Everything a reminder would fire for: due within {n} days, plus anything still unpaid past its date. Entries marked {paysItself} are excluded.",
+                  { paysItself: <em key="p">{t("pays itself")}</em> })}
+                {" "}<button style={{ ...s.linkBtn, padding: 0, ...TYPE.finePrint, fontWeight: 600 }} onClick={() => setSettingsOpen(true)}>{t("Change the window")}</button>
               </div>
               {(
                 <>
@@ -772,25 +773,23 @@ export default function App() {
                     <div key={b.id} style={s.tableRow}>
                       <div style={{ flex: 2, fontWeight: 600 }}>{b.name}</div>
                       <div style={{ flex: 0.9, color: theme.textMuted, ...TYPE.finePrint, lineHeight: 1.5 }}>
-                        {b.kind === "recurring" ? "Recurring" : "Upcoming"}
+                        {b.kind === "recurring" ? t("Recurring") : t("Upcoming")}
                         {/* Reminders scan every period, but the Upcoming tab only
                             shows the current one - so an item left unpaid in an
                             earlier period was invisible while still nagging.
                             Naming its period makes that obvious. */}
                         {b.periodKey !== curKey && (
                           <span style={{ display: "block", color: theme.danger }}>
-                            from {periodLabel(b.periodKey, cutoffDay).primary}
+                            {t("from {period}", { period: periodLabel(b.periodKey, cutoffDay).primary })}
                           </span>
                         )}
                       </div>
                       <div style={{ flex: 1, color: theme.textMuted, ...TYPE.caption }}>{b.dueISO}</div>
                       <div style={{ flex: 1, ...TYPE.caption, color: b.inDays < 0 ? theme.danger : b.inDays === 0 ? theme.warning : theme.textMuted }}>
-                        {whenLabel(b.inDays)}
+                        {due(b.inDays)}
                         {b.inDays < -OVERDUE_GRACE_DAYS && (
-                          <span title={`Older than ${OVERDUE_GRACE_DAYS} days, so reminders no longer mention it`}
-                                style={{ display: "block", ...TYPE.microLegal, color: theme.textFaint }}>
-                            not in reminders
-                          </span>
+                          <span title={t("Older than {n} days, so reminders no longer mention it", { n: OVERDUE_GRACE_DAYS })}
+                                style={{ display: "block", ...TYPE.microLegal, color: theme.textFaint }}>{t("not in reminders")}</span>
                         )}
                       </div>
                       <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: theme.warning }}>{fmt(b.amount)}</div>
@@ -801,17 +800,15 @@ export default function App() {
                               const mk = b.periodKey;
                               const mm = data.months[mk] || emptyMonth();
                               patchMonth(mk, { upcoming: mm.upcoming.map((x) => x.id === b.entryId ? { ...x, paid: true } : x) });
-                            }}>Mark paid</button>
+                            }}>{t("Mark paid")}</button>
                         )}
                         <button style={{ ...s.linkBtn, padding: 0 }}
-                          onClick={() => setModal({ type: b.kind === "recurring" ? "recurring" : "upcoming", editId: b.entryId, monthKey: b.periodKey })}>
-                          Edit
-                        </button>
+                          onClick={() => setModal({ type: b.kind === "recurring" ? "recurring" : "upcoming", editId: b.entryId, monthKey: b.periodKey })}>{t("Edit")}</button>
                       </div>
                     </div>
                   ))}
                   <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginTop: SPACE.md }}>
-                    Something here that pays itself? Open it and tick <em>Pays itself</em> — it will settle on its own date and stop reminding.
+                    {t("Something here that pays itself? Open it and tick {paysItself} — it will settle on its own date and stop reminding.", { paysItself: <em key="p">{t("Pays itself")}</em> })}
                   </div>
                 </>
               )}
@@ -822,19 +819,19 @@ export default function App() {
             <div style={s.card}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: SPACE.md }}>
-                  <div style={s.cardTitle}>All Expenses</div>
-                  <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => setStatementOpen(true)}>Import from bank</button>
+                  <div style={s.cardTitle}>{t("All Expenses")}</div>
+                  <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => setStatementOpen(true)}>{t("Import from bank")}</button>
                 </div>
-                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444", fontSize: 16 }}>Total: {fmt(totalExpenses)}</div>
+                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444", fontSize: 16 }}>{t("Total: {amount}", { amount: fmt(totalExpenses) })}</div>
               </div>
               <input
                 type="text"
-                placeholder="Search expenses..."
+                placeholder={t("Search expenses...")}
                 value={expensesView.search}
                 onChange={(e) => setExpensesView((v) => ({ ...v, search: e.target.value }))}
                 style={s.searchInput}
               />
-              {filteredExpenses.length === 0 ? <div style={s.empty}>{expensesView.search ? `No expenses match "${expensesView.search}".` : `No expenses yet. Click "+ Add Expense" to start tracking.`}</div> : (
+              {filteredExpenses.length === 0 ? <div style={s.empty}>{expensesView.search ? t("No expenses match \"{search}\".", { search: expensesView.search }) : t("No expenses yet. Click \"+ Add Expense\" to start tracking.")}</div> : (
                 <>
                   <TableHeader columns={ENTRY_COLUMNS.expenses} sorts={expensesView.sorts} onSort={onSortExpenses} />
                   {filteredExpenses.map((e) => (
@@ -850,26 +847,23 @@ export default function App() {
           {/* RECURRING */}
           {tab === "recurring" && regular.length > 0 && (
             <div style={{ ...s.card, marginBottom: 16 }}>
-              <div style={s.cardTitle}>Looks like a monthly bill</div>
-              <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginTop: SPACE.xs }}>
-                Paid about the same amount, on about the same day, in each of the last few months. Make it recurring and it's
-                counted for you every month; this month's payment becomes this month's bill, so nothing is counted twice.
-              </div>
+              <div style={s.cardTitle}>{t("Looks like a monthly bill")}</div>
+              <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginTop: SPACE.xs }}>{t("Paid about the same amount, on about the same day, in each of the last few months. Make it recurring and it's counted for you every month; this month's payment becomes this month's bill, so nothing is counted twice.")}</div>
               {regular.map((g) => (
                 <div key={g.key} style={{ ...s.tableRow, gap: SPACE.md }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 600 }}>{g.name}</div>
                     <div style={{ ...TYPE.finePrint, color: theme.textFaint }}>
-                      Around the {ordinal(g.dayOfMonth)} · {g.months.map((k) => monthShort(k)).join(", ")} · {g.category}
+                      {t("Around the {day}", { day: ordinal(g.dayOfMonth) })} · {g.months.map((k) => monthShort(k)).join(", ")} · {g.category}
                     </div>
                   </div>
                   <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>{fmt(g.amount)}</div>
                   <button style={{ ...s.addBtn, padding: "7px 14px" }} onClick={() => {
                     save(convertToRecurring(data, g, uid, today).data);
-                    setToast(`${g.name} is now a recurring bill`);
-                  }}>Make recurring</button>
+                    setToast(t("{name} is now a recurring bill", { name: g.name }));
+                  }}>{t("Make recurring")}</button>
                   <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => save(dismissRegular(data, g.key))}
-                    title="Stop suggesting this one">Not a bill</button>
+                    title={t("Stop suggesting this one")}>{t("Not a bill")}</button>
                 </div>
               ))}
             </div>
@@ -878,22 +872,22 @@ export default function App() {
           {tab === "recurring" && (
             <div style={s.card}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                <div style={s.cardTitle}>Recurring Payments</div>
-                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066cc", fontSize: 16 }}>This period: {fmt(totalRecurringAll)}</div>
+                <div style={s.cardTitle}>{t("Recurring Payments")}</div>
+                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066cc", fontSize: 16 }}>{t("This period: {amount}", { amount: fmt(totalRecurringAll) })}</div>
               </div>
               <MissingFromTemplate
                 missing={missingRecurring}
-                noun="recurring payment"
+                kind="recurring"
                 onAdd={() => patchCur({ recurring: [...cur.recurring, ...missingRecurring.map((tpl) => ({ ...tpl, id: uid(), templateId: tpl.id }))] })}
               />
               <input
                 type="text"
-                placeholder="Search recurring..."
+                placeholder={t("Search recurring...")}
                 value={recurringView.search}
                 onChange={(e) => setRecurringView((v) => ({ ...v, search: e.target.value }))}
                 style={s.searchInput}
               />
-              {filteredRecurring.length === 0 ? <div style={s.empty}>{recurringView.search ? `No recurring items match "${recurringView.search}".` : offCycleRecurring.length ? "Nothing recurring is due this period." : `No recurring payments set up. Click "+ Add Recurring" to create one.`}</div> : (
+              {filteredRecurring.length === 0 ? <div style={s.empty}>{recurringView.search ? t("No recurring items match \"{search}\".", { search: recurringView.search }) : offCycleRecurring.length ? t("Nothing recurring is due this period.") : t("No recurring payments set up. Click \"+ Add Recurring\" to create one.")}</div> : (
                 <>
                   <TableHeader columns={ENTRY_COLUMNS.recurring} sorts={recurringView.sorts} onSort={onSortRecurring} />
                   {filteredRecurring.map((r) => (
@@ -917,11 +911,11 @@ export default function App() {
           {tab === "upcoming" && (
             <>
               <div style={{ ...s.card, marginBottom: 16 }}>
-                <div style={s.cardTitle}>Money left this {periodNoun(cutoffDay, 1)}, looking ahead</div>
+                <div style={s.cardTitle}>{cutoffDay === 1 ? t("Money left this month, looking ahead") : t("Money left this period, looking ahead")}</div>
                 <ForecastCard fc={fc} />
               </div>
               <div style={{ ...s.card, marginBottom: 16 }}>
-                <div style={s.cardTitle}>Calendar</div>
+                <div style={s.cardTitle}>{t("Calendar")}</div>
                 <BillCalendar data={data} periodKey={curKey} today={today}
                   onOpen={(it) => setModal({ type: it.kind, editId: it.id, monthKey: curKey })} />
               </div>
@@ -931,17 +925,17 @@ export default function App() {
           {tab === "upcoming" && (
             <div style={s.card}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                <div style={s.cardTitle}>Upcoming Payments</div>
-                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#f59e0b", fontSize: 16 }}>Owed: {fmt(totalUpcoming)}</div>
+                <div style={s.cardTitle}>{t("Upcoming Payments")}</div>
+                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#f59e0b", fontSize: 16 }}>{t("Owed: {amount}", { amount: fmt(totalUpcoming) })}</div>
               </div>
               <input
                 type="text"
-                placeholder="Search upcoming..."
+                placeholder={t("Search upcoming...")}
                 value={upcomingView.search}
                 onChange={(e) => setUpcomingView((v) => ({ ...v, search: e.target.value }))}
                 style={s.searchInput}
               />
-              {filteredUpcoming.length === 0 ? <div style={s.empty}>{upcomingView.search ? `No upcoming items match "${upcomingView.search}".` : `No upcoming payments. Click "+ Add Payment" to schedule one.`}</div> : (
+              {filteredUpcoming.length === 0 ? <div style={s.empty}>{upcomingView.search ? t("No upcoming items match \"{search}\".", { search: upcomingView.search }) : t("No upcoming payments. Click \"+ Add Payment\" to schedule one.")}</div> : (
                 <>
                   <TableHeader columns={ENTRY_COLUMNS.upcoming} sorts={upcomingView.sorts} onSort={onSortUpcoming} />
                   {filteredUpcoming.map((u) => (
@@ -988,20 +982,20 @@ export default function App() {
               <>
                 <div style={s.card}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                    <div style={s.cardTitle}>Credits</div>
+                    <div style={s.cardTitle}>{t("Credits")}</div>
                     <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#10b981", fontSize: 16 }}>
-                      Received: {fmt(totalCredits)}
-                      {totalCreditsPending > 0 && <span style={{ color: theme.textMuted, fontSize: 13 }}> · {fmt(totalCreditsPending)} pending</span>}
+                      {t("Received: {amount}", { amount: fmt(totalCredits) })}
+                      {totalCreditsPending > 0 && <span style={{ color: theme.textMuted, fontSize: 13 }}> · {t("{amount} pending", { amount: fmt(totalCreditsPending) })}</span>}
                     </div>
                   </div>
                   <MissingFromTemplate
                     missing={missingCredits}
-                    noun="recurring credit"
+                    kind="credit"
                     onAdd={() => patchCur({ credits: [...(cur.credits || []), ...missingCredits.map((tpl) => ({ ...tpl, id: uid(), templateId: tpl.id }))] })}
                   />
                   <input
                     type="text"
-                    placeholder="Search credits..."
+                    placeholder={t("Search credits...")}
                     value={creditsView.search}
                     onChange={(e) => setCreditsView((v) => ({ ...v, search: e.target.value }))}
                     style={s.searchInput}
@@ -1010,14 +1004,14 @@ export default function App() {
 
                 <div style={{ ...s.card, marginTop: 16 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={s.cardTitle}>Recurring Credits</div>
-                    <button style={s.linkBtn} onClick={() => setModal({ type: "creditRecurring" })}>+ Add Recurring</button>
+                    <div style={s.cardTitle}>{t("Recurring Credits")}</div>
+                    <button style={s.linkBtn} onClick={() => setModal({ type: "creditRecurring" })}>{t("+ Add")}</button>
                   </div>
                   {recurringCredits.length === 0 ? (
-                    <div style={s.emptySmall}>{creditsView.search ? "No recurring credits match your search." : "No recurring credits. Add an allowance, stipend, or retainer."}</div>
+                    <div style={s.emptySmall}>{creditsView.search ? t("No recurring credits match your search.") : t("No recurring credits. Add an allowance, stipend, or retainer.")}</div>
                   ) : (
                     <>
-                      <TableHeader columns={[{ label: "NAME", flex: 2, sortKey: "name" }, { label: "SOURCE", flex: 1.2, sortKey: "category" }, { label: "DAY", flex: 1, align: "center", sortKey: "dayOfMonth" }, { label: "AMOUNT", flex: 1, align: "right", sortKey: "amount" }, { label: "", flex: 0.6, align: "center" }]} sorts={creditsView.sorts} onSort={onSortCredits} />
+                      <TableHeader columns={[{ label: tk("NAME"), flex: 2, sortKey: "name" }, { label: tk("SOURCE"), flex: 1.2, sortKey: "category" }, { label: tk("DAY"), flex: 1, align: "center", sortKey: "dayOfMonth" }, { label: tk("AMOUNT"), flex: 1, align: "right", sortKey: "amount" }, { label: "", flex: 0.6, align: "center" }]} sorts={creditsView.sorts} onSort={onSortCredits} />
                       {recurringCredits.map((c) => creditRow(c, "recurring"))}
                     </>
                   )}
@@ -1029,14 +1023,14 @@ export default function App() {
 
                 <div style={{ ...s.card, marginTop: 16 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={s.cardTitle}>One-off Credits</div>
-                    <button style={s.linkBtn} onClick={() => setModal({ type: "credit" })}>+ Add Credit</button>
+                    <div style={s.cardTitle}>{t("One-off Credits")}</div>
+                    <button style={s.linkBtn} onClick={() => setModal({ type: "credit" })}>{t("+ Add Credit")}</button>
                   </div>
                   {oneOffCredits.length === 0 ? (
-                    <div style={s.emptySmall}>{creditsView.search ? "No one-off credits match your search." : "No one-off credits this month. Log a refund, gift, or bonus."}</div>
+                    <div style={s.emptySmall}>{creditsView.search ? t("No one-off credits match your search.") : t("No one-off credits this month. Log a refund, gift, or bonus.")}</div>
                   ) : (
                     <>
-                      <TableHeader columns={[{ label: "NAME", flex: 2, sortKey: "name" }, { label: "SOURCE", flex: 1.2, sortKey: "category" }, { label: "DATE", flex: 1, sortKey: "date" }, { label: "AMOUNT", flex: 1, align: "right", sortKey: "amount" }, { label: "", flex: 0.6, align: "center" }]} sorts={creditsView.sorts} onSort={onSortCredits} />
+                      <TableHeader columns={[{ label: tk("NAME"), flex: 2, sortKey: "name" }, { label: tk("SOURCE"), flex: 1.2, sortKey: "category" }, { label: tk("DATE"), flex: 1, sortKey: "date" }, { label: tk("AMOUNT"), flex: 1, align: "right", sortKey: "amount" }, { label: "", flex: 0.6, align: "center" }]} sorts={creditsView.sorts} onSort={onSortCredits} />
                       {oneOffCredits.map((c) => creditRow(c, "oneoff"))}
                     </>
                   )}
@@ -1049,12 +1043,12 @@ export default function App() {
           {tab === "history" && historyKey === null && (
             <div style={s.card}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={s.cardTitle}>Past Months</div>
+                <div style={s.cardTitle}>{t("Past Months")}</div>
               </div>
               {(() => {
                 const pastKeys = Object.keys(data.months).filter((k) => k !== curKey).sort().reverse();
                 if (pastKeys.length === 0) {
-                  return <div style={s.empty}>No past months yet. Come back after the month ends.</div>;
+                  return <div style={s.empty}>{t("No past months yet. Come back after the month ends.")}</div>;
                 }
                 return (
                   <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
@@ -1079,18 +1073,18 @@ export default function App() {
                             )}
                           </div>
                           <div>
-                            <div style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>Income</div>
+                            <div style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>{t("Income")}</div>
                             <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>{fmt(m.income)}</div>
                             {credits > 0 && (
                               <div style={{ fontSize: 10, color: "#10b981", fontFamily: FONT, fontVariantNumeric: "tabular-nums" }}>+{fmt(credits)}</div>
                             )}
                           </div>
                           <div>
-                            <div style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>Spent</div>
+                            <div style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>{t("Spent")}</div>
                             <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444" }}>{fmt(spent)}</div>
                           </div>
                           <div>
-                            <div style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>Remaining</div>
+                            <div style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>{t("Remaining")}</div>
                             <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color }}>{fmt(rem)}</div>
                           </div>
                           <div style={{ width: 8, height: 40, background: color, borderRadius: 4 }} />
@@ -1113,29 +1107,29 @@ export default function App() {
             const rem = effective - spent;
             return (
               <>
-                <button style={{ ...s.linkBtn, marginBottom: 16, fontSize: 14 }} onClick={() => setHistoryKey(null)}>← Back to History</button>
+                <button style={{ ...s.linkBtn, marginBottom: 16, fontSize: 14 }} onClick={() => setHistoryKey(null)}>{t("← Back to History")}</button>
                 <h2 style={{ fontSize: 20, fontWeight: 700, margin: "0 0 4px" }}>{periodLabel(historyKey, cutoffDay).primary}</h2>
                 {periodLabel(historyKey, cutoffDay).range && (
                   <div style={{ fontSize: 12, color: theme.textMuted, marginBottom: 12 }}>{periodLabel(historyKey, cutoffDay).range}</div>
                 )}
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-                  <span style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1.5, color: theme.textMuted, fontWeight: 600 }}>Income</span>
+                  <span style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1.5, color: theme.textMuted, fontWeight: 600 }}>{t("Income")}</span>
                   <input type="number" value={m.income || ""}
                     onChange={(ev) => patchMonth(historyKey, { income: +ev.target.value || 0 })}
                     placeholder="0" style={{ ...s.input, width: 140 }} />
                   <span style={{ fontSize: 12, color: theme.textMuted, fontWeight: 600 }}>{data.currency}</span>
                 </div>
                 <div style={s.statsRow}>
-                  <StatCard label="Income" value={fmt(effective)} accent="#10b981" sub={credits > 0 ? `+${fmt(credits)} credits` : "For this month"} icon="↑" />
-                  <StatCard label="Remaining" value={fmt(rem)} accent={rem >= 0 ? "#10b981" : "#ef4444"} sub="After everything paid" icon="↓" />
-                  <StatCard label="Total Spent" value={fmt(spent)} accent="#ef4444" sub={`${m.expenses.length} one-off · ${m.recurring.length} recurring`} icon="↻" />
+                  <StatCard label={t("Income")} value={fmt(effective)} accent="#10b981" sub={credits > 0 ? t("+ {amount} credits", { amount: fmt(credits) }) : t("For this month")} icon="↑" />
+                  <StatCard label={t("Remaining")} value={fmt(rem)} accent={rem >= 0 ? "#10b981" : "#ef4444"} sub={t("After everything paid")} icon="↓" />
+                  <StatCard label={t("Total Spent")} value={fmt(spent)} accent="#ef4444" sub={t("{oneOff} one-off · {recurring} recurring", { oneOff: m.expenses.length, recurring: m.recurring.length })} icon="↻" />
                 </div>
                 <div style={s.card}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={s.cardTitle}>Expenses</div>
-                    <button style={s.linkBtn} onClick={() => setModal({ type: "expense", monthKey: historyKey })}>+ Add</button>
+                    <div style={s.cardTitle}>{t("Expenses")}</div>
+                    <button style={s.linkBtn} onClick={() => setModal({ type: "expense", monthKey: historyKey })}>{t("+ Add")}</button>
                   </div>
-                  {m.expenses.length === 0 ? <div style={s.emptySmall}>No expenses</div> : (
+                  {m.expenses.length === 0 ? <div style={s.emptySmall}>{t("No expenses")}</div> : (
                     <>
                       <TableHeader columns={[{ label: "NAME", flex: 2 }, { label: "CATEGORY", flex: 1.2 }, { label: "DATE", flex: 1 }, { label: "AMOUNT", flex: 1, align: "right" }, { label: "", flex: 0.6, align: "center" }]} />
                       {m.expenses.map((e) => (
@@ -1148,10 +1142,10 @@ export default function App() {
                 </div>
                 <div style={{ ...s.card, marginTop: 16 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={s.cardTitle}>Recurring</div>
-                    <button style={s.linkBtn} onClick={() => setModal({ type: "recurring", monthKey: historyKey })}>+ Add</button>
+                    <div style={s.cardTitle}>{t("Recurring")}</div>
+                    <button style={s.linkBtn} onClick={() => setModal({ type: "recurring", monthKey: historyKey })}>{t("+ Add")}</button>
                   </div>
-                  {m.recurring.length === 0 ? <div style={s.emptySmall}>No recurring</div> : (
+                  {m.recurring.length === 0 ? <div style={s.emptySmall}>{t("No recurring")}</div> : (
                     <>
                       <TableHeader columns={ENTRY_COLUMNS.recurring} />
                       {m.recurring.map((r) => (
@@ -1166,10 +1160,10 @@ export default function App() {
                 </div>
                 <div style={{ ...s.card, marginTop: 16 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={s.cardTitle}>Upcoming</div>
-                    <button style={s.linkBtn} onClick={() => setModal({ type: "upcoming", monthKey: historyKey })}>+ Add</button>
+                    <div style={s.cardTitle}>{t("Upcoming")}</div>
+                    <button style={s.linkBtn} onClick={() => setModal({ type: "upcoming", monthKey: historyKey })}>{t("+ Add")}</button>
                   </div>
-                  {m.upcoming.length === 0 ? <div style={s.emptySmall}>No upcoming</div> : (
+                  {m.upcoming.length === 0 ? <div style={s.emptySmall}>{t("No upcoming")}</div> : (
                     <>
                       <TableHeader columns={ENTRY_COLUMNS.upcoming} />
                       {m.upcoming.map((u) => (
@@ -1183,10 +1177,10 @@ export default function App() {
                 </div>
                 <div style={{ ...s.card, marginTop: 16 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={s.cardTitle}>Credits</div>
-                    <button style={s.linkBtn} onClick={() => setModal({ type: "credit", monthKey: historyKey })}>+ Add</button>
+                    <div style={s.cardTitle}>{t("Credits")}</div>
+                    <button style={s.linkBtn} onClick={() => setModal({ type: "credit", monthKey: historyKey })}>{t("+ Add")}</button>
                   </div>
-                  {(m.credits || []).length === 0 ? <div style={s.emptySmall}>No credits</div> : (
+                  {(m.credits || []).length === 0 ? <div style={s.emptySmall}>{t("No credits")}</div> : (
                     <>
                       <TableHeader columns={[{ label: "NAME", flex: 2 }, { label: "SOURCE", flex: 1.2 }, { label: "DATE", flex: 1 }, { label: "AMOUNT", flex: 1, align: "right" }, { label: "", flex: 0.6, align: "center" }]} />
                       {(m.credits || []).map((c) => (
@@ -1303,19 +1297,19 @@ export default function App() {
         const source = editingTpl || editing;
         const sched = editingTpl || tplOf || editing || {};
         return (
-          <FormModal title={source ? "Edit Recurring Payment" : "Add Recurring Payment"} fields={[
-            { key: "name", label: "Name", placeholder: "e.g. Rent", defaultValue: source?.name },
-            { key: "amount", label: `Amount (${currencyCode()})`, type: "number", placeholder: "0", defaultValue: source ? String(source.amount) : "" },
-            { key: "category", label: "Category", type: "category", categories: data.categories, defaultValue: source?.category },
-            { key: "dayOfMonth", label: "Day of Month", type: "number", placeholder: "1", defaultValue: source ? String(source.dayOfMonth) : "" },
+          <FormModal title={source ? t("Edit Recurring Payment") : t("Add Recurring Payment")} fields={[
+            { key: "name", label: t("Name"), placeholder: t("e.g. Rent"), defaultValue: source?.name },
+            { key: "amount", label: t("Amount ({currency})", { currency: currencyCode() }), type: "number", placeholder: "0", defaultValue: source ? String(source.amount) : "" },
+            { key: "category", label: t("Category"), type: "category", categories: data.categories, defaultValue: source?.category },
+            { key: "dayOfMonth", label: t("Day of Month"), type: "number", placeholder: "1", defaultValue: source ? String(source.dayOfMonth) : "" },
             // Frequency belongs to the template, so it is offered only where the
             // template is being edited - not on a correction to a past period.
             ...(touchesTemplate ? [
-              { key: "repeats", label: "Repeats", type: "select", options: FREQUENCIES.map((f) => f.label), defaultValue: frequencyLabel(sched.every) },
-              { key: "anchor", label: "First due in", type: "month", defaultValue: sched.anchor || targetKey },
+              { key: "repeats", label: t("Repeats"), type: "select", options: FREQUENCIES.map((f) => f.label), defaultValue: frequencyLabel(sched.every) },
+              { key: "anchor", label: t("First due in"), type: "month", defaultValue: sched.anchor || targetKey },
             ] : []),
-            { key: "autoPay", label: "Pays itself", type: "checkbox", defaultValue: source?.autoPay,
-              hint: "Direct debit or card on file. Never sends a reminder." },
+            { key: "autoPay", label: t("Pays itself"), type: "checkbox", defaultValue: source?.autoPay,
+              hint: t("Direct debit or card on file. Never sends a reminder.") },
             NOTE_FIELD(source),
           ]} onClose={() => setModal(null)} onSave={(v) => {
             const { categories, category } = ensureCategory(data.categories, v.category);
@@ -1377,13 +1371,13 @@ export default function App() {
         const targetMonth = data.months[targetKey] || emptyMonth();
         const editing = modal.editId ? targetMonth.upcoming.find((x) => x.id === modal.editId) : null;
         return (
-          <FormModal title={editing ? "Edit Upcoming Payment" : "Add Upcoming Payment"} fields={[
-            { key: "name", label: "Name", placeholder: "e.g. Car Insurance", defaultValue: editing?.name },
-            { key: "amount", label: `Amount (${currencyCode()})`, type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
-            { key: "category", label: "Category", type: "category", categories: data.categories, defaultValue: editing?.category },
-            { key: "dueDate", label: "Due Date", type: "date", defaultValue: editing?.dueDate || `${targetKey}-01` },
-            { key: "autoPay", label: "Pays itself", type: "checkbox", defaultValue: editing?.autoPay,
-              hint: "Direct debit or card on file. Counts as paid on its due date and never sends a reminder." },
+          <FormModal title={editing ? t("Edit Upcoming Payment") : t("Add Upcoming Payment")} fields={[
+            { key: "name", label: t("Name"), placeholder: t("e.g. Car Insurance"), defaultValue: editing?.name },
+            { key: "amount", label: t("Amount ({currency})", { currency: currencyCode() }), type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
+            { key: "category", label: t("Category"), type: "category", categories: data.categories, defaultValue: editing?.category },
+            { key: "dueDate", label: t("Due Date"), type: "date", defaultValue: editing?.dueDate || `${targetKey}-01` },
+            { key: "autoPay", label: t("Pays itself"), type: "checkbox", defaultValue: editing?.autoPay,
+              hint: t("Direct debit or card on file. Counts as paid on its due date and never sends a reminder.") },
             NOTE_FIELD(editing),
           ]} onClose={() => setModal(null)} onSave={(v) => {
             const { categories, category } = ensureCategory(data.categories, v.category);
@@ -1423,16 +1417,16 @@ export default function App() {
         const source = editingTpl || editing;
         const sched = editingTpl || tplOf || editing || {};
         return (
-          <FormModal title={source ? "Edit Recurring Credit" : "Add Recurring Credit"} fields={[
-            { key: "name", label: "Name", placeholder: "e.g. Allowance", defaultValue: source?.name },
-            { key: "amount", label: `Amount (${currencyCode()})`, type: "number", placeholder: "0", defaultValue: source ? String(source.amount) : "" },
-            { key: "category", label: "Source", type: "category", categories: data.creditCategories || [], defaultValue: source?.category },
-            { key: "dayOfMonth", label: "Day of Month", type: "number", placeholder: "1", defaultValue: source ? String(source.dayOfMonth) : "" },
+          <FormModal title={source ? t("Edit Recurring Credit") : t("Add Recurring Credit")} fields={[
+            { key: "name", label: t("Name"), placeholder: t("e.g. Allowance"), defaultValue: source?.name },
+            { key: "amount", label: t("Amount ({currency})", { currency: currencyCode() }), type: "number", placeholder: "0", defaultValue: source ? String(source.amount) : "" },
+            { key: "category", label: t("Source"), type: "category", categories: data.creditCategories || [], defaultValue: source?.category },
+            { key: "dayOfMonth", label: t("Day of Month"), type: "number", placeholder: "1", defaultValue: source ? String(source.dayOfMonth) : "" },
             // Frequency belongs to the template, so it is offered only where the
             // template is being edited - not on a correction to a past period.
             ...(touchesTemplate ? [
-              { key: "repeats", label: "Repeats", type: "select", options: FREQUENCIES.map((f) => f.label), defaultValue: frequencyLabel(sched.every) },
-              { key: "anchor", label: "First due in", type: "month", defaultValue: sched.anchor || targetKey },
+              { key: "repeats", label: t("Repeats"), type: "select", options: FREQUENCIES.map((f) => f.label), defaultValue: frequencyLabel(sched.every) },
+              { key: "anchor", label: t("First due in"), type: "month", defaultValue: sched.anchor || targetKey },
             ] : []),
             NOTE_FIELD(source),
           ]} onClose={() => setModal(null)} onSave={(v) => {
@@ -1492,11 +1486,11 @@ export default function App() {
         const targetMonth = data.months[targetKey] || emptyMonth();
         const editing = modal.editId ? (targetMonth.credits || []).find((x) => x.id === modal.editId) : null;
         return (
-          <FormModal title={editing ? "Edit Credit" : "Add Credit"} fields={[
-            { key: "name", label: "Name", placeholder: "e.g. Amazon refund", defaultValue: editing?.name },
-            { key: "amount", label: `Amount (${currencyCode()})`, type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
-            { key: "category", label: "Source", type: "category", categories: data.creditCategories || [], defaultValue: editing?.category || editing?.source },
-            { key: "date", label: "Date", type: "date", defaultValue: editing?.date || `${targetKey}-01` },
+          <FormModal title={editing ? t("Edit Credit") : t("Add Credit")} fields={[
+            { key: "name", label: t("Name"), placeholder: t("e.g. Amazon refund"), defaultValue: editing?.name },
+            { key: "amount", label: t("Amount ({currency})", { currency: currencyCode() }), type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
+            { key: "category", label: t("Source"), type: "category", categories: data.creditCategories || [], defaultValue: editing?.category || editing?.source },
+            { key: "date", label: t("Date"), type: "date", defaultValue: editing?.date || `${targetKey}-01` },
             NOTE_FIELD(editing),
           ]} onClose={() => setModal(null)} onSave={(v) => {
             const amt = +v.amount;
@@ -1555,14 +1549,14 @@ export default function App() {
             await save(next);
             setStatementOpen(false);
             const parts = [];
-            if (counts.expenses) parts.push(`${counts.expenses} expense${counts.expenses !== 1 ? "s" : ""}`);
-            if (counts.credits) parts.push(`${counts.credits} credit${counts.credits !== 1 ? "s" : ""}`);
-            if (counts.markedPaid) parts.push(`${counts.markedPaid} payment${counts.markedPaid !== 1 ? "s" : ""} marked paid`);
+            if (counts.expenses) parts.push(tn(counts.expenses, "{n} expense", "{n} expenses"));
+            if (counts.credits) parts.push(tn(counts.credits, "{n} credit", "{n} credits"));
+            if (counts.markedPaid) parts.push(tn(counts.markedPaid, "{n} payment marked paid", "{n} payments marked paid"));
             const spotted = findRegularPayments(next, today).length;
-            alert(`Imported ${parts.join(", ") || "nothing"}.` +
-              (counts.rules ? `\n\n${counts.rules} new import rule${counts.rules !== 1 ? "s" : ""} will file these for you next time.` : "") +
-              (spotted ? `\n\n${spotted} payment${spotted !== 1 ? "s look" : " looks"} like a monthly bill. See the Recurring tab to make ${spotted !== 1 ? "them" : "it"} recurring.` : "") +
-              (isTauri ? "\n\nA backup was taken first — restore it from Settings → Data if anything looks wrong." : ""));
+            alert((parts.length ? t("Imported {what}.", { what: parts.join(", ") }) : t("Nothing was imported.")) +
+              (counts.rules ? "\n\n" + tn(counts.rules, "{n} new import rule will file these for you next time.", "{n} new import rules will file these for you next time.") : "") +
+              (spotted ? "\n\n" + tn(spotted, "{n} payment looks like a monthly bill. See the Recurring tab to make it recurring.", "{n} payments look like a monthly bill. See the Recurring tab to make them recurring.") : "") +
+              (isTauri ? "\n\n" + t("A backup was taken first — restore it from Settings → Data if anything looks wrong.") : ""));
           }} />
       )}
 
@@ -1572,9 +1566,9 @@ export default function App() {
             try {
               await writeLock(cfg);
               setLockCfg(cfg);
-              setToast(cfg ? (pinDialog === "set" ? "Lock is on" : "PIN changed") : "Lock is off");
+              setToast(cfg ? (pinDialog === "set" ? t("Lock is on") : t("PIN changed")) : t("Lock is off"));
             } catch (err) {
-              alert(`Couldn't save the lock: ${err}`);
+              alert(t("Couldn't save the lock: {error}", { error: String(err) }));
             }
             setPinDialog(null);
           }} />
@@ -1604,20 +1598,19 @@ export default function App() {
           onReset={resetAll}
           onChangeCurrency={(currency) => save({ ...data, currency })}
           onChangeLocale={(locale) => save({ ...data, locale })}
+          onChangeLanguage={(language) => save({ ...data, language })}
           onManageCategories={() => { setSettingsOpen(false); setCategoriesOpen(true); }}
           onManageRules={() => { setSettingsOpen(false); setRulesOpen(true); }}
           lockCfg={lockCfg}
           onPinAction={(mode) => { setSettingsOpen(false); setPinDialog(mode); }}
-          onChangeLock={(cfg) => { writeLock(cfg).then(() => setLockCfg(cfg)).catch((err) => alert(`Couldn't save the lock: ${err}`)); }}
+          onChangeLock={(cfg) => { writeLock(cfg).then(() => setLockCfg(cfg)).catch((err) => alert(t("Couldn't save the lock: {error}", { error: String(err) }))); }}
           onRestore={async (name) => {
-            if (!confirm(`Replace all current data with the backup "${name}"?
-
-What you have now is backed up first.`)) return;
+            if (!confirm(t("Replace all current data with the backup \"{name}\"?\n\nWhat you have now is backed up first.", { name }))) return;
             try {
               const text = await readBackup(name);
               const parsed = JSON.parse(text);
               if (!parsed || typeof parsed !== "object" || !parsed.months) {
-                alert("That backup could not be read.");
+                alert(t("That backup could not be read."));
                 return;
               }
               // Snapshot the current state before replacing it, so restoring to
@@ -1629,7 +1622,7 @@ What you have now is backed up first.`)) return;
               await save(hydrate(migrate(parsed)));
               setSettingsOpen(false);
             } catch {
-              alert("That backup could not be read.");
+              alert(t("That backup could not be read."));
             }
           }}
         />

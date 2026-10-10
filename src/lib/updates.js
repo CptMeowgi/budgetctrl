@@ -36,17 +36,6 @@ export function describeUpdateError(err, doing = "checking for updates") {
   return `Something went wrong while ${doing}.`;
 }
 
-// "just now", "5 minutes ago", "3 hours ago", "2 days ago".
-export function agoLabel(then, now) {
-  const mins = Math.max(0, Math.round((now - then) / 60000));
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins} minute${mins !== 1 ? "s" : ""} ago`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours} hour${hours !== 1 ? "s" : ""} ago`;
-  const days = Math.round(hours / 24);
-  return `${days} day${days !== 1 ? "s" : ""} ago`;
-}
-
 // Release notes arrive as the changelog's Markdown. The app shows them as plain
 // lines - headings, bullets, text - with the emphasis marks taken out, rather
 // than pulling in a Markdown renderer for one panel.

@@ -1,11 +1,13 @@
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis } from "recharts";
 import { fmt } from "../money.js";
 import { FONT, useThemed } from "../theme.js";
+import { t } from "../i18n.js";
+import { catName } from "../text.js";
 
 export function CategoryDonut({ data, total }) {
   const { theme, s } = useThemed();
   if (!data.length) {
-    return <div style={s.chartEmpty}>Add expenses to see category breakdown.</div>;
+    return <div style={s.chartEmpty}>{t("Add expenses to see category breakdown.")}</div>;
   }
   return (
     <div style={{ position: "relative", width: "100%", height: 240 }}>
@@ -20,7 +22,7 @@ export function CategoryDonut({ data, total }) {
             const pct = total > 0 ? ((d.value / total) * 100).toFixed(1) : "0";
             return (
               <div style={s.chartTooltip}>
-                <div style={{ fontWeight: 700, marginBottom: 2 }}>{d.icon} {d.name}</div>
+                <div style={{ fontWeight: 700, marginBottom: 2 }}>{d.icon} {catName(d.name)}</div>
                 <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums" }}>{fmt(d.value)} · {pct}%</div>
               </div>
             );
@@ -28,7 +30,7 @@ export function CategoryDonut({ data, total }) {
         </PieChart>
       </ResponsiveContainer>
       <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", textAlign: "center", pointerEvents: "none" }}>
-        <div style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>Total</div>
+        <div style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>{t("Total")}</div>
         <div style={{ fontSize: 18, fontWeight: 700, fontFamily: FONT, fontVariantNumeric: "tabular-nums", color: theme.text }}>{fmt(total)}</div>
       </div>
     </div>
@@ -38,7 +40,7 @@ export function CategoryDonut({ data, total }) {
 export function NetWorthChart({ series }) {
   const { theme, s } = useThemed();
   if (series.length < 2) {
-    return <div style={s.chartEmpty}>Update a balance on another day to see the trend.</div>;
+    return <div style={s.chartEmpty}>{t("Update a balance on another day to see the trend.")}</div>;
   }
   return (
     <div style={{ width: "100%", height: 220 }}>
@@ -60,8 +62,8 @@ export function NetWorthChart({ series }) {
             return (
               <div style={s.chartTooltip}>
                 <div style={{ fontWeight: 700, marginBottom: 4 }}>{d.label}</div>
-                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", color: theme.text }}>Net worth: {fmt(d.net)}</div>
-                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", color: theme.textMuted }}>Assets {fmt(d.assets)} · Debts {fmt(d.debts)}</div>
+                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", color: theme.text }}>{t("Net worth: {amount}", { amount: fmt(d.net) })}</div>
+                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", color: theme.textMuted }}>{t("Assets {assets} · Debts {debts}", { assets: fmt(d.assets), debts: fmt(d.debts) })}</div>
               </div>
             );
           }} />
@@ -75,7 +77,7 @@ export function NetWorthChart({ series }) {
 export function MonthlyBarChart({ data, curKey, onBarClick }) {
   const { theme, s } = useThemed();
   if (data.length < 2) {
-    return <div style={s.chartEmpty}>Come back next month to see trends.</div>;
+    return <div style={s.chartEmpty}>{t("Come back next month to see trends.")}</div>;
   }
   return (
     <div style={{ width: "100%", height: 200 }}>
@@ -91,8 +93,8 @@ export function MonthlyBarChart({ data, curKey, onBarClick }) {
             return (
               <div style={s.chartTooltip}>
                 <div style={{ fontWeight: 700, marginBottom: 4 }}>{d.key}</div>
-                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", color: theme.danger }}>Spent: {fmt(d.spent)}</div>
-                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", color: theme.textMuted }}>Income: {fmt(d.income)}</div>
+                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", color: theme.danger }}>{t("Spent: {amount}", { amount: fmt(d.spent) })}</div>
+                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", color: theme.textMuted }}>{t("Income: {amount}", { amount: fmt(d.income) })}</div>
               </div>
             );
           }} />
@@ -118,7 +120,7 @@ export function MonthlyBarChart({ data, curKey, onBarClick }) {
 export function SavingsChart({ series }) {
   const { theme, s } = useThemed();
   if (!series || series.length < 2) {
-    return <div style={s.chartEmpty}>Close out a month to start tracking savings.</div>;
+    return <div style={s.chartEmpty}>{t("Close out a month to start tracking savings.")}</div>;
   }
   return (
     <div style={{ width: "100%", height: 220 }}>
@@ -140,10 +142,10 @@ export function SavingsChart({ series }) {
             return (
               <div style={s.chartTooltip}>
                 <div style={{ fontWeight: 700, marginBottom: 4 }}>{d.label}</div>
-                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", color: theme.success }}>Balance: {fmt(d.balance)}</div>
+                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", color: theme.success }}>{t("Running total: {amount}", { amount: fmt(d.balance) })}</div>
                 {d.delta !== 0 && (
                   <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", color: d.delta >= 0 ? theme.success : theme.danger }}>
-                    {d.delta >= 0 ? "+" : ""}{fmt(d.delta)} that month
+                    {t("{amount} that month", { amount: `${d.delta >= 0 ? "+" : ""}${fmt(d.delta)}` })}
                   </div>
                 )}
               </div>

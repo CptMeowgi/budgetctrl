@@ -27,6 +27,13 @@ describe("applySetup", () => {
     expect(out.categories[1]).toEqual({ name: "Groceries", icon: "🛒", color: "#10b981" });
   });
 
+  it("renames the starter money-in categories, but never Other", () => {
+    const withCredit = { ...fresh, creditCategories: [{ name: "Refund", color: "#10b981", icon: "↩" }, { name: "Other", color: "#9ca3af", icon: "·" }] };
+    const res = applySetup(withCredit, { creditNames: { Refund: "Zwrot", Other: "Inne" } }, TODAY);
+    expect(res.creditCategories).toEqual([{ name: "Zwrot", color: "#10b981", icon: "↩" }, { name: "Other", color: "#9ca3af", icon: "·" }]);
+    expect(applySetup(withCredit, {}, TODAY).creditCategories).toBe(withCredit.creditCategories);
+  });
+
   it("copes with nothing answered", () => {
     const bare = applySetup(fresh, {}, TODAY);
     expect(bare).toMatchObject({ currency: "USD", cutoffDay: 1, savingsGoal: { monthly: 0 } });

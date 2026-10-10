@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { TYPE, useThemed } from "../theme.js";
 import { Modal } from "./Modal.jsx";
+import { t } from "../i18n.js";
+import { catName } from "../text.js";
 
 export function CategoryPicker({ value, onChange, categories }) {
   const { s } = useThemed();
@@ -14,7 +16,7 @@ export function CategoryPicker({ value, onChange, categories }) {
     <div style={{ position: "relative" }}>
       <input
         type="text"
-        placeholder="e.g. Food, Transport"
+        placeholder={t("e.g. Food, Transport")}
         value={value}
         onChange={(e) => { onChange(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
@@ -27,7 +29,7 @@ export function CategoryPicker({ value, onChange, categories }) {
             <div key={c.name} style={s.suggestItem}
               onMouseDown={(e) => { e.preventDefault(); onChange(c.name); setOpen(false); }}>
               <span style={{ ...s.catDot, background: `${c.color}25` }}>{c.icon}</span>
-              <span>{c.name}</span>
+              <span>{catName(c.name)}</span>
             </div>
           ))}
         </div>
@@ -63,7 +65,7 @@ export function FormModal({ title, fields, onClose, onSave }) {
               </label>
             ) : f.type === "select" ? (
               <select value={vals[f.key]} onChange={(e) => setVals({ ...vals, [f.key]: e.target.value })} style={s.input}>
-                {f.options.map((o) => <option key={o} value={o}>{o}</option>)}
+                {f.options.map((o) => <option key={o} value={o}>{t(o)}</option>)}
               </select>
             ) : f.type === "category" ? (
               <CategoryPicker value={vals[f.key] || ""} onChange={(v) => setVals({ ...vals, [f.key]: v })} categories={f.categories} />
@@ -92,7 +94,7 @@ export function FormModal({ title, fields, onClose, onSave }) {
             disabled={!valid}
             onClick={() => onSave({ ...vals, amount: amountNum })}
           >
-            {valid ? "Save" : "Fill in name and a positive amount"}
+            {valid ? t("Save") : t("Fill in name and a positive amount")}
           </button>
         );
       })()}

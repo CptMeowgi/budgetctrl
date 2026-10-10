@@ -1,5 +1,5 @@
 import { monthLabel, periodLabel } from "../lib/periods.js";
-import { BASE_INCOME_NAME, buildReport, categoryChanges, comparisonFor, percentChange, periodNoun, rangeKeys, rangeOptions, reportToCsv } from "../lib/reports.js";
+import { BASE_INCOME_NAME, buildReport, categoryChanges, comparisonFor, percentChange, rangeKeys, rangeOptions, reportToCsv } from "../lib/reports.js";
 import { downloadText, fileDate } from "../exportFiles.js";
 import { categoryBreakdown, CREDIT_UNCATEGORIZED, findCategory } from "../model.js";
 import { currencyCode, fmt, fmtWhole } from "../money.js";
@@ -7,6 +7,7 @@ import { FONT, SPACE, TYPE, useThemed } from "../theme.js";
 import { CategoryDonut, MonthlyBarChart } from "./charts.jsx";
 import { CategoryPill, StatCard } from "./controls.jsx";
 import { isSplit } from "../lib/splits.js";
+import { fmtDate, t, tk, tn } from "../i18n.js";
 
 // Two-digit alpha suffix for a #rrggbb colour.
 function alphaHex(a) {
@@ -33,9 +34,9 @@ function CategoryTrends({ report, categories, curKey, onOpenPeriod }) {
   // The category column stays put while the periods scroll sideways.
   const sticky = { position: "sticky", left: 0, background: theme.surface, zIndex: 1, textAlign: "left" };
   const footer = [
-    { label: "Spent", values: report.periods.map((p) => p.spent), total: report.spent, avg: report.averageSpent, color: () => theme.text },
-    { label: "Income", values: report.periods.map((p) => p.income), total: report.income, avg: report.averageIncome, color: () => theme.text },
-    { label: "Saved", values: report.periods.map((p) => p.income - p.spent), total: report.saved, avg: report.averageSaved,
+    { label: tk("Spent"), values: report.periods.map((p) => p.spent), total: report.spent, avg: report.averageSpent, color: () => theme.text },
+    { label: tk("Income"), values: report.periods.map((p) => p.income), total: report.income, avg: report.averageIncome, color: () => theme.text },
+    { label: tk("Saved"), values: report.periods.map((p) => p.income - p.spent), total: report.saved, avg: report.averageSaved,
       color: (v) => (v >= 0 ? "#10b981" : "#ef4444") },
   ];
   return (
@@ -43,18 +44,18 @@ function CategoryTrends({ report, categories, curKey, onOpenPeriod }) {
       <table style={{ borderCollapse: "separate", borderSpacing: 0, width: "100%" }}>
         <thead>
           <tr>
-            <th style={{ ...th, ...sticky }}>Category</th>
+            <th style={{ ...th, ...sticky }}>{t("Category")}</th>
             {report.keys.map((k) => (
               <th key={k} style={th}>
                 <button onClick={() => onOpenPeriod(k)}
-                  title={k === curKey ? "Still running · open on the Dashboard" : "Open in History"}
+                  title={k === curKey ? t("Still running · open on the Dashboard") : t("Open in History")}
                   style={{ all: "unset", cursor: "pointer" }}>
                   {shortPeriod(k, withYear)}{k === curKey ? " •" : ""}
                 </button>
               </th>
             ))}
-            <th style={th}>Total</th>
-            <th style={th} title={report.averagedOver < report.keys.length ? "Completed periods only" : undefined}>Avg</th>
+            <th style={th}>{t("Total")}</th>
+            <th style={th} title={report.averagedOver < report.keys.length ? t("Completed periods only") : undefined}>{t("Avg")}</th>
           </tr>
         </thead>
         <tbody>
@@ -87,7 +88,7 @@ function CategoryTrends({ report, categories, curKey, onOpenPeriod }) {
         <tfoot>
           {footer.map((f) => (
             <tr key={f.label}>
-              <td style={{ ...td, ...sticky, fontWeight: 600, color: theme.textMuted, fontFamily: FONT }}>{f.label}</td>
+              <td style={{ ...td, ...sticky, fontWeight: 600, color: theme.textMuted, fontFamily: FONT }}>{t(f.label)}</td>
               {f.values.map((v, i) => (
                 <td key={report.keys[i]} style={{ ...td, fontWeight: 600, color: f.color(v) }}>{fmtWhole(v)}</td>
               ))}
@@ -111,8 +112,23 @@ export function ReportsView({ data, today, curKey, range, onRange, onOpenPeriod 
   // looks thrifty. The headline totals still include the running one.
   const report = buildReport(data, keys, today, { runningKey: curKey });
   const running = keys.includes(curKey);
-  const one = periodNoun(cutoffDay, 1);
+  // Months or payday-to-payday periods: the two nouns decline differently in
+  // Polish, so each wording is its own sentence rather than a word swapped in.
+  const monthly = cutoffDay === 1;
   const cmp = comparisonFor(data, rangeId, curKey);
+  // What the comparison is against, named in the reader's language: a year,
+  // the stretch before, or - when that stretch was only partly tracked - the
+  // months it actually covers (cmp.label, built from month names).
+  const cmpLabel = !cmp ? ""
+    : cmp.keys.length !== cmp.closed.length ? cmp.label
+    : rangeId.startsWith("year:") ? String(Number(rangeId.slice(5)) - 1)
+    : (monthly ? tn(Number(rangeId.slice(5)), "the month before", "the {n} months before") : tn(Number(rangeId.slice(5)), "the period before", "the {n} periods before"));
+  const rangeLabel = (id) => {
+    if (id === "all") return t("All time");
+    if (id.startsWith("year:")) return id.slice(5) === curKey.slice(0, 4) ? t("This year ({year})", { year: id.slice(5) }) : id.slice(5);
+    const n = Number(id.slice(5));
+    return monthly ? t("Last {n} months", { n }) : t("Last {n} periods", { n });
+  };
   const nowCmp = cmp ? buildReport(data, cmp.closed, today) : null;
   const beforeCmp = cmp ? buildReport(data, cmp.keys, today) : null;
   const changes = cmp ? categoryChanges(nowCmp, beforeCmp).slice(0, 6) : [];
@@ -121,7 +137,8 @@ export function ReportsView({ data, today, curKey, range, onRange, onOpenPeriod 
     if (!cmp) return null;
     const d = percentChange(perPeriod(nowCmp, field), perPeriod(beforeCmp, field));
     if (d == null) return null;
-    return `${d >= 0 ? "↑" : "↓"} ${Math.abs(d * 100).toFixed(0)}% a ${one} vs ${cmp.label}`;
+    const pct = `${d >= 0 ? "↑" : "↓"} ${Math.abs(d * 100).toFixed(0)}%`;
+    return monthly ? t("{pct} a month vs {other}", { pct, other: cmpLabel }) : t("{pct} a period vs {other}", { pct, other: cmpLabel });
   };
 
   const exportReport = () => {
@@ -133,8 +150,9 @@ export function ReportsView({ data, today, curKey, range, onRange, onOpenPeriod 
   };
 
   const span = keys.length
-    ? `${monthLabel(keys[0])}${keys.length > 1 ? ` – ${monthLabel(keys[keys.length - 1])}` : ""} · ${keys.length} ${periodNoun(cutoffDay, keys.length)} tracked`
-      + (running ? ` · ${monthLabel(curKey).split(" ")[0]} still running` : "")
+    ? `${monthLabel(keys[0])}${keys.length > 1 ? ` – ${monthLabel(keys[keys.length - 1])}` : ""} · `
+      + (monthly ? tn(keys.length, "{n} month tracked", "{n} months tracked") : tn(keys.length, "{n} period tracked", "{n} periods tracked"))
+      + (running ? ` · ${t("{month} still running", { month: monthLabel(curKey).split(" ")[0] })}` : "")
     : "";
 
   const year = rangeId.startsWith("year:") ? rangeId.slice(5) : null;
@@ -155,64 +173,63 @@ export function ReportsView({ data, today, curKey, range, onRange, onOpenPeriod 
   const grid = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16, marginTop: 16 };
   const money = { fontFamily: FONT, fontVariantNumeric: "tabular-nums" };
   const ellipsis = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
-  const shortDate = (iso) => {
-    const d = iso ? new Date(`${iso}T00:00:00`) : null;
-    return d && !isNaN(d) ? d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "";
-  };
+  const shortDate = (iso) => fmtDate(iso, { day: "numeric", month: "short", year: "numeric" });
 
   return (
     <>
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: SPACE.md, marginBottom: SPACE.md, flexWrap: "wrap" }}>
         <div>
-          <select aria-label="Report range" value={rangeId} onChange={(e) => onRange(e.target.value)}
+          <select aria-label={t("Report range")} value={rangeId} onChange={(e) => onRange(e.target.value)}
             style={{ ...s.input, width: "auto", minWidth: 220, fontWeight: 600 }}>
-            {options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+            {options.map((o) => <option key={o.id} value={o.id}>{rangeLabel(o.id)}</option>)}
           </select>
           {span && <div style={{ ...TYPE.finePrint, color: theme.textMuted, marginTop: 6 }}>{span}</div>}
         </div>
-        {keys.length > 0 && <button style={s.linkBtn} onClick={exportReport} title="Category by period, as a spreadsheet">Export CSV</button>}
+        {keys.length > 0 && <button style={s.linkBtn} onClick={exportReport} title={t("Category by period, as a spreadsheet")}>{t("Export CSV")}</button>}
       </div>
 
       {keys.length === 0 ? (
-        <div style={s.empty}>Nothing recorded in this range.</div>
+        <div style={s.empty}>{t("Nothing recorded in this range.")}</div>
       ) : (
         <>
           <div style={s.statsRow}>
-            <StatCard label="Income" value={fmt(report.income)} accent="#10b981"
-              sub={vs("income") || "Base income and credits received"} icon="↑" />
-            <StatCard label="Spent" value={fmt(report.spent)} accent="#ef4444"
-              sub={vs("spent") || (running ? "Everything paid so far" : "Everything paid")} icon="↻" />
-            <StatCard label="Saved" value={fmt(report.saved)} accent={report.saved >= 0 ? "#10b981" : "#ef4444"}
-              sub={report.savingsRate == null ? "No income recorded" : `${Math.round(report.savingsRate * 100)}% of income`} icon="↓" />
-            <StatCard label={`Avg per ${one}`} value={fmt(report.averageSpent)} accent="#0066cc"
-              sub={`Spent, over ${report.averagedOver}${running && report.averagedOver < keys.length ? " completed" : ""} ${periodNoun(cutoffDay, report.averagedOver)}`} icon="◐" />
+            <StatCard label={t("Income")} value={fmt(report.income)} accent="#10b981"
+              sub={vs("income") || t("Base income and credits received")} icon="↑" />
+            <StatCard label={t("Spent")} value={fmt(report.spent)} accent="#ef4444"
+              sub={vs("spent") || (running ? t("Everything paid so far") : t("Everything paid"))} icon="↻" />
+            <StatCard label={t("Saved")} value={fmt(report.saved)} accent={report.saved >= 0 ? "#10b981" : "#ef4444"}
+              sub={report.savingsRate == null ? t("No income recorded") : t("{pct}% of income", { pct: Math.round(report.savingsRate * 100) })} icon="↓" />
+            <StatCard label={monthly ? t("Avg per month") : t("Avg per period")} value={fmt(report.averageSpent)} accent="#0066cc"
+              sub={running && report.averagedOver < keys.length
+                ? (monthly ? tn(report.averagedOver, "Spent, over {n} completed month", "Spent, over {n} completed months") : tn(report.averagedOver, "Spent, over {n} completed period", "Spent, over {n} completed periods"))
+                : (monthly ? tn(report.averagedOver, "Spent, over {n} month", "Spent, over {n} months") : tn(report.averagedOver, "Spent, over {n} period", "Spent, over {n} periods"))} icon="◐" />
           </div>
 
           <div style={s.card}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: SPACE.md }}>
-              <div style={s.cardTitle}>Spent each {one}</div>
-              <div style={{ ...TYPE.finePrint, color: theme.textFaint }}>Red where spending passed income</div>
+              <div style={s.cardTitle}>{monthly ? t("Spent each month") : t("Spent each period")}</div>
+              <div style={{ ...TYPE.finePrint, color: theme.textFaint }}>{t("Red where spending passed income")}</div>
             </div>
             <MonthlyBarChart data={bars} curKey={curKey} onBarClick={onOpenPeriod} />
           </div>
 
           <div style={{ ...s.card, marginTop: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: SPACE.md }}>
-              <div style={s.cardTitle}>Spending by category</div>
-              <div style={{ ...TYPE.finePrint, color: theme.textFaint }}>In {data.currency || currencyCode()} · click a {one} to open it</div>
+              <div style={s.cardTitle}>{t("Spending by category")}</div>
+              <div style={{ ...TYPE.finePrint, color: theme.textFaint }}>{monthly ? t("In {currency} · click a month to open it", { currency: data.currency || currencyCode() }) : t("In {currency} · click a period to open it", { currency: data.currency || currencyCode() })}</div>
             </div>
             {report.categories.length === 0
-              ? <div style={s.emptySmall}>Nothing spent in this range.</div>
+              ? <div style={s.emptySmall}>{t("Nothing spent in this range.")}</div>
               : <CategoryTrends report={report} categories={data.categories || []} curKey={curKey} onOpenPeriod={onOpenPeriod} />}
           </div>
 
           <div style={grid}>
             <div style={s.card}>
-              <div style={s.cardTitle}>What changed{cmp ? ` · vs ${cmp.label}` : ""}</div>
+              <div style={s.cardTitle}>{cmp ? t("What changed · vs {other}", { other: cmpLabel }) : t("What changed")}</div>
               {!cmp ? (
-                <div style={s.emptySmall}>Nothing earlier to compare with yet.</div>
+                <div style={s.emptySmall}>{t("Nothing earlier to compare with yet.")}</div>
               ) : changes.length === 0 ? (
-                <div style={s.emptySmall}>No category moved.</div>
+                <div style={s.emptySmall}>{t("No category moved.")}</div>
               ) : (
                 <>
                   {changes.map((c) => {
@@ -223,7 +240,7 @@ export function ReportsView({ data, today, curKey, range, onRange, onOpenPeriod 
                           <CategoryPill categoryName={c.name} categories={data.categories || []}
                             fallback={{ name: c.name, color: "#9ca3af", icon: "·" }} />
                           <div style={{ ...TYPE.finePrint, color: theme.textFaint, marginTop: 4, ...money }}>
-                            {fmt(c.now)} a {one}, was {fmt(c.before)}
+                            {monthly ? t("{now} a month, was {before}", { now: fmt(c.now), before: fmt(c.before) }) : t("{now} a period, was {before}", { now: fmt(c.now), before: fmt(c.before) })}
                           </div>
                         </div>
                         <div style={{ textAlign: "right", whiteSpace: "nowrap", ...money }}>
@@ -234,29 +251,29 @@ export function ReportsView({ data, today, curKey, range, onRange, onOpenPeriod 
                     );
                   })}
                   <div style={{ ...TYPE.finePrint, color: theme.textFaint, marginTop: SPACE.sm }}>
-                    Average per {one}, completed {periodNoun(cutoffDay)} only.
+                    {monthly ? t("Average per month, completed months only.") : t("Average per period, completed periods only.")}
                   </div>
                 </>
               )}
             </div>
             <div style={s.card}>
-              <div style={s.cardTitle}>Where it went</div>
+              <div style={s.cardTitle}>{t("Where it went")}</div>
               <CategoryDonut data={catDonut} total={report.spent} />
             </div>
           </div>
 
           <div style={grid}>
             <div style={s.card}>
-              <div style={s.cardTitle}>Biggest one-off payments</div>
+              <div style={s.cardTitle}>{t("Biggest one-off payments")}</div>
               {report.biggest.length === 0 ? (
-                <div style={s.emptySmall}>No one-off payments in this range.</div>
+                <div style={s.emptySmall}>{t("No one-off payments in this range.")}</div>
               ) : (
                 report.biggest.map(({ entry, periodKey }) => (
                   <div key={`${periodKey}-${entry.id}`} style={{ ...s.tableRow, gap: SPACE.md }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ ...ellipsis, fontWeight: 600 }} title={entry.name}>{entry.name}</div>
                       <div style={{ ...ellipsis, ...TYPE.finePrint, color: theme.textFaint, marginTop: 2 }}>
-                        {isSplit(entry) ? `Split · ${entry.splits.map((p) => p.category).join(", ")}` : (entry.category || "Uncategorized")} · {shortDate(entry.date || entry.dueDate)}
+                        {isSplit(entry) ? t("Split · {parts}", { parts: entry.splits.map((p) => p.category).join(", ") }) : (entry.category || t("Uncategorized"))} · {shortDate(entry.date || entry.dueDate)}
                       </div>
                     </div>
                     <div style={{ fontWeight: 700, color: "#ef4444", whiteSpace: "nowrap", ...money }}>{fmt(entry.amount)}</div>
@@ -265,9 +282,9 @@ export function ReportsView({ data, today, curKey, range, onRange, onOpenPeriod 
               )}
             </div>
             <div style={s.card}>
-              <div style={s.cardTitle}>Top payees</div>
+              <div style={s.cardTitle}>{t("Top payees")}</div>
               {report.payees.length === 0 ? (
-                <div style={s.emptySmall}>No payments in this range.</div>
+                <div style={s.emptySmall}>{t("No payments in this range.")}</div>
               ) : (
                 <>
                   {report.payees.map((p) => (
@@ -275,15 +292,13 @@ export function ReportsView({ data, today, curKey, range, onRange, onOpenPeriod 
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ ...ellipsis, fontWeight: 600 }} title={p.name}>{p.name}</div>
                         <div style={{ ...TYPE.finePrint, color: theme.textFaint, marginTop: 2 }}>
-                          {p.count} payment{p.count !== 1 ? "s" : ""}
+                          {tn(p.count, "{n} payment", "{n} payments")}
                         </div>
                       </div>
                       <div style={{ fontWeight: 700, whiteSpace: "nowrap", ...money }}>{fmt(p.total)}</div>
                     </div>
                   ))}
-                  <div style={{ ...TYPE.finePrint, color: theme.textFaint, marginTop: SPACE.sm }}>
-                    Same name, ignoring store numbers and capitals.
-                  </div>
+                  <div style={{ ...TYPE.finePrint, color: theme.textFaint, marginTop: SPACE.sm }}>{t("Same name, ignoring store numbers and capitals.")}</div>
                 </>
               )}
             </div>
@@ -291,7 +306,7 @@ export function ReportsView({ data, today, curKey, range, onRange, onOpenPeriod 
 
           <div style={grid}>
             <div style={s.card}>
-              <div style={s.cardTitle}>Income sources</div>
+              <div style={s.cardTitle}>{t("Income sources")}</div>
               <CategoryDonut data={incomeDonut} total={report.income} />
             </div>
           </div>

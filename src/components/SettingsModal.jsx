@@ -1,15 +1,15 @@
 import { Fragment, useEffect, useState } from "react";
-import { agoLabel } from "../lib/updates.js";
 import { currencyOptions, LOCALE_OPTIONS } from "../money.js";
 import { isTauri } from "../platform.js";
 import { getStorageFault, listBackups } from "../storage.js";
 import { FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
 import { SettingRow, Switch } from "./controls.jsx";
 import { Modal } from "./Modal.jsx";
-import { ordinal } from "../text.js";
+import { ago, ordinal } from "../text.js";
+import { LANGUAGES, t, tk, tn } from "../i18n.js";
 
 export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onChangeLocale, onRestore, onManageCategories, updater, onChangeUpdates, onInstallUpdate,
-  onChangeCutoff, onExport, onExportCsv, onImport, onImportStatement, onReset, onManageRules, lockCfg, onPinAction, onChangeLock }) {
+  onChangeCutoff, onExport, onExportCsv, onImport, onImportStatement, onReset, onManageRules, lockCfg, onPinAction, onChangeLock, onChangeLanguage }) {
   const { theme, s } = useThemed();
   const [openedAt] = useState(() => Date.now());
   const rem = data.reminders || { enabled: true, leadDays: 3 };
@@ -59,9 +59,15 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
   const divider = { borderTop: `1px solid ${theme.border}`, margin: "6px 0" };
 
   return (
-    <Modal title="Settings" onClose={onClose}>
-      <div style={group}>Budget</div>
-      <SettingRow label="Currency" hint="Changes how every amount is displayed. It does not convert existing figures.">
+    <Modal title={t("Settings")} onClose={onClose}>
+      <div style={group}>{t("Budget")}</div>
+      <SettingRow label={t("Language")} hint={t("For the app's words and dates.")}>
+        <select value={data.language || ""} onChange={(e) => onChangeLanguage(e.target.value)} style={{ ...s.input, width: 200 }}>
+          {LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.value === "" ? t("System default") : l.label}</option>)}
+        </select>
+      </SettingRow>
+
+      <SettingRow label={t("Currency")} hint={t("Changes how every amount is displayed. It does not convert existing figures.")}>
         <select
           value={data.currency || "PLN"}
           onChange={(e) => onChangeCurrency(e.target.value)}
@@ -71,53 +77,53 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
         </select>
       </SettingRow>
 
-      <SettingRow label="Number format" hint="How amounts are grouped and punctuated.">
+      <SettingRow label={t("Number format")} hint={t("How amounts are grouped and punctuated.")}>
         <select
           value={data.locale || ""}
           onChange={(e) => onChangeLocale(e.target.value)}
           style={{ ...s.input, width: 200 }}
         >
-          {LOCALE_OPTIONS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
+          {LOCALE_OPTIONS.map((l) => <option key={l.value} value={l.value}>{l.value === "" ? t("System default") : l.label}</option>)}
         </select>
       </SettingRow>
 
-      <SettingRow label="Month starts on" hint="Your payday. Each budget period runs from this day to the day before it, a month later.">
+      <SettingRow label={t("Month starts on")} hint={t("Your payday. Each budget period runs from this day to the day before it, a month later.")}>
         <select value={data.cutoffDay || 1} onChange={(e) => onChangeCutoff(+e.target.value)} style={{ ...s.input, width: 200 }}>
           {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
-            <option key={d} value={d}>{d === 1 ? "1st (calendar month)" : ordinal(d)}</option>
+            <option key={d} value={d}>{d === 1 ? t("1st (calendar month)") : ordinal(d)}</option>
           ))}
         </select>
       </SettingRow>
 
-      <SettingRow label="Categories" hint="Rename, merge, recolour or remove spending categories and income sources.">
-        <button style={{ ...s.linkBtn, padding: 0 }} onClick={onManageCategories}>Manage…</button>
+      <SettingRow label={t("Categories")} hint={t("Rename, merge, recolour or remove spending categories and income sources.")}>
+        <button style={{ ...s.linkBtn, padding: 0 }} onClick={onManageCategories}>{t("Manage…")}</button>
       </SettingRow>
 
       <div style={divider} />
-      <div style={group}>Keyboard</div>
+      <div style={group}>{t("Keyboard")}</div>
       <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", columnGap: SPACE.md, rowGap: 6, padding: `${SPACE.xs}px 0`, ...TYPE.caption }}>
         {[
-          ["Ctrl+Z", "Undo"], ["Ctrl+Shift+Z / Ctrl+Y", "Redo"], ["Ctrl+1 … 9", "Switch tab"], ["Ctrl+F", "Search everything"], ["Ctrl+L", "Lock, when a PIN is set"],
-          ["N", "New entry on this tab"], ["/", "Search this tab"], ["Esc", "Close a dialog"],
+          ["Ctrl+Z", tk("Undo")], ["Ctrl+Shift+Z / Ctrl+Y", tk("Redo")], ["Ctrl+1 … 9", tk("Switch tab")], ["Ctrl+F", tk("Search everything")], ["Ctrl+L", tk("Lock, when a PIN is set")],
+          ["N", tk("New entry on this tab")], ["/", tk("Search this tab")], ["Esc", tk("Close a dialog")],
         ].map(([k, v]) => (
           <Fragment key={k}>
             <kbd style={{ fontFamily: FONT, ...TYPE.finePrint, fontWeight: 600, color: theme.text, background: theme.bg,
                           border: `1px solid ${theme.border}`, borderRadius: RADIUS.xs, padding: "3px 7px", justifySelf: "start" }}>{k}</kbd>
-            <span style={{ color: theme.textMuted, alignSelf: "center" }}>{v}</span>
+            <span style={{ color: theme.textMuted, alignSelf: "center" }}>{t(v)}</span>
           </Fragment>
         ))}
       </div>
 
       <div style={divider} />
-      <div style={group}>Reminders</div>
+      <div style={group}>{t("Reminders")}</div>
       <SettingRow
-        label="Remind me about due bills"
-        hint={isTauri ? "Closing the window keeps Budget Ctrl running in the tray." : "Desktop app only."}
+        label={t("Remind me about due bills")}
+        hint={isTauri ? t("Closing the window keeps Budget Ctrl running in the tray.") : t("Desktop app only.")}
       >
         <Switch checked={rem.enabled} onChange={(v) => onChangeReminders({ ...rem, enabled: v })} />
       </SettingRow>
       {rem.enabled && (
-        <SettingRow label="Days of notice" hint="How far ahead of the due date to warn you.">
+        <SettingRow label={t("Days of notice")} hint={t("How far ahead of the due date to warn you.")}>
           <input
             type="number" min={0} max={30} value={rem.leadDays}
             onChange={(e) => {
@@ -129,59 +135,59 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
         </SettingRow>
       )}
       {rem.enabled && isTauri && (
-        <SettingRow label="Test it" hint="Sends a reminder now. Clicking it should open the app on what's due.">
+        <SettingRow label={t("Test it")} hint={t("Sends a reminder now. Clicking it should open the app on what's due.")}>
           <button style={s.linkBtn} onClick={async () => {
             try {
               const { invoke } = await import("@tauri-apps/api/core");
-              await invoke("show_reminder", { title: "Budget Ctrl reminders are on", body: "Click here to see what's due." });
+              await invoke("show_reminder", { title: t("Budget Ctrl reminders are on"), body: t("Click here to see what's due.") });
             } catch (err) {
-              alert(`Windows didn't show the reminder: ${err}\n\nCheck that notifications are on for Budget Ctrl in Windows Settings → System → Notifications.`);
+              alert(t("Windows didn't show the reminder: {error}\n\nCheck that notifications are on for Budget Ctrl in Windows Settings → System → Notifications.", { error: String(err) }));
             }
-          }}>Send a test reminder</button>
+          }}>{t("Send a test reminder")}</button>
         </SettingRow>
       )}
 
       <div style={divider} />
-      <div style={group}>Privacy</div>
-      <SettingRow label="Lock with a PIN" hint="Keeps Budget Ctrl closed to anyone else using this computer. It doesn't encrypt your budget file.">
+      <div style={group}>{t("Privacy")}</div>
+      <SettingRow label={t("Lock with a PIN")} hint={t("Keeps Budget Ctrl closed to anyone else using this computer. It doesn't encrypt your budget file.")}>
         <Switch checked={!!lockCfg} onChange={(v) => onPinAction(v ? "set" : "disable")} />
       </SettingRow>
       {lockCfg && (
         <>
-          <SettingRow label="Lock after" hint="This long without using the app.">
+          <SettingRow label={t("Lock after")} hint={t("This long without using the app.")}>
             <select value={lockCfg.idleMinutes ?? 5} onChange={(e) => onChangeLock({ ...lockCfg, idleMinutes: +e.target.value })}
               style={{ ...s.input, width: 160 }}>
-              {[[0, "Never"], [1, "1 minute"], [5, "5 minutes"], [15, "15 minutes"], [30, "30 minutes"], [60, "1 hour"]].map(([v, l]) => (
-                <option key={v} value={v}>{l}</option>
+              {[0, 1, 5, 15, 30, 60].map((v) => (
+                <option key={v} value={v}>{v === 0 ? t("Never") : v === 60 ? t("1 hour") : tn(v, "{n} minute", "{n} minutes")}</option>
               ))}
             </select>
           </SettingRow>
-          <SettingRow label="Lock when hidden" hint="When the window is minimised or closed to the tray.">
+          <SettingRow label={t("Lock when hidden")} hint={t("When the window is minimised or closed to the tray.")}>
             <Switch checked={lockCfg.lockWhenHidden !== false} onChange={(v) => onChangeLock({ ...lockCfg, lockWhenHidden: v })} />
           </SettingRow>
-          <SettingRow label="PIN" hint="Ctrl+L locks straight away.">
-            <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => onPinAction("change")}>Change…</button>
+          <SettingRow label={t("PIN")} hint={t("Ctrl+L locks straight away.")}>
+            <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => onPinAction("change")}>{t("Change…")}</button>
           </SettingRow>
         </>
       )}
 
       <div style={divider} />
-      <div style={group}>Data</div>
-      <SettingRow label="Bank statement" hint="Add transactions from your bank's CSV export, without counting anything twice.">
-        <button style={{ ...s.linkBtn, padding: 0 }} onClick={onImportStatement}>Import…</button>
+      <div style={group}>{t("Data")}</div>
+      <SettingRow label={t("Bank statement")} hint={t("Add transactions from your bank's CSV export, without counting anything twice.")}>
+        <button style={{ ...s.linkBtn, padding: 0 }} onClick={onImportStatement}>{t("Import…")}</button>
       </SettingRow>
-      <SettingRow label="Import rules"
-        hint={`${(data.importRules || []).length || "No"} rule${(data.importRules || []).length === 1 ? "" : "s"}. Name and file bank transactions for you when you import a statement.`}>
-        <button style={{ ...s.linkBtn, padding: 0 }} onClick={onManageRules}>Manage…</button>
+      <SettingRow label={t("Import rules")}
+        hint={`${(data.importRules || []).length ? tn((data.importRules || []).length, "{n} rule.", "{n} rules.") : t("No rules yet.")} ${t("Name and file bank transactions for you when you import a statement.")}`}>
+        <button style={{ ...s.linkBtn, padding: 0 }} onClick={onManageRules}>{t("Manage…")}</button>
       </SettingRow>
-      <SettingRow label="Back up everything" hint="Your whole budget in one file, to keep somewhere safe or move to another computer.">
-        <button style={{ ...s.linkBtn, padding: 0 }} onClick={onExport}>Export…</button>
+      <SettingRow label={t("Back up everything")} hint={t("Your whole budget in one file, to keep somewhere safe or move to another computer.")}>
+        <button style={{ ...s.linkBtn, padding: 0 }} onClick={onExport}>{t("Export…")}</button>
       </SettingRow>
-      <SettingRow label="Restore from a backup file" hint="Replaces what's here with the file's contents.">
-        <button style={{ ...s.linkBtn, padding: 0 }} onClick={onImport}>Import…</button>
+      <SettingRow label={t("Restore from a backup file")} hint={t("Replaces what's here with the file's contents.")}>
+        <button style={{ ...s.linkBtn, padding: 0 }} onClick={onImport}>{t("Import…")}</button>
       </SettingRow>
-      <SettingRow label="Spreadsheet" hint="Every entry as a CSV, for Excel or Google Sheets.">
-        <button style={{ ...s.linkBtn, padding: 0 }} onClick={onExportCsv}>Export CSV</button>
+      <SettingRow label={t("Spreadsheet")} hint={t("Every entry as a CSV, for Excel or Google Sheets.")}>
+        <button style={{ ...s.linkBtn, padding: 0 }} onClick={onExportCsv}>{t("Export CSV")}</button>
       </SettingRow>
       {isTauri && (
         <>
@@ -191,20 +197,19 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
               border: `1px solid ${theme.danger}`, borderRadius: RADIUS.md,
               padding: `${SPACE.sm}px ${SPACE.md}px`, marginBottom: SPACE.sm,
             }}>
-              Could not write the data file, so this session is running on browser
-              storage instead, which is less durable. Export a backup now.
+              {t("Could not write the data file, so this session is running on browser storage instead, which is less durable. Export a backup now.")}
               <span style={{ display: "block", ...TYPE.microLegal, marginTop: 4 }}>{getStorageFault()}</span>
             </div>
           )}
           <div style={{ ...TYPE.finePrint, lineHeight: 1.6, color: theme.textFaint, paddingBottom: SPACE.xs }}>
-            Your budget is a single file on this machine. Nothing is sent anywhere.
+            {t("Your budget is a single file on this machine. Nothing is sent anywhere.")}
             {dataPath && (
               <code style={{ display: "block", marginTop: 4, wordBreak: "break-all", color: theme.textMuted }}>{dataPath}</code>
             )}
           </div>
           <SettingRow
-            label={backups.length ? `${backups.length} backup${backups.length !== 1 ? "s" : ""}` : "No backups yet"}
-            hint="Taken once a day, and before any import. The newest 14 are kept."
+            label={backups.length ? tn(backups.length, "{n} backup", "{n} backups") : t("No backups yet")}
+            hint={t("Taken once a day, and before any import. The newest 14 are kept.")}
           >
             {backups.length > 0 && (
               <select
@@ -212,51 +217,49 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
                 onChange={(e) => { if (e.target.value) { onRestore(e.target.value); e.target.value = ""; } }}
                 style={{ ...s.input, width: 220 }}
               >
-                <option value="">Restore from…</option>
+                <option value="">{t("Restore from…")}</option>
                 {backups.map((b) => <option key={b} value={b}>{b.replace(/^budget-ctrl-|\.json$/g, "")}</option>)}
               </select>
             )}
           </SettingRow>
         </>
       )}
-      <SettingRow label="Start again" hint="Deletes your whole budget. It's backed up first, and Ctrl+Z brings it back.">
-        <button style={{ ...s.linkBtn, padding: 0, color: theme.danger }} onClick={onReset}>Reset…</button>
+      <SettingRow label={t("Start again")} hint={t("Deletes your whole budget. It's backed up first, and Ctrl+Z brings it back.")}>
+        <button style={{ ...s.linkBtn, padding: 0, color: theme.danger }} onClick={onReset}>{t("Reset…")}</button>
       </SettingRow>
       {isTauri && (
         <>
           <div style={divider} />
-          <div style={group}>Updates</div>
-          <SettingRow label="Check for updates automatically" hint="Once a day. Nothing installs until you say so.">
+          <div style={group}>{t("Updates")}</div>
+          <SettingRow label={t("Check for updates automatically")} hint={t("Once a day. Nothing installs until you say so.")}>
             <Switch checked={data.updates?.auto !== false} onChange={(v) => onChangeUpdates({ ...(data.updates || {}), auto: v })} />
           </SettingRow>
           {(() => {
             const { status, update, lastChecked } = updater;
             const busy = status.phase === "downloading" || status.phase === "installing";
-            const hint = status.phase === "checking" ? "Checking…"
-              : status.phase === "current" ? "You're up to date."
-              : status.phase === "error" || status.phase === "failed" ? status.message
-              : status.phase === "downloading" ? `Downloading ${update?.version}…${status.percent != null ? ` ${status.percent}%` : ""}`
-              : status.phase === "installing" ? "Installing. Budget Ctrl will restart."
-              : update ? `Version ${update.version} is available.`
-              : lastChecked ? `Last checked ${agoLabel(lastChecked, openedAt)}.`
-              : "Not checked yet.";
+            const hint = status.phase === "checking" ? t("Checking…")
+              : status.phase === "current" ? t("You're up to date.")
+              : status.phase === "error" || status.phase === "failed" ? t(status.message)
+              : status.phase === "downloading" ? `${t("Downloading {version}…", { version: update?.version })}${status.percent != null ? ` ${status.percent}%` : ""}`
+              : status.phase === "installing" ? t("Installing. Budget Ctrl will restart.")
+              : update ? t("Version {version} is available.", { version: update.version })
+              : lastChecked ? t("Last checked {when}.", { when: ago(lastChecked, openedAt) })
+              : t("Not checked yet.");
             return (
               <SettingRow label={updater.version ? `Budget Ctrl ${updater.version}` : "Budget Ctrl"} hint={hint}>
                 {update && !busy ? (
-                  <button style={{ ...s.addBtn, padding: "7px 16px" }} onClick={onInstallUpdate}>Install {update.version}</button>
+                  <button style={{ ...s.addBtn, padding: "7px 16px" }} onClick={onInstallUpdate}>{t("Install {version}", { version: update.version })}</button>
                 ) : (
                   <button style={{ ...s.linkBtn, opacity: status.phase === "checking" || busy ? 0.5 : 1 }}
-                    disabled={status.phase === "checking" || busy} onClick={() => updater.check()}>
-                    Check now
-                  </button>
+                    disabled={status.phase === "checking" || busy} onClick={() => updater.check()}>{t("Check now")}</button>
                 )}
               </SettingRow>
             );
           })()}
 
           <div style={divider} />
-          <div style={group}>Startup</div>
-          <SettingRow label="Start with Windows" hint="Launches hidden in the tray, so reminders work from boot.">
+          <div style={group}>{t("Startup")}</div>
+          <SettingRow label={t("Start with Windows")} hint={t("Launches hidden in the tray, so reminders work from boot.")}>
             <Switch checked={!!autostart} onChange={toggleAutostart} />
           </SettingRow>
         </>

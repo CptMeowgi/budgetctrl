@@ -18,9 +18,18 @@ export function currentMonthKey() {
   return monthKey(new Date());
 }
 
+// The language month names are written in. English unless the app says
+// otherwise; tests rely on the default.
+let labelLocale = "en-US";
+export function setLabelLocale(locale) {
+  labelLocale = locale || "en-US";
+}
+
 export function monthLabel(key) {
   const [y, m] = key.split("-").map(Number);
-  return new Date(y, m - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  const s = new Date(y, m - 1, 1).toLocaleDateString(labelLocale, { month: "long", year: "numeric" });
+  // Polish gives "październik 2026"; as a heading it wants a capital.
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 export function daysInCalMonth(year, month1) {
@@ -62,7 +71,7 @@ export function periodLabel(periodKey, cutoffDay) {
   const primary = monthLabel(periodKey);
   if (!cutoffDay || cutoffDay <= 1) return { primary, range: null };
   const { start, end } = periodRange(periodKey, cutoffDay);
-  const short = (d) => d.toLocaleDateString("en-US", { day: "numeric", month: "short" });
+  const short = (d) => d.toLocaleDateString(labelLocale, { day: "numeric", month: "short" });
   return { primary, range: `${short(start)} – ${short(end)}` };
 }
 

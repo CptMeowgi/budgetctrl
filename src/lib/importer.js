@@ -275,6 +275,12 @@ function suggestCategory(name, index) {
   return undefined;
 }
 
+// A reason, in English for the record and as a template with values for the
+// screen to show in the reader's language.
+function why(template, vars = {}) {
+  return { reason: template.replace(/\{(\w+)\}/g, (_, k) => vars[k]), reasonKey: template, reasonVars: vars };
+}
+
 // Decide, for each transaction, what importing it should do:
 //   expense  - money out, new
 //   credit   - money in, new
@@ -306,14 +312,14 @@ export function analyzeImport(transactions, data) {
     if (tx.amount < 0) {
       for (const e of m?.expenses || []) {
         if (e.date === tx.date && sameMoney(e.amount, tx.amount) && claim(`e:${e.id}`)) {
-          return { ...base, action: "skip", include: false, reason: `Already entered as "${e.name}"` };
+          return { ...base, action: "skip", include: false, ...why('Already entered as "{name}"', { name: e.name }) };
         }
       }
       for (const r of m?.recurring || []) {
         if (r.dayOfMonth == null || !sameMoney(r.amount, tx.amount)) continue;
         const due = isoDay(recurringDateInPeriod(r.dayOfMonth, period, cutoffDay));
         if (dayGap(due, tx.date) <= 5 && claim(`r:${r.id}`)) {
-          return { ...base, action: "skip", include: false, reason: `Matches your recurring "${r.name}"` };
+          return { ...base, action: "skip", include: false, ...why('Matches your recurring "{name}"', { name: r.name }) };
         }
       }
       for (const [pk, pm] of Object.entries(data.months || {})) {
@@ -324,10 +330,10 @@ export function analyzeImport(transactions, data) {
           // payment by ticking the bill rather than adding an expense, so an
           // overlapping statement must not add it a second time.
           if (u.paid) {
-            return { ...base, action: "skip", include: false, reason: `Already paid: "${u.name}"` };
+            return { ...base, action: "skip", include: false, ...why('Already paid: "{name}"', { name: u.name }) };
           }
           return { ...base, action: "markPaid", include: true, target: { period: pk, id: u.id },
-                   reason: `Pays your upcoming "${u.name}" — will mark it paid` };
+                   ...why('Pays your upcoming "{name}" — will mark it paid', { name: u.name }) };
         }
       }
       return ruled({ ...base, action: "expense", include: true, category: suggestCategory(tx.name, index) });
@@ -336,14 +342,14 @@ export function analyzeImport(transactions, data) {
     for (const c of m?.credits || []) {
       const cDate = c.dayOfMonth != null ? isoDay(recurringDateInPeriod(c.dayOfMonth, period, cutoffDay)) : c.date;
       if (cDate && sameMoney(c.amount, tx.amount) && dayGap(cDate, tx.date) <= 5 && claim(`c:${c.id}`)) {
-        return { ...base, action: "skip", include: false, reason: `Already recorded as credit "${c.name}"` };
+        return { ...base, action: "skip", include: false, ...why('Already recorded as credit "{name}"', { name: c.name }) };
       }
     }
     // Salary arrives as money in, but the budget already counts it as the
     // period's income. A match within 2% is treated as that salary.
     const income = m?.income || 0;
     if (income > 0 && Math.abs(tx.amount - income) <= Math.max(1, income * 0.02) && claim(`income:${period}`)) {
-      return { ...base, action: "skip", include: false, reason: "Looks like your salary — already counted as income" };
+      return { ...base, action: "skip", include: false, ...why("Looks like your salary — already counted as income") };
     }
     return ruled({ ...base, action: "credit", include: true });
   });

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { findCategory, UNCATEGORIZED } from "../model.js";
 import { ELEVATION, FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
+import { t } from "../i18n.js";
+import { catName } from "../text.js";
 
 export function StatCard({ label, value, accent, sub, icon }) {
   const { theme, s } = useThemed();
@@ -34,8 +36,8 @@ export function TableHeader({ columns, sorts, onSort }) {
             cursor: isSortable ? "pointer" : "default",
             userSelect: "none",
           }} onClick={isSortable ? (e) => onSort(col.sortKey, e.shiftKey) : undefined}
-             title={isSortable ? "Click to sort · Shift+Click to add" : undefined}>
-            {col.label}{arrow}
+             title={isSortable ? t("Click to sort · Shift+Click to add") : undefined}>
+            {col.label ? t(col.label) : ""}{arrow}
             {active && showPriority && (
               <sup style={{ fontSize: 8, marginLeft: 2, color: theme.textMuted }}>{idx + 1}</sup>
             )}
@@ -118,7 +120,7 @@ export function CategoryPill({ categoryName, categories, fallback }) {
   return (
     <span style={{ ...s.catPill, background: `${cat.color}15`, color: cat.color }}>
       <span style={{ ...s.catDot, background: `${cat.color}25` }}>{cat.icon}</span>
-      {cat.name}
+      {catName(cat.name)}
     </span>
   );
 }

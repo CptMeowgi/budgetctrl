@@ -3,13 +3,14 @@ import { periodDays, scheduledItems } from "../lib/forecast.js";
 import { isoDay } from "../lib/periods.js";
 import { fmt, fmtWhole } from "../money.js";
 import { FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
+import { fmtDate, t, tk } from "../i18n.js";
 
-const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+// Monday to Sunday in the reader's language: 1 January 2024 was a Monday.
+const weekdays = () => Array.from({ length: 7 }, (_, i) => fmtDate(new Date(2024, 0, 1 + i), { weekday: "short" }));
 const SHOWN_PER_DAY = 3;
 
 function dayShort(iso) {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  return fmtDate(iso, { day: "numeric", month: "short" });
 }
 
 // The period as a month grid, Monday first, with what lands on each day.
@@ -38,7 +39,7 @@ export function BillCalendar({ data, periodKey, today, onOpen }) {
   return (
     <div style={{ marginTop: SPACE.sm }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 4 }}>
-        {WEEKDAYS.map((w) => (
+        {weekdays().map((w) => (
           <div key={w} style={{ ...TYPE.finePrint, fontWeight: 600, color: theme.textFaint, textAlign: "center", padding: "2px 0" }}>{w}</div>
         ))}
         {cells.map((d, i) => {
@@ -59,7 +60,7 @@ export function BillCalendar({ data, periodKey, today, onOpen }) {
                 const c = colour(it);
                 return (
                   <button key={`${it.kind}-${it.id}`} onClick={() => onOpen(it)}
-                    title={`${it.name} · ${fmt(Math.abs(it.amount))}${it.status === "done" ? " · done" : it.status === "overdue" ? " · overdue" : ""}`}
+                    title={`${it.name} · ${fmt(Math.abs(it.amount))}${it.status === "done" ? ` · ${t("done")}` : it.status === "overdue" ? ` · ${t("overdue")}` : ""}`}
                     style={{ all: "unset", boxSizing: "border-box", display: "flex", justifyContent: "space-between", gap: 4, width: "100%",
                              cursor: "pointer", borderRadius: 4, padding: "1px 4px", marginTop: 2, background: c.bg, color: c.fg,
                              ...TYPE.microLegal, fontFamily: FONT, textDecoration: it.status === "done" ? "line-through" : "none" }}>
@@ -70,7 +71,7 @@ export function BillCalendar({ data, periodKey, today, onOpen }) {
               })}
               {list.length > SHOWN_PER_DAY && (
                 <div style={{ ...TYPE.microLegal, color: theme.textFaint, marginTop: 2 }} title={list.slice(SHOWN_PER_DAY).map((it) => it.name).join(", ")}>
-                  +{list.length - SHOWN_PER_DAY} more
+                  {t("+{n} more", { n: list.length - SHOWN_PER_DAY })}
                 </div>
               )}
             </div>
@@ -78,9 +79,9 @@ export function BillCalendar({ data, periodKey, today, onOpen }) {
         })}
       </div>
       <div style={{ display: "flex", gap: SPACE.md, flexWrap: "wrap", marginTop: SPACE.sm, ...TYPE.finePrint, color: theme.textFaint }}>
-        {[["Due", theme.warning], ["Overdue", theme.danger], ["Money in", theme.success], ["Done or pays itself", theme.textFaint]].map(([l, c]) => (
+        {[[tk("Due"), theme.warning], [tk("Overdue"), theme.danger], [tk("Money in"), theme.success], [tk("Done or pays itself"), theme.textFaint]].map(([l, c]) => (
           <span key={l} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <span style={{ width: 9, height: 9, borderRadius: 2, background: c }} />{l}
+            <span style={{ width: 9, height: 9, borderRadius: 2, background: c }} />{t(l)}
           </span>
         ))}
       </div>
@@ -92,7 +93,7 @@ export function BillCalendar({ data, periodKey, today, onOpen }) {
 export function ForecastCard({ fc }) {
   const { theme, s } = useThemed();
   if (fc.series.length < 2) {
-    return <div style={s.emptySmall}>This period has ended; there's nothing ahead to forecast.</div>;
+    return <div style={s.emptySmall}>{t("This period has ended; there's nothing ahead to forecast.")}</div>;
   }
   const chart = fc.series.map((p) => ({ ...p, label: dayShort(p.date) }));
   const short = fc.runsShortOn;
@@ -100,12 +101,18 @@ export function ForecastCard({ fc }) {
     <>
       <div style={{ ...TYPE.caption, color: short ? theme.danger : theme.text, marginTop: SPACE.xs, lineHeight: 1.5 }}>
         {short
-          ? <>At this pace you'd run short around <strong>{dayShort(short)}</strong>.</>
-          : <>Lowest point <strong>{fmt(fc.lowestWithEveryday.amount)}</strong> on {dayShort(fc.lowestWithEveryday.date)}, and about <strong>{fmt(fc.endWithEveryday)}</strong> left at the end.</>}
+          ? t("At this pace you'd run short around {date}.", { date: <strong key="d">{dayShort(short)}</strong> })
+          : t("Lowest point {amount} on {date}, and about {end} left at the end.", {
+            amount: <strong key="a">{fmt(fc.lowestWithEveryday.amount)}</strong>,
+            date: dayShort(fc.lowestWithEveryday.date),
+            end: <strong key="e">{fmt(fc.endWithEveryday)}</strong>,
+          })}
       </div>
       <div style={{ ...TYPE.finePrint, color: theme.textFaint, marginTop: 2, lineHeight: 1.5 }}>
-        Counts the bills and money still to come{fc.rate > 0 ? `, plus about ${fmt(fc.rate)} a day of everyday spending (your average over the last three months)` : ""}.
-        The dashed line is bills only.
+        {fc.rate > 0
+          ? t("Counts the bills and money still to come, plus about {rate} a day of everyday spending (your average over the last three months).", { rate: fmt(fc.rate) })
+          : t("Counts the bills and money still to come.")}
+        {" "}{t("The dashed line is bills only.")}
       </div>
       <div style={{ width: "100%", height: 200, marginTop: SPACE.sm }}>
         <ResponsiveContainer width="100%" height="100%">
@@ -127,8 +134,8 @@ export function ForecastCard({ fc }) {
               return (
                 <div style={s.chartTooltip}>
                   <div style={{ fontWeight: 700, marginBottom: 4 }}>{p.label}</div>
-                  <div style={{ fontVariantNumeric: "tabular-nums" }}>Left: {fmt(p.withEveryday)}</div>
-                  <div style={{ fontVariantNumeric: "tabular-nums", color: theme.textMuted }}>Bills only: {fmt(p.balance)}</div>
+                  <div style={{ fontVariantNumeric: "tabular-nums" }}>{t("Left: {amount}", { amount: fmt(p.withEveryday) })}</div>
+                  <div style={{ fontVariantNumeric: "tabular-nums", color: theme.textMuted }}>{t("Bills only: {amount}", { amount: fmt(p.balance) })}</div>
                   {p.items.map((it) => (
                     <div key={`${it.kind}-${it.id}`} style={{ fontVariantNumeric: "tabular-nums", color: it.amount > 0 ? theme.success : theme.textMuted }}>
                       {it.name} {it.amount > 0 ? "+" : "−"}{fmt(Math.abs(it.amount))}

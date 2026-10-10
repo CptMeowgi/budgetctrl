@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { fmt } from "../money.js";
 import { FONT, SPACE, TYPE, useThemed } from "../theme.js";
+import { t } from "../i18n.js";
+import { catName } from "../text.js";
 
 export function CategoryBudgets({ categories, spent, average, envelopeOf, onSetBudget, onStartFresh }) {
   const { theme, s } = useThemed();
@@ -40,7 +42,7 @@ export function CategoryBudgets({ categories, spent, average, envelopeOf, onSetB
     });
 
   if (rows.length === 0) {
-    return <div style={s.empty}>No categories yet. Add an expense to start tracking.</div>;
+    return <div style={s.empty}>{t("No categories yet. Add an expense to start tracking.")}</div>;
   }
 
   return (
@@ -57,7 +59,7 @@ export function CategoryBudgets({ categories, spent, average, envelopeOf, onSetB
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{ width: 22, height: 22, borderRadius: "50%", background: r.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 }}>{r.icon}</div>
-                <span style={{ fontWeight: 600, fontSize: 13 }}>{r.name}</span>
+                <span style={{ fontWeight: 600, fontSize: 13 }}>{catName(r.name)}</span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 {!isEditing && (
@@ -72,8 +74,8 @@ export function CategoryBudgets({ categories, spent, average, envelopeOf, onSetB
                   <>
                     <input type="text" inputMode="decimal" autoFocus
                       value={draftCap}
-                      placeholder="Budget"
-                      aria-label={`Budget for ${r.name}`}
+                      placeholder={t("Budget")}
+                      aria-label={t("Budget for {name}", { name: r.name })}
                       onChange={(e) => setDraftCap(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") cancelEdit(); }}
                       style={{ width: 80, ...s.input, padding: "6px 10px", fontSize: 12 }} />
@@ -86,13 +88,13 @@ export function CategoryBudgets({ categories, spent, average, envelopeOf, onSetB
             {isEditing && (
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: SPACE.sm, margin: "2px 0 8px" }}>
                 <label style={{ display: "flex", alignItems: "center", gap: 6, ...TYPE.finePrint, color: theme.textMuted, cursor: "pointer" }}
-                  title="Unspent budget carries into next month. Overspending carries too, as a deficit.">
+                  title={t("Unspent budget carries into next month. Overspending carries too, as a deficit.")}>
                   <input type="checkbox" checked={draftRollover} onChange={(e) => setDraftRollover(e.target.checked)} />
-                  Roll over what's left into next month
+                  {t("Roll over what's left into next month")}
                 </label>
                 {r.rollover && r.env.carry !== 0 && (
                   <button style={{ ...s.linkBtn, ...TYPE.finePrint }} onClick={() => { onStartFresh(r.name); setEditing(null); }}
-                    title="Forget the carried balance and count from this month">Start fresh</button>
+                    title={t("Forget the carried balance and count from this month")}>{t("Start fresh")}</button>
                 )}
               </div>
             )}
@@ -104,15 +106,17 @@ export function CategoryBudgets({ categories, spent, average, envelopeOf, onSetB
             {(r.rollover || avg != null) && (
               <div style={{ fontSize: 11, color: theme.textFaint, marginTop: 4, fontVariantNumeric: "tabular-nums" }}>
                 {r.rollover && (
-                  <span title={`Budget ${fmt(r.env.cap)} this month, ${r.env.carry >= 0 ? "plus" : "less"} what carried over`}
+                  <span title={r.env.carry >= 0
+                      ? t("Budget {amount} this month, plus what carried over", { amount: fmt(r.env.cap) })
+                      : t("Budget {amount} this month, less what carried over", { amount: fmt(r.env.cap) })}
                     style={{ color: r.env.carry < 0 ? theme.danger : r.env.carry > 0 ? theme.accent : theme.textFaint }}>
-                    ↻ {r.env.carry > 0 ? `${fmt(r.env.carry)} carried in`
-                      : r.env.carry < 0 ? `${fmt(-r.env.carry)} overspent before`
-                      : "Rolls over"}
+                    ↻ {r.env.carry > 0 ? t("{amount} carried in", { amount: fmt(r.env.carry) })
+                      : r.env.carry < 0 ? t("{amount} overspent before", { amount: fmt(-r.env.carry) })
+                      : t("Rolls over")}
                   </span>
                 )}
                 {r.rollover && avg != null && " · "}
-                {avg != null && `avg of past months: ${fmt(avg)}`}
+                {avg != null && t("avg of past months: {amount}", { amount: fmt(avg) })}
               </div>
             )}
           </div>

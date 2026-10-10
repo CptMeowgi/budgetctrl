@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { CHECK_EVERY_MS, dueForCheck, progressPercent, describeUpdateError, agoLabel, notesToLines } from "./updates.js";
+import { CHECK_EVERY_MS, dueForCheck, progressPercent, describeUpdateError, notesToLines } from "./updates.js";
 
 const NOW = Date.UTC(2026, 9, 9, 12, 0, 0);
 const HOUR = 60 * 60 * 1000;
@@ -52,15 +52,6 @@ describe("describeUpdateError", () => {
 
   it("says what was being done", () => {
     expect(describeUpdateError(new Error("os error 5"), "installing the update")).toBe("Something went wrong while installing the update.");
-  });
-});
-
-describe("agoLabel", () => {
-  it("reads naturally", () => {
-    expect(agoLabel(NOW - 20 * 1000, NOW)).toBe("just now");
-    expect(agoLabel(NOW - 60 * 1000, NOW)).toBe("1 minute ago");
-    expect(agoLabel(NOW - 5 * HOUR, NOW)).toBe("5 hours ago");
-    expect(agoLabel(NOW - 49 * HOUR, NOW)).toBe("2 days ago");
   });
 });
 

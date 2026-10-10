@@ -1,4 +1,4 @@
-
+import { tk } from "./i18n.js";
 
 export function toggleSort(sorts, col, shiftKey) {
   const arr = sorts || [];
@@ -49,26 +49,26 @@ export function filterAndSort(arr, view) {
 // unclickable - so one definition serves both.
 export const ENTRY_COLUMNS = {
   expenses: [
-    { label: "NAME", flex: 2, sortKey: "name" },
-    { label: "CATEGORY", flex: 1.2, sortKey: "category" },
-    { label: "DATE", flex: 1, sortKey: "date" },
-    { label: "AMOUNT", flex: 1, align: "right", sortKey: "amount" },
+    { label: tk("NAME"), flex: 2, sortKey: "name" },
+    { label: tk("CATEGORY"), flex: 1.2, sortKey: "category" },
+    { label: tk("DATE"), flex: 1, sortKey: "date" },
+    { label: tk("AMOUNT"), flex: 1, align: "right", sortKey: "amount" },
     { label: "", flex: 0.6, align: "center" },
   ],
   recurring: [
-    { label: "NAME", flex: 2, sortKey: "name" },
-    { label: "CATEGORY", flex: 1.2, sortKey: "category" },
-    { label: "DAY", flex: 0.5, align: "center", sortKey: "dayOfMonth" },
-    { label: "AMOUNT", flex: 1, align: "right", sortKey: "amount" },
+    { label: tk("NAME"), flex: 2, sortKey: "name" },
+    { label: tk("CATEGORY"), flex: 1.2, sortKey: "category" },
+    { label: tk("DAY"), flex: 0.5, align: "center", sortKey: "dayOfMonth" },
+    { label: tk("AMOUNT"), flex: 1, align: "right", sortKey: "amount" },
     { label: "", flex: 0.6, align: "center" },
   ],
   upcoming: [
     { label: "", flex: 0.3 },
-    { label: "NAME", flex: 2, sortKey: "name" },
-    { label: "CATEGORY", flex: 1.2, sortKey: "category" },
-    { label: "DUE DATE", flex: 1, sortKey: "dueDate" },
-    { label: "AMOUNT", flex: 1, align: "right", sortKey: "amount" },
-    { label: "STATUS", flex: 0.7, align: "center" },
+    { label: tk("NAME"), flex: 2, sortKey: "name" },
+    { label: tk("CATEGORY"), flex: 1.2, sortKey: "category" },
+    { label: tk("DUE DATE"), flex: 1, sortKey: "dueDate" },
+    { label: tk("AMOUNT"), flex: 1, align: "right", sortKey: "amount" },
+    { label: tk("STATUS"), flex: 0.7, align: "center" },
     { label: "", flex: 0.6, align: "center" },
   ],
 };
