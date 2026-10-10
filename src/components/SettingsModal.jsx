@@ -14,7 +14,7 @@ function ordinal(n) {
 }
 
 export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onChangeLocale, onRestore, onManageCategories, updater, onChangeUpdates, onInstallUpdate,
-  onChangeCutoff, onExport, onExportCsv, onImport, onImportStatement, onReset }) {
+  onChangeCutoff, onExport, onExportCsv, onImport, onImportStatement, onReset, onManageRules }) {
   const { theme, s } = useThemed();
   const [openedAt] = useState(() => Date.now());
   const rem = data.reminders || { enabled: true, leadDays: 3 };
@@ -150,6 +150,10 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
       <div style={group}>Data</div>
       <SettingRow label="Bank statement" hint="Add transactions from your bank's CSV export, without counting anything twice.">
         <button style={{ ...s.linkBtn, padding: 0 }} onClick={onImportStatement}>Import…</button>
+      </SettingRow>
+      <SettingRow label="Import rules"
+        hint={`${(data.importRules || []).length || "No"} rule${(data.importRules || []).length === 1 ? "" : "s"}. Name and file bank transactions for you when you import a statement.`}>
+        <button style={{ ...s.linkBtn, padding: 0 }} onClick={onManageRules}>Manage…</button>
       </SettingRow>
       <SettingRow label="Back up everything" hint="Your whole budget in one file, to keep somewhere safe or move to another computer.">
         <button style={{ ...s.linkBtn, padding: 0 }} onClick={onExport}>Export…</button>

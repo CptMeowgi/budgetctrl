@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { closeAccount, recordBalance, removeBalance, reopenAccount } from "./lib/accounts.js";
 import { envelope, startFresh, withCap, withRollover } from "./lib/envelopes.js";
 import { goalStatus, goalsMonthlyNeed, leftOverHistory } from "./lib/goals.js";
+import { convertToRecurring, dismissRegular, findRegularPayments } from "./lib/regular.js";
 import { currentPeriodKey, isoDay, periodLabel } from "./lib/periods.js";
 import { collectDueBills, OVERDUE_GRACE_DAYS, upcomingSettled, whenLabel } from "./lib/reminders.js";
 import { periodNoun } from "./lib/reports.js";
@@ -14,6 +15,7 @@ import { CategoryDonut } from "./components/charts.jsx";
 import { CategoryPill, InfoHint, StatCard, TableHeader, Toast } from "./components/controls.jsx";
 import { GoalModal, SavingsView } from "./components/SavingsView.jsx";
 import { SearchModal } from "./components/SearchModal.jsx";
+import { RulesManager } from "./components/RulesManager.jsx";
 import { FormModal } from "./components/FormModal.jsx";
 import { ReportsView } from "./components/ReportsView.jsx";
 import { EntryName, ExpenseRow, MissingFromTemplate, NotDueThisPeriod, RecurringRow, RowActions, UpcomingRow } from "./components/rows.jsx";
@@ -34,6 +36,16 @@ import { readBackup, writeBackup } from "./storage.js";
 import { CHIP_GRAY, DARK_THEME, FOCUS_BLUE, FONT, LIGHT_THEME, makeStyles, RADIUS, SPACE, ThemeContext, TYPE } from "./theme.js";
 
 const UNDO_LIMIT = 50;
+
+function ordinalDay(n) {
+  const teen = n % 100 >= 11 && n % 100 <= 13;
+  return `${n}${teen ? "th" : ({ 1: "st", 2: "nd", 3: "rd" }[n % 10] || "th")}`;
+}
+
+function monthShort(key) {
+  const [y, m] = key.split("-").map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString("en-US", { month: "short" });
+}
 
 // Which tabs offer an "+ Add" CTA, what it is called, and which modal it opens.
 // Previously three parallel inline ternaries in the header that had to be kept
@@ -80,6 +92,7 @@ export default function App() {
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
+  const [rulesOpen, setRulesOpen] = useState(false);
   const [statementOpen, setStatementOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   // Kept while the dialog is closed, so reopening it carries on where you were.
@@ -276,7 +289,7 @@ export default function App() {
       const el = e.target;
       const tag = (el?.tagName || "").toLowerCase();
       const typing = tag === "input" || tag === "textarea" || tag === "select" || el?.isContentEditable;
-      const dialogOpen = !!modal || settingsOpen || categoriesOpen || statementOpen || searchOpen;
+      const dialogOpen = !!modal || settingsOpen || categoriesOpen || statementOpen || searchOpen || rulesOpen;
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
       if (dialogOpen) return;
@@ -298,7 +311,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [modal, settingsOpen, categoriesOpen, statementOpen, searchOpen, tab, undo, redo]);
+  }, [modal, settingsOpen, categoriesOpen, statementOpen, searchOpen, rulesOpen, tab, undo, redo]);
 
   // Derived from todayKey rather than recomputed per render: stable within a
   // day, and guaranteed to refresh when the tick above crosses midnight. Local
@@ -359,6 +372,7 @@ export default function App() {
   const goalsSaved = goalStatuses.reduce((a, st) => a + (st.saved || 0), 0);
   const goalsTarget = goalStatuses.reduce((a, st) => a + (st.target || 0), 0);
   const goalsNeed = goalsMonthlyNeed(goals, data, today);
+  const regular = findRegularPayments(data, today);
   const spentByCat = spending.byCategory;
   const onSortExpenses = (col, shift) =>
     setExpensesView((v) => ({ ...v, sorts: toggleSort(v.sorts || [], col, shift) }));
@@ -771,6 +785,33 @@ export default function App() {
           )}
 
           {/* RECURRING */}
+          {tab === "recurring" && regular.length > 0 && (
+            <div style={{ ...s.card, marginBottom: 16 }}>
+              <div style={s.cardTitle}>Looks like a monthly bill</div>
+              <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginTop: SPACE.xs }}>
+                Paid about the same amount, on about the same day, in each of the last few months. Make it recurring and it's
+                counted for you every month; this month's payment becomes this month's bill, so nothing is counted twice.
+              </div>
+              {regular.map((g) => (
+                <div key={g.key} style={{ ...s.tableRow, gap: SPACE.md }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600 }}>{g.name}</div>
+                    <div style={{ ...TYPE.finePrint, color: theme.textFaint }}>
+                      Around the {ordinalDay(g.dayOfMonth)} · {g.months.map((k) => monthShort(k)).join(", ")} · {g.category}
+                    </div>
+                  </div>
+                  <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>{fmt(g.amount)}</div>
+                  <button style={{ ...s.addBtn, padding: "7px 14px" }} onClick={() => {
+                    save(convertToRecurring(data, g, uid, today).data);
+                    setToast(`${g.name} is now a recurring bill`);
+                  }}>Make recurring</button>
+                  <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => save(dismissRegular(data, g.key))}
+                    title="Stop suggesting this one">Not a bill</button>
+                </div>
+              ))}
+            </div>
+          )}
+
           {tab === "recurring" && (
             <div style={s.card}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
@@ -1442,9 +1483,16 @@ export default function App() {
             if (counts.expenses) parts.push(`${counts.expenses} expense${counts.expenses !== 1 ? "s" : ""}`);
             if (counts.credits) parts.push(`${counts.credits} credit${counts.credits !== 1 ? "s" : ""}`);
             if (counts.markedPaid) parts.push(`${counts.markedPaid} payment${counts.markedPaid !== 1 ? "s" : ""} marked paid`);
+            const spotted = findRegularPayments(next, today).length;
             alert(`Imported ${parts.join(", ") || "nothing"}.` +
+              (counts.rules ? `\n\n${counts.rules} new import rule${counts.rules !== 1 ? "s" : ""} will file these for you next time.` : "") +
+              (spotted ? `\n\n${spotted} payment${spotted !== 1 ? "s look" : " looks"} like a monthly bill. See the Recurring tab to make ${spotted !== 1 ? "them" : "it"} recurring.` : "") +
               (isTauri ? "\n\nA backup was taken first — restore it from Settings → Data if anything looks wrong." : ""));
           }} />
+      )}
+
+      {rulesOpen && (
+        <RulesManager data={data} onChange={(importRules) => save({ ...data, importRules })} onClose={() => setRulesOpen(false)} />
       )}
 
       {categoriesOpen && (
@@ -1468,6 +1516,7 @@ export default function App() {
           onChangeCurrency={(currency) => save({ ...data, currency })}
           onChangeLocale={(locale) => save({ ...data, locale })}
           onManageCategories={() => { setSettingsOpen(false); setCategoriesOpen(true); }}
+          onManageRules={() => { setSettingsOpen(false); setRulesOpen(true); }}
           onRestore={async (name) => {
             if (!confirm(`Replace all current data with the backup "${name}"?
 

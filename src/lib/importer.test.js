@@ -188,6 +188,18 @@ describe("analyzeImport", () => {
   };
   const tx = (date, name, amount) => ({ date, name, amount });
 
+  it("applies your import rules to new rows: category and a clean name", () => {
+    const withRules = {
+      ...data,
+      categories: [{ name: "Food" }, { name: "Fun" }],
+      creditCategories: [{ name: "Refunds" }],
+      importRules: [{ id: "r1", match: "lidl", category: "Food", rename: "Lidl" }, { id: "r2", match: "zwrot", category: "Refunds" }],
+    };
+    const [spend, refund] = analyzeImport([tx("2026-09-10", "LIDL SP Z O O 0412", -48.2), tx("2026-09-11", "ZWROT 123", 20)], withRules);
+    expect(spend).toMatchObject({ action: "expense", name: "Lidl", category: "Food", bankName: "LIDL SP Z O O 0412", rule: "r1" });
+    expect(refund).toMatchObject({ action: "credit", category: "Refunds" });
+  });
+
   it("skips a purchase already entered by hand", () => {
     const [r] = analyzeImport([tx("2026-09-28", "COFFEE ROASTERY", -3.2)], data);
     expect(r).toMatchObject({ action: "skip", include: false });

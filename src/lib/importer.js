@@ -14,6 +14,7 @@
 // leaving anything it believes is already counted unticked.
 
 import { periodKeyFor, recurringDateInPeriod, daysBetween, isoDay } from "./periods.js";
+import { applyRule } from "./rules.js";
 
 // ---------------------------------------------------------------- decoding
 
@@ -281,6 +282,13 @@ function suggestCategory(name, index) {
 export function analyzeImport(transactions, data) {
   const cutoffDay = data.cutoffDay || 1;
   const index = categoryIndex(data);
+  // Your import rules have the last word on what a new row is called and
+  // where it is filed; the guess from past entries only fills the gaps.
+  const ruleCats = {
+    spendCategories: (data.categories || []).map((c) => c.name),
+    creditCategories: (data.creditCategories || []).map((c) => c.name),
+  };
+  const ruled = (row) => applyRule(row, data.importRules, ruleCats);
 
   // Existing entries each absorb at most one transaction, so two identical
   // coffees on the same day are not both waved through as one duplicate.
@@ -290,7 +298,8 @@ export function analyzeImport(transactions, data) {
   return transactions.map((tx, i) => {
     const period = periodKeyFor(new Date(tx.date + "T00:00:00"), cutoffDay);
     const m = (data.months || {})[period];
-    const base = { ...tx, id: `tx-${i}`, period };
+    // bankName keeps the statement's own wording after a rule renames the row.
+    const base = { ...tx, id: `tx-${i}`, period, bankName: tx.name };
 
     if (tx.amount < 0) {
       for (const e of m?.expenses || []) {
@@ -319,7 +328,7 @@ export function analyzeImport(transactions, data) {
                    reason: `Pays your upcoming "${u.name}" — will mark it paid` };
         }
       }
-      return { ...base, action: "expense", include: true, category: suggestCategory(tx.name, index) };
+      return ruled({ ...base, action: "expense", include: true, category: suggestCategory(tx.name, index) });
     }
 
     for (const c of m?.credits || []) {
@@ -334,7 +343,7 @@ export function analyzeImport(transactions, data) {
     if (income > 0 && Math.abs(tx.amount - income) <= Math.max(1, income * 0.02) && claim(`income:${period}`)) {
       return { ...base, action: "skip", include: false, reason: "Looks like your salary — already counted as income" };
     }
-    return { ...base, action: "credit", include: true };
+    return ruled({ ...base, action: "credit", include: true });
   });
 }
 

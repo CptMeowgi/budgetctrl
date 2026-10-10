@@ -5,6 +5,7 @@ import { fmt } from "../money.js";
 import { SPACE, TYPE, useThemed } from "../theme.js";
 import { SettingRow } from "./controls.jsx";
 import { Modal } from "./Modal.jsx";
+import { suggestMatch, upsertRule } from "../lib/rules.js";
 
 const ACTION_LABEL = { expense: "Expense", credit: "Credit", markPaid: "Marks paid", skip: "Skip" };
 
@@ -68,7 +69,24 @@ export function StatementImport({ data, onClose, onImport }) {
     // Ticking a row the matcher skipped means "import it anyway".
     return r.action === "skip" ? { ...r, include: true, action: r.amount < 0 ? "expense" : "credit" } : { ...r, include: true };
   }));
-  const setCategory = (id, category) => setRows((rs) => rs.map((r) => (r.id === id ? { ...r, category } : r)));
+  // Rows that an "Always" tick will cover: same rule text, no rule of their own.
+  const sameMatch = (a, b) => !b.rule && suggestMatch(a.bankName || a.name) === suggestMatch(b.bankName || b.name)
+    && (b.action === "expense" || b.action === "credit") && (a.amount < 0) === (b.amount < 0);
+  const setCategory = (id, category) => setRows((rs) => {
+    const row = rs.find((r) => r.id === id);
+    return rs.map((r) => (r.id === id || (row?.remember && sameMatch(row, r)) ? { ...r, category } : r));
+  });
+  // "Always": remember this payee's category as a rule, and file the other
+  // rows from the same payee the same way now.
+  const toggleRemember = (id) => setRows((rs) => {
+    const row = rs.find((r) => r.id === id);
+    const on = !row.remember;
+    return rs.map((r) => {
+      if (r.id === id) return { ...r, remember: on };
+      if (on && sameMatch(row, r)) return { ...r, category: row.category };
+      return r;
+    });
+  });
   const setAll = (include) => setRows((rs) => rs.map((r) =>
     include && r.action === "skip" ? r : { ...r, include: include && r.action !== "skip" }));
 
@@ -82,8 +100,17 @@ export function StatementImport({ data, onClose, onImport }) {
 
   const doImport = () => {
     let n = 0;
-    const { data: next, counts } = applyImport(data, rows, () => `${uid()}${++n}`);
-    onImport(next, counts);
+    const newId = () => `${uid()}${++n}`;
+    let rules = data.importRules || [];
+    let added = 0;
+    for (const r of rows) {
+      if (!r.include || !r.remember || (r.action !== "expense" && r.action !== "credit")) continue;
+      const before = rules.length;
+      rules = upsertRule(rules, { match: suggestMatch(r.bankName || r.name), category: r.category || (r.amount < 0 ? "Uncategorized" : "Other") }, newId);
+      if (rules.length > before) added++;
+    }
+    const { data: next, counts } = applyImport({ ...data, importRules: rules }, rows, newId);
+    onImport(next, { ...counts, rules: added });
   };
 
   const hint = { ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint };
@@ -189,7 +216,7 @@ export function StatementImport({ data, onClose, onImport }) {
                     <div style={{ ...TYPE.caption, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.name}>{r.name}</div>
                     <div style={{ ...TYPE.microLegal, color: r.action === "skip" ? theme.textFaint : r.action === "markPaid" ? theme.success : theme.textFaint,
                                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.reason || r.note}>
-                      {ACTION_LABEL[r.action]}{r.reason ? ` · ${r.reason}` : r.note ? ` · ${r.note}` : ""}
+                      {ACTION_LABEL[r.action]}{r.rule ? " · by your rule" : ""}{r.reason ? ` · ${r.reason}` : r.note ? ` · ${r.note}` : ""}
                     </div>
                   </div>
                   {(r.action === "expense" || r.action === "credit") ? (
@@ -198,6 +225,13 @@ export function StatementImport({ data, onClose, onImport }) {
                       {[...new Set([fallbackCat, ...cats.map((c) => c.name)])].map((n) => <option key={n} value={n}>{n}</option>)}
                     </select>
                   ) : <span style={{ width: 150 }} />}
+                  {(r.action === "expense" || r.action === "credit") && !r.rule ? (
+                    <label title={`Always file "${suggestMatch(r.bankName || r.name)}" this way when importing`}
+                      style={{ display: "flex", alignItems: "center", gap: 4, width: 62, ...TYPE.microLegal, color: theme.textMuted, cursor: "pointer", opacity: r.include ? 1 : 0.5 }}>
+                      <input type="checkbox" checked={!!r.remember} disabled={!r.include} onChange={() => toggleRemember(r.id)} />
+                      Always
+                    </label>
+                  ) : <span style={{ width: 62 }} />}
                   <span style={{ width: 110, textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 700, ...TYPE.caption,
                                  color: r.amount < 0 ? theme.danger : theme.success }}>
                     {r.amount < 0 ? "−" : "+"}{fmt(Math.abs(r.amount))}

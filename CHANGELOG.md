@@ -115,6 +115,24 @@ from 0.4.x:** uninstall it from Windows Settings → Apps first, then install th
 version. Your budget is kept, and **Start with Windows** follows the app to its
 new location by itself.
 
+### Import rules
+Tell the statement import how to handle a payee once, and it remembers. While
+reviewing an import, tick **Always** next to a row and every future
+"BIEDRONKA …" goes under the category you chose, and the other rows from that
+payee in the same import follow at once. In **Settings → Data → Import rules**
+you can widen or narrow what a rule looks for and give it a clean name
+("Biedronka" rather than "BIEDRONKA 1234 WARSZAWA"); the bank's own wording is
+kept in the note, so search still finds it.
+
+### Spotting regular payments
+Payments that are really monthly bills, like Netflix, the gym or a phone plan,
+are noticed once they've appeared on about the same day for about the same
+amount in consecutive months. The Recurring tab lists them under **Looks like a
+monthly bill**: **Make recurring** turns one into a recurring bill and this
+month's payment into this month's bill, so nothing is counted twice, and
+**Not a bill** stops the suggestion. A statement import tells you when it has
+spotted any.
+
 ### Search everything
 **Ctrl+F**, or the ⌕ button, searches every month at once: expenses, recurring
 bills, payments and credits. Type part of a name, category or note (accents
