@@ -841,7 +841,9 @@ function Modal({ title, onClose, children, width }) {
           <span style={{ fontSize: 20, fontWeight: 700 }}>{title}</span>
           <button onClick={onClose} style={s.closeBtn}>✕</button>
         </div>
-        {children}
+        {/* Never taller than the window: the title stays put and the rest
+            scrolls. Settings outgrew a small window and could not be read. */}
+        <div style={s.modalBody}>{children}</div>
       </div>
     </div>
   );
@@ -4647,9 +4649,12 @@ function makeStyles(theme) {
     editBtn: { background: "none", border: "none", color: theme.textMuted, cursor: "pointer", ...TYPE.caption, padding: `${SPACE.xxs}px ${SPACE.xs}px` },
     empty: { textAlign: "center", color: theme.textFaint, padding: `${SPACE.xxl}px ${SPACE.lg}px`, ...TYPE.body },
     emptySmall: { textAlign: "center", color: theme.textFaint, padding: `${SPACE.lg}px 0`, ...TYPE.caption },
-    overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.32)", backdropFilter: "saturate(180%) blur(20px)", WebkitBackdropFilter: "saturate(180%) blur(20px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 },
-    modal: { background: theme.surface, borderRadius: RADIUS.lg, padding: SPACE.xl, width: "100%", maxWidth: 460, border: hairline, boxShadow: ELEVATION },
-    modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: SPACE.xs },
+    overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.32)", backdropFilter: "saturate(180%) blur(20px)", WebkitBackdropFilter: "saturate(180%) blur(20px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: SPACE.lg, boxSizing: "border-box" },
+    modal: { background: theme.surface, borderRadius: RADIUS.lg, padding: SPACE.xl, width: "100%", maxWidth: 460, maxHeight: "100%", display: "flex", flexDirection: "column", boxSizing: "border-box", border: hairline, boxShadow: ELEVATION },
+    modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: SPACE.xs, flex: "none" },
+    // Bleeds into the dialog's side padding so the scrollbar sits at its edge
+    // rather than over the content.
+    modalBody: { flex: "1 1 auto", minHeight: 0, overflowY: "auto", margin: `0 -${SPACE.xl}px`, padding: `0 ${SPACE.xl}px` },
     closeBtn: { background: "none", border: "none", color: theme.textFaint, fontSize: 20, cursor: "pointer", width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 },
     input: { width: "100%", background: theme.bg, border: `1px solid ${theme.border}`, borderRadius: RADIUS.md, padding: `${SPACE.sm}px ${SPACE.md}px`, color: theme.text, ...TYPE.caption, outline: "none", boxSizing: "border-box", fontFamily: FONT, minHeight: 44 },
     saveBtn: { width: "100%", background: theme.accent, color: "#fff", border: "none", borderRadius: RADIUS.pill, padding: "14px 28px", ...TYPE.buttonLarge, cursor: "pointer", marginTop: SPACE.xs, fontFamily: FONT },

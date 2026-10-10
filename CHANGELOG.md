@@ -119,6 +119,8 @@ new location by itself.
   and started sending reminders again
 - Exported files were dated in UTC, so an export just after midnight carried
   yesterday's date
+- Dialogs taller than the window - Settings, in a smaller window - ran off the
+  screen and couldn't be scrolled. They now fit the window and scroll inside
 - A paid Upcoming payment counted toward Total Spent but not toward its
   category, so a category could read untouched while actually over budget. The
   category chart, category budgets, History and the Year tab all left paid
