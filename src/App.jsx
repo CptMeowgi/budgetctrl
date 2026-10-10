@@ -1164,15 +1164,6 @@ async function getAppWindow() {
   return getCurrentWindow();
 }
 
-async function showAndFocusWindow() {
-  try {
-    const w = await getAppWindow();
-    await w.unminimize();
-    await w.show();
-    await w.setFocus();
-  } catch { /* Tauri API unavailable (browser dev server) */ }
-}
-
 /* ---- Bill reminders ------------------------------------------------------
    The checker runs here, in the webview, rather than in Rust. Closing the
    window only hides it, so this keeps ticking in the tray, and it reuses the
@@ -1182,8 +1173,6 @@ async function showAndFocusWindow() {
 const REMINDER_SENT_KEY = "budget-ctrl-reminders-sent";
 const REMINDER_INTERVAL_MS = 30 * 60 * 1000;
 const REMINDER_STARTUP_DELAY_MS = 10 * 1000;
-// How long after a reminder a return to the app still counts as answering it.
-const REMINDER_OPEN_WINDOW_MS = 10 * 60 * 1000;
 function buildDigest(bills) {
   if (bills.length === 1) {
     const b = bills[0];
@@ -1408,44 +1397,42 @@ function useReminders(data, loaded, setTodayKey, onReminderOpened) {
       if (sent.date === today && sent.sig === sig) return;
 
       try {
-        const n = await import("@tauri-apps/plugin-notification");
-        let granted = await n.isPermissionGranted();
-        if (!granted) granted = (await n.requestPermission()) === "granted";
-        if (!granted || !alive) return;
         const { title, body } = buildDigest(bills);
-        await n.sendNotification({ title, body });
-        // `at` drives the fallback below; `seen` stops it firing twice.
-        writeSentMarker({ date: today, sig, at: Date.now(), seen: false });
+        const { invoke } = await import("@tauri-apps/api/core");
+        try {
+          // Our own toast, which opens the app on the due list when clicked.
+          await invoke("show_reminder", { title, body });
+        } catch {
+          // Not Windows, or the toast failed: a plain notification still beats
+          // a silent missed bill.
+          const n = await import("@tauri-apps/plugin-notification");
+          let granted = await n.isPermissionGranted();
+          if (!granted) granted = (await n.requestPermission()) === "granted";
+          if (!granted || !alive) return;
+          await n.sendNotification({ title, body });
+        }
+        writeSentMarker({ date: today, sig });
       } catch { /* Tauri API unavailable (browser dev server) */ }
     };
 
-    // Clicking a toast should land on the list it was about. onAction is the
-    // documented hook, but the docs do not promise it fires for a body click on
-    // Windows desktop - registerActionTypes is mobile-only - so it is wired
-    // opportunistically and backed by a focus fallback that needs no plumbing:
-    // any route back into the app shortly after a reminder lands on Due Soon.
-    let unlistenAction;
+    // A clicked reminder opens the app at budgetctrl://due-soon. Rust brings
+    // the window forward and says so here; if the click is what launched the
+    // app, the page asks once it has loaded.
+    let unlistenClick;
     (async () => {
       try {
-        const n = await import("@tauri-apps/plugin-notification");
-        if (typeof n.onAction === "function") {
-          unlistenAction = await n.onAction(() => {
-            if (!alive) return;
-            showAndFocusWindow();
-            onReminderOpened();
-          });
-        }
+        const { listen } = await import("@tauri-apps/api/event");
+        const { invoke } = await import("@tauri-apps/api/core");
+        unlistenClick = await listen("open-due-soon", () => {
+          if (!alive) return;
+          invoke("take_open_due_soon").catch(() => {});
+          onReminderOpened();
+        });
+        if (alive && await invoke("take_open_due_soon")) onReminderOpened();
       } catch { /* Tauri API unavailable (browser dev server) */ }
     })();
 
-    const onWindowFocus = () => {
-      const sent = readSentMarker();
-      if (sent.at && !sent.seen && Date.now() - sent.at < REMINDER_OPEN_WINDOW_MS) {
-        writeSentMarker({ ...sent, seen: true });
-        onReminderOpened();
-      }
-      tick();
-    };
+    const onWindowFocus = () => tick();
 
     const startup = setTimeout(tick, REMINDER_STARTUP_DELAY_MS);
     const iv = setInterval(tick, REMINDER_INTERVAL_MS);
@@ -1455,7 +1442,7 @@ function useReminders(data, loaded, setTodayKey, onReminderOpened) {
       clearTimeout(startup);
       clearInterval(iv);
       window.removeEventListener("focus", onWindowFocus);
-      if (unlistenAction) unlistenAction();
+      if (unlistenClick) unlistenClick();
     };
   }, [loaded, onReminderOpened]);
 }
@@ -2000,6 +1987,18 @@ function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onC
             }}
             style={{ ...s.input, width: 72, textAlign: "center" }}
           />
+        </SettingRow>
+      )}
+      {rem.enabled && isTauri && (
+        <SettingRow label="Test it" hint="Sends a reminder now. Clicking it should open the app on what's due.">
+          <button style={s.linkBtn} onClick={async () => {
+            try {
+              const { invoke } = await import("@tauri-apps/api/core");
+              await invoke("show_reminder", { title: "Budget Ctrl reminders are on", body: "Click here to see what's due." });
+            } catch (err) {
+              alert(`Windows didn't show the reminder: ${err}\n\nCheck that notifications are on for Budget Ctrl in Windows Settings → System → Notifications.`);
+            }
+          }}>Send a test reminder</button>
         </SettingRow>
       )}
 

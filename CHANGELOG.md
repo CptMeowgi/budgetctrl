@@ -121,6 +121,13 @@ new location by itself.
   yesterday's date
 - Dialogs taller than the window - Settings, in a smaller window - ran off the
   screen and couldn't be scrolled. They now fit the window and scroll inside
+- Clicking a reminder did nothing on Windows; it just sat in the notification
+  centre. It now opens Budget Ctrl on what's due - from the popup or later
+  from the notification centre, and even if the app had been quit
+- Opening Budget Ctrl while it was already running in the tray started a
+  second copy, and two copies could save over each other's changes. It now
+  brings the running copy forward
+- **Send a test reminder** in Settings, to check notifications reach you
 - A paid Upcoming payment counted toward Total Spent but not toward its
   category, so a category could read untouched while actually over budget. The
   category chart, category budgets, History and the Year tab all left paid
