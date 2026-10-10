@@ -304,6 +304,8 @@ export default function App() {
       const key = e.key.toLowerCase();
       // Locking works from anywhere, open dialog or not.
       if (mod && key === "l" && lockCfg) { e.preventDefault(); setLocked(true); return; }
+      // Locked means locked: no undo, redo or anything else behind the lock screen.
+      if (lockCfg && locked) return;
       if (dialogOpen) return;
       if (mod && key === "f") { e.preventDefault(); setSearchOpen(true); return; }
       if (mod && key === "z" && !typing) { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
@@ -323,7 +325,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [modal, settingsOpen, categoriesOpen, statementOpen, searchOpen, rulesOpen, setupOpen, pinDialog, lockCfg, tab, undo, redo]);
+  }, [modal, settingsOpen, categoriesOpen, statementOpen, searchOpen, rulesOpen, setupOpen, pinDialog, lockCfg, locked, tab, undo, redo]);
 
   useEffect(() => {
     let alive = true;
