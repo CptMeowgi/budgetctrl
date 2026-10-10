@@ -115,6 +115,13 @@ from 0.4.x:** uninstall it from Windows Settings → Apps first, then install th
 version. Your budget is kept, and **Start with Windows** follows the app to its
 new location by itself.
 
+### A welcome for new budgets
+A fresh install opens with three short screens: your currency and number format,
+when your month starts and this month's income, and some starter categories to
+tick. Then start budgeting, or start straight from a bank statement. Moving
+from another computer? Restore a backup from the first screen instead. Existing
+budgets never see it.
+
 ### Calendar and the month ahead
 The Upcoming tab now shows the month as a **calendar**: every bill, payment and
 expected credit on its day, marked done, due or overdue; click one to edit it.

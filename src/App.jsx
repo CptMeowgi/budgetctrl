@@ -4,6 +4,7 @@ import { envelope, startFresh, withCap, withRollover } from "./lib/envelopes.js"
 import { goalStatus, goalsMonthlyNeed, leftOverHistory } from "./lib/goals.js";
 import { convertToRecurring, dismissRegular, findRegularPayments } from "./lib/regular.js";
 import { forecast } from "./lib/forecast.js";
+import { applySetup } from "./lib/setup.js";
 import { currentPeriodKey, isoDay, periodLabel } from "./lib/periods.js";
 import { collectDueBills, OVERDUE_GRACE_DAYS, upcomingSettled, whenLabel } from "./lib/reminders.js";
 import { periodNoun } from "./lib/reports.js";
@@ -18,6 +19,7 @@ import { GoalModal, SavingsView } from "./components/SavingsView.jsx";
 import { SearchModal } from "./components/SearchModal.jsx";
 import { RulesManager } from "./components/RulesManager.jsx";
 import { BillCalendar, ForecastCard } from "./components/BillCalendar.jsx";
+import { SetupWizard } from "./components/SetupWizard.jsx";
 import { FormModal } from "./components/FormModal.jsx";
 import { ExpenseModal } from "./components/ExpenseModal.jsx";
 import { ReportsView } from "./components/ReportsView.jsx";
@@ -35,15 +37,11 @@ import { ENTRY_COLUMNS, filterAndSort, toggleSort } from "./listView.js";
 import { categoryBreakdown, countRebucketMoves, CREDIT_UNCATEGORIZED, defaultData, emptyMonth, ensureCategory, ensureCreditCategory, ensureCurrentMonth, hydrate, migrate, rebucketData, STORAGE_KEY, uid } from "./model.js";
 import { currencyCode, fmt, setMoneyFormat } from "./money.js";
 import { isTauri } from "./platform.js";
+import { ordinal } from "./text.js";
 import { readBackup, writeBackup } from "./storage.js";
 import { CHIP_GRAY, DARK_THEME, FOCUS_BLUE, FONT, LIGHT_THEME, makeStyles, RADIUS, SPACE, ThemeContext, TYPE } from "./theme.js";
 
 const UNDO_LIMIT = 50;
-
-function ordinalDay(n) {
-  const teen = n % 100 >= 11 && n % 100 <= 13;
-  return `${n}${teen ? "th" : ({ 1: "st", 2: "nd", 3: "rd" }[n % 10] || "th")}`;
-}
 
 function monthShort(key) {
   const [y, m] = key.split("-").map(Number);
@@ -96,6 +94,8 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
+  // The welcome screens: shown once, for a budget created on this launch.
+  const [setupOpen, setSetupOpen] = useState(false);
   const [statementOpen, setStatementOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   // Kept while the dialog is closed, so reopening it carries on where you were.
@@ -185,6 +185,7 @@ export default function App() {
           // Persist immediately rather than holding defaults in memory, so the
           // data file exists from first launch instead of first edit.
           await save(hydrate(defaultData()), { undoable: false });
+          setSetupOpen(true);
         }
       } catch { /* Tauri API unavailable (browser dev server) */ }
       setLoaded(true);
@@ -292,7 +293,7 @@ export default function App() {
       const el = e.target;
       const tag = (el?.tagName || "").toLowerCase();
       const typing = tag === "input" || tag === "textarea" || tag === "select" || el?.isContentEditable;
-      const dialogOpen = !!modal || settingsOpen || categoriesOpen || statementOpen || searchOpen || rulesOpen;
+      const dialogOpen = !!modal || settingsOpen || categoriesOpen || statementOpen || searchOpen || rulesOpen || setupOpen;
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
       if (dialogOpen) return;
@@ -314,7 +315,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [modal, settingsOpen, categoriesOpen, statementOpen, searchOpen, rulesOpen, tab, undo, redo]);
+  }, [modal, settingsOpen, categoriesOpen, statementOpen, searchOpen, rulesOpen, setupOpen, tab, undo, redo]);
 
   // Derived from todayKey rather than recomputed per render: stable within a
   // day, and guaranteed to refresh when the tick above crosses midnight. Local
@@ -541,7 +542,8 @@ export default function App() {
                   shrink below its own content width. */}
               <div style={s.statsRow}>
                 <StatCard label="Remaining" value={fmt(remaining)} accent={remaining >= 0 && !fc.runsShortOn ? "#10b981" : "#ef4444"}
-                  sub={fc.series.length < 2
+                  sub={fc.series.length < 2 || fc.lowestWithEveryday.date === fc.series[0].date
+                    // Nothing ahead brings it lower than now: no dip worth naming.
                     ? (totalStillScheduled > 0 ? `${fmt(totalStillScheduled)} still scheduled` : "Everything's landed")
                     : fc.runsShortOn
                       ? `Runs short around ${fcDay(fc.runsShortOn)} at this pace`
@@ -807,7 +809,7 @@ export default function App() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 600 }}>{g.name}</div>
                     <div style={{ ...TYPE.finePrint, color: theme.textFaint }}>
-                      Around the {ordinalDay(g.dayOfMonth)} · {g.months.map((k) => monthShort(k)).join(", ")} · {g.category}
+                      Around the {ordinal(g.dayOfMonth)} · {g.months.map((k) => monthShort(k)).join(", ")} · {g.category}
                     </div>
                   </div>
                   <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>{fmt(g.amount)}</div>
@@ -1465,6 +1467,17 @@ export default function App() {
       })()}
 
       <Toast message={toast} />
+
+      {setupOpen && (
+        <SetupWizard data={data}
+          onFinish={(answers, then) => {
+            save(applySetup(data, answers, today), { undoable: false });
+            setSetupOpen(false);
+            if (then === "statement") setStatementOpen(true);
+          }}
+          onRestore={() => { setSetupOpen(false); triggerImport(); }}
+          onSkip={() => { save({ ...data, setupDone: true }, { undoable: false }); setSetupOpen(false); }} />
+      )}
 
       {searchOpen && (
         <SearchModal data={data} query={searchQuery} onQueryChange={setSearchQuery}

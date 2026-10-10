@@ -6,12 +6,7 @@ import { getStorageFault, listBackups } from "../storage.js";
 import { FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
 import { SettingRow, Switch } from "./controls.jsx";
 import { Modal } from "./Modal.jsx";
-
-function ordinal(n) {
-  const teen = n % 100 >= 11 && n % 100 <= 13;
-  const suffix = teen ? "th" : ({ 1: "st", 2: "nd", 3: "rd" }[n % 10] || "th");
-  return `${n}${suffix}`;
-}
+import { ordinal } from "../text.js";
 
 export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onChangeLocale, onRestore, onManageCategories, updater, onChangeUpdates, onInstallUpdate,
   onChangeCutoff, onExport, onExportCsv, onImport, onImportStatement, onReset, onManageRules }) {
