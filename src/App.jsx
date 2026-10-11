@@ -5,7 +5,7 @@ import { goalStatus, goalsMonthlyNeed, leftOverHistory } from "./lib/goals.js";
 import { convertToRecurring, dismissRegular, findRegularPayments } from "./lib/regular.js";
 import { forecast } from "./lib/forecast.js";
 import { applySetup } from "./lib/setup.js";
-import { currentPeriodKey, isoDay, periodLabel, setLabelLocale } from "./lib/periods.js";
+import { currentPeriodKey, isoDay, newEntryDate, periodLabel, setLabelLocale } from "./lib/periods.js";
 import { collectDueBills, OVERDUE_GRACE_DAYS, upcomingSettled } from "./lib/reminders.js";
 import { everyFromLabel, FREQUENCIES, frequencyLabel, isOnCycle } from "./lib/schedule.js";
 import { categoryAverage, creditReceived, periodIncome, periodSpending } from "./lib/totals.js";
@@ -1263,7 +1263,7 @@ export default function App() {
         const targetMonth = data.months[targetKey] || emptyMonth();
         const editing = modal.editId ? targetMonth.expenses.find((x) => x.id === modal.editId) : null;
         return (
-          <ExpenseModal editing={editing} categories={data.categories} defaultDate={`${targetKey}-01`}
+          <ExpenseModal editing={editing} categories={data.categories} defaultDate={newEntryDate(targetKey, cutoffDay, today)}
             onClose={() => setModal(null)}
             onSave={(v) => {
               // Every category named - the one, or each part's - is created if new.
@@ -1375,7 +1375,7 @@ export default function App() {
             { key: "name", label: t("Name"), placeholder: t("e.g. Car Insurance"), defaultValue: editing?.name },
             { key: "amount", label: t("Amount ({currency})", { currency: currencyCode() }), type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
             { key: "category", label: t("Category"), type: "category", categories: data.categories, defaultValue: editing?.category },
-            { key: "dueDate", label: t("Due Date"), type: "date", defaultValue: editing?.dueDate || `${targetKey}-01` },
+            { key: "dueDate", label: t("Due Date"), type: "date", defaultValue: editing?.dueDate || newEntryDate(targetKey, cutoffDay, today) },
             { key: "autoPay", label: t("Pays itself"), type: "checkbox", defaultValue: editing?.autoPay,
               hint: t("Direct debit or card on file. Counts as paid on its due date and never sends a reminder.") },
             NOTE_FIELD(editing),
@@ -1490,7 +1490,7 @@ export default function App() {
             { key: "name", label: t("Name"), placeholder: t("e.g. Amazon refund"), defaultValue: editing?.name },
             { key: "amount", label: t("Amount ({currency})", { currency: currencyCode() }), type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
             { key: "category", label: t("Source"), type: "category", categories: data.creditCategories || [], defaultValue: editing?.category || editing?.source },
-            { key: "date", label: t("Date"), type: "date", defaultValue: editing?.date || `${targetKey}-01` },
+            { key: "date", label: t("Date"), type: "date", defaultValue: editing?.date || newEntryDate(targetKey, cutoffDay, today) },
             NOTE_FIELD(editing),
           ]} onClose={() => setModal(null)} onSave={(v) => {
             const amt = +v.amount;
@@ -1521,7 +1521,8 @@ export default function App() {
             if (then === "statement") setStatementOpen(true);
           }}
           onRestore={() => { setSetupOpen(false); triggerImport(); }}
-          onSkip={() => { save({ ...data, setupDone: true }, { undoable: false }); setSetupOpen(false); }} />
+          onSkip={() => { save({ ...data, setupDone: true }, { undoable: false }); setSetupOpen(false); }}
+          onChangeLanguage={(language) => save({ ...data, language }, { undoable: false })} />
       )}
 
       {searchOpen && (

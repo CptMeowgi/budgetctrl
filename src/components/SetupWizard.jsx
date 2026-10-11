@@ -4,13 +4,13 @@ import { STARTER_CATEGORIES } from "../lib/setup.js";
 import { currencyOptions, LOCALE_OPTIONS } from "../money.js";
 import { ordinal } from "../text.js";
 import { ELEVATION, FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
-import { t, tk } from "../i18n.js";
+import { LANGUAGES, t, tk } from "../i18n.js";
 
 const STEPS = [tk("Money"), tk("Your month"), tk("Categories")];
 
 // Three short screens for a brand-new budget. Everything here can be changed
 // later in Settings, and Skip leaves the defaults.
-export function SetupWizard({ data, onFinish, onRestore, onSkip }) {
+export function SetupWizard({ data, onFinish, onRestore, onSkip, onChangeLanguage }) {
   const { theme, s } = useThemed();
   const [step, setStep] = useState(0);
   const [currency, setCurrency] = useState(data.currency || "PLN");
@@ -56,13 +56,18 @@ export function SetupWizard({ data, onFinish, onRestore, onSkip }) {
           <>
             <div style={{ ...TYPE.lead, fontWeight: 700 }}>{t("Welcome to Budget Ctrl")}</div>
             <div style={{ ...TYPE.caption, color: theme.textMuted, margin: `${SPACE.xs}px 0 ${SPACE.lg}px`, lineHeight: 1.5 }}>{t("Your budget stays on this computer; nothing is sent anywhere. Three quick questions and you're set. All of it can be changed later in Settings.")}</div>
-            <label style={label}>{t("Currency")}</label>
+            {/* First, so everything after it is already in the chosen language. */}
+            <label style={label}>{t("Language")}</label>
+            <select value={data.language || ""} onChange={(e) => onChangeLanguage(e.target.value)} style={s.input}>
+              {LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.value === "" ? t("System default") : l.label}</option>)}
+            </select>
+            <label style={{ ...label, marginTop: SPACE.md }}>{t("Currency")}</label>
             <select value={currency} onChange={(e) => setCurrency(e.target.value)} style={s.input}>
               {currencyOptions().map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
             </select>
             <label style={{ ...label, marginTop: SPACE.md }}>{t("Number format")}</label>
             <select value={locale} onChange={(e) => setLocale(e.target.value)} style={s.input}>
-              {LOCALE_OPTIONS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
+              {LOCALE_OPTIONS.map((l) => <option key={l.value} value={l.value}>{l.value === "" ? t("System default") : l.label}</option>)}
             </select>
             <div style={hint}>
               {t("Moving from another computer? {restore} instead.", {

@@ -24,6 +24,9 @@ and will settle on their own date without ever reminding you.
 **Your currency and number format.** Both are settings — pick the currency you
 actually hold and how you want figures punctuated.
 
+**English or Polish.** The whole app, its reminders and its dates are available
+in Polish, following your Windows language or chosen in Settings.
+
 **Money in, not just money out.** Credits cover refunds, gifts, bonuses and
 salary, as one-offs or recurring, and are kept separate from spending so they
 never distort the category breakdown.
@@ -142,8 +145,11 @@ Menu shortcut that only the installer creates, so they may not appear under
 ## How it's built
 
 ```
-src/App.jsx          the entire UI, ~3k lines
-src-tauri/src/lib.rs tray, close-to-tray, autostart, window lifecycle
+src/App.jsx          the app shell and the tab views
+src/components/      dialogs and views (Settings, Reports, Accounts, ...)
+src/lib/             the budget arithmetic, with tests beside each file
+src/locales/pl.js    the Polish translation
+src-tauri/src/lib.rs tray, close-to-tray, autostart, reminders, window lifecycle
 ```
 
 React 19 + Vite on the front, Tauri v2 on the back. Charts are Recharts. There
@@ -165,13 +171,14 @@ login launch come up silently.
 
 ### Data
 
-Everything is one JSON blob in the webview's `localStorage`, keyed by budget
-period:
+Everything is one JSON document - a file in the app's data folder on the
+desktop, `localStorage` when run in a browser - keyed by budget period:
 
 ```
 months: { "2026-09": { income, expenses[], recurring[], upcoming[], credits[] } }
-savingsGoal, startingBalance, cutoffDay, reminders
 recurringTemplate[], creditTemplate[], categories[], creditCategories[]
+goals[], accounts[], importRules[], savingsGoal
+cutoffDay, currency, locale, language, reminders, updates
 ```
 
 A period is keyed by the calendar month it *starts* in, so changing your cutoff

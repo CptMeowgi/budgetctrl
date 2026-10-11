@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   periodKeyFor, periodRange, periodLabel, recurringDateInPeriod, isRecurringDue,
-  isoDay, daysBetween, daysInCalMonth,
+  isoDay, daysBetween, daysInCalMonth, newEntryDate,
 } from "./periods.js";
 
 const D = (y, m, d, h = 0, min = 0) => new Date(y, m - 1, d, h, min);
@@ -108,5 +108,22 @@ describe("daysBetween", () => {
   });
   it("ignores the time of day", () => {
     expect(daysBetween(D(2026, 9, 14, 23, 59), D(2026, 9, 15, 0, 1))).toBe(1);
+  });
+});
+
+describe("newEntryDate", () => {
+  const TODAY = D(2026, 10, 11);
+
+  it("is today in the running period", () => {
+    expect(newEntryDate("2026-10", 1, TODAY)).toBe("2026-10-11");
+    // Paid on the 25th: 11 October is in the period that began 25 September.
+    expect(newEntryDate("2026-09", 25, TODAY)).toBe("2026-10-11");
+  });
+
+  it("is the first day of any other period", () => {
+    expect(newEntryDate("2026-08", 1, TODAY)).toBe("2026-08-01");
+    // Not 1 September, which belongs to the period before.
+    expect(newEntryDate("2026-08", 25, TODAY)).toBe("2026-08-25");
+    expect(newEntryDate("2026-02", 30, TODAY)).toBe("2026-02-28");
   });
 });

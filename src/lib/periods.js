@@ -95,6 +95,15 @@ export function isRecurringDue(r, periodKey, today, cutoffDay) {
   return today >= recurringDateInPeriod(r.dayOfMonth, periodKey, cutoffDay || 1);
 }
 
+// The date a new entry starts with: today, when it is going into the running
+// period; otherwise that period's first day. The first of the calendar month
+// was wrong with a payday start - 1 September is not in the period that
+// begins on 25 August.
+export function newEntryDate(periodKey, cutoffDay, today) {
+  if (periodKeyFor(today, cutoffDay || 1) === periodKey) return isoDay(today);
+  return isoDay(periodRange(periodKey, cutoffDay).start);
+}
+
 // Local-calendar day. Never toISOString() here - that shifts to UTC and lands
 // on the wrong day for anyone east of Greenwich.
 export function isoDay(d) {
