@@ -48,7 +48,8 @@ export function notesToLines(markdown) {
     para = [];
   };
   for (const raw of String(markdown || "").split(/\r?\n/)) {
-    const line = raw.trim();
+    // A quoted note ("> Upgrading from ...") reads as ordinary text.
+    const line = raw.trim().replace(/^>\s?/, "");
     if (!line) { flush(); continue; }
     const heading = line.match(/^#{1,6}\s+(.*)$/);
     const bullet = line.match(/^[-*]\s+(.*)$/);

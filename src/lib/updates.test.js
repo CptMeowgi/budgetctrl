@@ -74,6 +74,14 @@ describe("notesToLines", () => {
     ]);
   });
 
+  it("reads a quoted note as plain text", () => {
+    const md = ["> **Upgrading from 0.4.x?** Your budget", "> comes with you.", "", "### A new look"].join("\n");
+    expect(notesToLines(md)).toEqual([
+      { kind: "text", text: "Upgrading from 0.4.x? Your budget comes with you." },
+      { kind: "heading", text: "A new look" },
+    ]);
+  });
+
   it("is empty for no notes", () => {
     expect(notesToLines(undefined)).toEqual([]);
   });

@@ -4,6 +4,7 @@
 // any string the app translates is missing here.
 export default {
   // App
+  "Start": "Start",
   "Show fewer": "Weniger anzeigen",
   "Show all categories ({n})": "Alle Kategorien anzeigen ({n})",
   "TYPE": "ART",

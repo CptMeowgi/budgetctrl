@@ -4,6 +4,7 @@
 // i18n.test.js fails if any string the app translates is missing here.
 export default {
   // App
+  "Start": "Start",
   "Show fewer": "Pokaż mniej",
   "Show all categories ({n})": "Pokaż wszystkie kategorie ({n})",
   "TYPE": "TYP",

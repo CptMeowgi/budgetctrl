@@ -45,6 +45,11 @@ import { dateLocale, fmtDate, setLanguage, t, tk, tn } from "./i18n.js";
 const UNDO_LIMIT = 50;
 const THEME_KEY = "budget-ctrl-theme";
 
+// Development only: ?demo opens a made-up budget instead of yours (for
+// screenshots and trying things), and &tab=, &theme=, &lang= choose what it
+// shows. The installed app never reads these.
+const DEMO = import.meta.env.DEV ? new URLSearchParams(window.location.search) : null;
+
 // The Dashboard greets rather than names the tab.
 function greeting(now) {
   const h = now.getHours();
@@ -90,7 +95,7 @@ export default function App() {
   const historyRef = useRef({ past: [], future: [], lastPushAt: 0 });
   const [historySize, setHistorySize] = useState({ past: 0, future: 0 });
   const [toast, setToast] = useState(null);
-  const [tab, setTab] = useState("dashboard");
+  const [tab, setTab] = useState(() => DEMO?.get("tab") || "dashboard");
   const [modal, setModal] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [historyKey, setHistoryKey] = useState(null);
@@ -100,6 +105,7 @@ export default function App() {
   // Dark by default. A new key rather than the old "themeMode", so everyone
   // meets the redesign in dark once and keeps whatever they choose after.
   const [themeMode, setThemeMode] = useState(() => {
+    if (DEMO?.get("theme")) return DEMO.get("theme");
     try { return localStorage.getItem(THEME_KEY) || "dark"; } catch { return "dark"; }
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -188,6 +194,14 @@ export default function App() {
 
   useEffect(() => {
     (async () => {
+      // import.meta.env.DEV first, so the release build drops this - demo.js
+      // included - instead of shipping it unused.
+      if (import.meta.env.DEV && DEMO.has("demo")) {
+        const { demoData } = await import("./demo.js");
+        setData(hydrate(demoData(new Date(), DEMO.get("lang") || "en")));
+        setLoaded(true);
+        return;
+      }
       try {
         const r = await window.storage.get(STORAGE_KEY);
         if (r?.value) {

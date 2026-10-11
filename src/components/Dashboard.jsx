@@ -221,7 +221,7 @@ function RecentCard({ data, cur, cutoffDay, isReceived, onOpen, onViewAll }) {
       {rows.map((r) => (
         <button key={`${r.kind}-${r.e.id}`} className="row-hover" onClick={() => onOpen(r)}
           style={{ width: "100%", minHeight: 60, display: "grid", gridTemplateColumns: "38px minmax(0, 1fr) auto 14px", alignItems: "center", gap: 12,
-                   border: 0, borderTop: `1px solid ${theme.border}`, background: "transparent", padding: "9px 4px", textAlign: "left", cursor: "pointer", color: theme.text, borderRadius: 0 }}>
+                   borderWidth: "1px 0 0", borderStyle: "solid", borderColor: theme.border, background: "transparent", padding: "9px 4px", textAlign: "left", cursor: "pointer", color: theme.text, borderRadius: 0 }}>
           <span style={{ width: 36, height: 36, display: "grid", placeItems: "center", borderRadius: 13, background: `${r.cat.color}24`, fontSize: 16 }}>{r.cat.icon}</span>
           <span style={{ minWidth: 0 }}>
             <strong style={{ display: "block", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.e.name}</strong>

@@ -30,6 +30,10 @@ export const TYPE = {
 export const RADIUS = { none: 0, xs: 6, sm: 9, md: 12, lg: 22, xl: 28, pill: 9999 };
 export const SPACE = { xxs: 4, xs: 8, sm: 12, md: 17, lg: 24, xl: 32, xxl: 48, section: 80 };
 
+// Charts draw in with a short animation - unless Windows' "Animation effects"
+// are off (reduced motion), in which case they simply appear.
+export const ANIMATE_CHARTS = typeof window === "undefined" || !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
 // Floating surfaces: dialogs, menus, tooltips.
 export const ELEVATION = "0 24px 64px rgba(0, 0, 0, 0.32)";
 export const FOCUS_RING = "#8b8ef0";

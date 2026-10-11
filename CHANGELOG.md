@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
+
+> **Upgrading from 0.4.x?** Your budget comes with you - 0.5.0 finds it on
+> first launch and keeps every month, entry, bill, category and setting.
+> 0.4.x can't update itself, so this once: optionally click **EXPORT** in
+> 0.4.x to save a backup file, uninstall 0.4.x from Windows Settings → Apps
+> (your budget stays), then run this installer. From here on, updates install
+> themselves.
 
 ### A new look
 Budget Ctrl has been redesigned: a dark canvas with soft colour glows, glass
@@ -259,6 +266,7 @@ rather than making a copy. Categories you name yourself stay as you typed them.
   second copy, and two copies could save over each other's changes. It now
   brings the running copy forward
 - **Send a test reminder** in Settings, to check notifications reach you
+- Charts no longer animate when Windows' animation effects are turned off
 - A paid Upcoming payment counted toward Total Spent but not toward its
   category, so a category could read untouched while actually over budget. The
   category chart, category budgets, History and the Year tab all left paid

@@ -7,6 +7,21 @@ they land.
 Built with React and Tauri. Everything stays on your machine — there is no
 account, no server, and nothing leaves the device.
 
+![The Dashboard: money left this month with the forecast to payday, this month's spending, recent transactions and category budgets](docs/screenshots/dashboard-dark.png)
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/dashboard-light.png" alt="The Dashboard in the light theme"><br><sub><b>Light theme</b> — the same design, one click away</sub></td>
+    <td width="50%"><img src="docs/screenshots/upcoming.png" alt="The Upcoming tab: bills due soon and the forecast to payday"><br><sub><b>Upcoming</b> — what's due, and where the month is heading</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/reports.png" alt="Reports: spending each month and by category"><br><sub><b>Reports</b> — each category month by month</sub></td>
+    <td width="50%"><img src="docs/screenshots/accounts.png" alt="Accounts: net worth over time"><br><sub><b>Accounts</b> — balances and net worth</sub></td>
+  </tr>
+</table>
+
+<sub>Screenshots use a made-up budget.</sub>
+
 ---
 
 ## What it does
@@ -84,7 +99,7 @@ are marked, so a hand-adjusted figure never passes for a calculated one.
 
 | Tab | What it's for |
 |---|---|
-| **Dashboard** | This month at a glance: remaining, what's due soon, income, savings, category budgets |
+| **Dashboard** | This month at a glance: money left with the forecast to payday, spending so far against the same day last month, recent transactions, category budgets, bills due soon and this month's income plan |
 | **Expenses** | One-off spending |
 | **Recurring** | Bills that repeat each period |
 | **Upcoming** | What's due soon or overdue (exactly what a reminder fires for), then scheduled one-off payments |
@@ -105,14 +120,31 @@ From 0.5.0 on, the app **updates itself**. It checks GitHub once a day, shows a
 banner when a new version is out, and installs it only when you click **Install
 and restart**. Every update is signed, and anything not signed with the
 project's key is refused. Turn the daily check off, or check by hand, in
-**⚙ Settings → Updates**.
+**Settings → Updates** (Settings is at the bottom of the sidebar).
 
-> **Coming from 0.4.x?** Those versions used an `.msi` installer. Uninstall 0.4.x
-> from Windows Settings → Apps first, then install 0.5.0. Your budget is kept:
-> it lives in your user profile, not in the app's folder.
+A new budget opens with three short welcome screens — language, currency, when
+your month starts, your income and some starter categories. Afterwards, look in
+**Settings** for your reminder lead time and, if you want reminders to survive a
+reboot, **Start with Windows**.
 
-On first launch, open **⚙ Settings** to set your reminder lead time and, if you
-want reminders to survive a reboot, turn on **Start with Windows**.
+### Coming from 0.4.x
+
+Your budget comes with you: 0.5.0 finds it on first launch and converts it,
+keeping every month, entry, bill, category and setting. 0.4.x can't update
+itself, so this one upgrade is by hand:
+
+1. *Optional, for peace of mind:* in 0.4.x, click **EXPORT** in the sidebar to
+   save a backup file.
+2. Uninstall 0.4.x from **Windows Settings → Apps**. This removes the program,
+   not your budget.
+3. Download and run the 0.5.0 installer. Your budget is there when it opens.
+
+If anything looks wrong, choose **Restore a backup file** on the welcome screen
+(or **Settings → Data**) and pick the file from step 1.
+
+Uninstall 0.4.x first rather than installing over it: 0.4.x was installed for
+all users and 0.5.0 installs just for you, so they would sit side by side as
+two copies, and anything entered in the old one wouldn't appear in the new.
 
 > Closing the window does **not** quit the app — it hides to the tray so
 > reminders keep working. Quit from the tray icon's right-click menu.
@@ -134,7 +166,7 @@ npm run tauri:dev
 | Command | What it does |
 |---|---|
 | `npm run tauri:dev` | The full desktop app with hot reload |
-| `npm run dev` | Browser only at `localhost:5173` — no tray, reminders or window chrome |
+| `npm run dev` | Browser only at `localhost:5173` — no tray, reminders or window chrome. Add `?demo` to the address for a made-up budget instead of yours (and `&tab=reports`, `&theme=light`, `&lang=pl` to choose what it shows) |
 | `npm run tauri:build` | Produces a signed installer in `src-tauri/target/release/bundle/nsis/` (needs the signing key, see below) |
 | `npm run build` | Builds the web assets only |
 | `npm run lint` | ESLint |
@@ -157,17 +189,18 @@ src-tauri/src/lib.rs tray, close-to-tray, autostart, reminders, window lifecycle
 ```
 
 React 19 + Vite on the front, Tauri v2 on the back. Charts are Recharts. There
-is no component library and no CSS framework — styling is a token system
-(`FONT`, `TYPE`, `RADIUS`, `SPACE`) transcribed from Apple's published design
-language, rendered through inline styles.
+is no component library and no CSS framework — styling is a token system in
+`src/theme.js` (colours for the dark and light themes, type, radii, spacing),
+rendered through inline styles. The look follows a Figma design: dark glass
+cards, DM Sans (bundled, never fetched), violet for the accent, green for money
+in and orange for money out.
 
-**The due-date checker runs in JavaScript, not Rust.** Bills live in
-`localStorage`, which Rust cannot read, and the period arithmetic — cutoff days,
-resolving a day-of-month to a real date, deciding what counts as due — is
-non-trivial. A Rust checker would have meant mirroring the data to a file and
-reimplementing that arithmetic in a second language, where it would drift from
-the copy the UI uses. Hiding a Tauri window doesn't kill its webview, so
-close-to-tray *is* the background daemon, running the same code the screen does.
+**The due-date checker runs in JavaScript, not Rust.** The period arithmetic —
+cutoff days, resolving a day-of-month to a real date, deciding what counts as
+due — is non-trivial, and a Rust checker would have reimplemented it in a
+second language, where it would drift from the copy the screen uses. Hiding a
+Tauri window doesn't kill its webview, so close-to-tray *is* the background
+daemon, running the same code the screen does.
 
 Rust's job is the shell: the tray icon and menu, converting a window close into
 a hide, registering autostart, and handling the `--hidden` flag that lets a
@@ -220,6 +253,10 @@ only ask.
 
 See the [changelog](CHANGELOG.md) for what's in each version, and
 [the long-form 0.4.0 notes](docs/releases/0.4.0.md).
+
+The screenshots above are taken from the made-up budget: with `npm run dev`
+running, headless Edge or Chrome can save one, for example
+`msedge --headless --force-prefers-reduced-motion --window-size=1440,900 --screenshot=docs/screenshots/reports.png "http://localhost:5173/?demo&tab=reports"`.
 
 ### Publishing a release
 

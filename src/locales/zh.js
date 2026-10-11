@@ -4,6 +4,7 @@
 // any string the app translates is missing here.
 export default {
   // App
+  "Start": "起点",
   "Show fewer": "收起",
   "Show all categories ({n})": "显示全部分类（{n}）",
   "TYPE": "类型",

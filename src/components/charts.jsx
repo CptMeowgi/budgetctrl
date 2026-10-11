@@ -1,6 +1,6 @@
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis } from "recharts";
 import { fmt } from "../money.js";
-import { FONT, useThemed } from "../theme.js";
+import { ANIMATE_CHARTS, FONT, useThemed } from "../theme.js";
 import { t } from "../i18n.js";
 import { catName } from "../text.js";
 
@@ -13,7 +13,7 @@ export function CategoryDonut({ data, total }) {
     <div style={{ position: "relative", width: "100%", height: 240 }}>
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
-          <Pie data={data} dataKey="value" innerRadius={70} outerRadius={100} paddingAngle={2} stroke="none">
+          <Pie data={data} dataKey="value" innerRadius={70} outerRadius={100} paddingAngle={2} stroke="none" isAnimationActive={ANIMATE_CHARTS}>
             {data.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
           </Pie>
           <RTooltip content={({ active, payload }) => {
@@ -67,7 +67,7 @@ export function NetWorthChart({ series }) {
               </div>
             );
           }} />
-          <Area type="monotone" dataKey="net" stroke={theme.accent} strokeWidth={2} fill="url(#netWorthFill)" />
+          <Area type="monotone" dataKey="net" stroke={theme.accent} strokeWidth={2} fill="url(#netWorthFill)" isAnimationActive={ANIMATE_CHARTS} />
         </AreaChart>
       </ResponsiveContainer>
     </div>
@@ -100,6 +100,7 @@ export function MonthlyBarChart({ data, curKey, onBarClick }) {
           }} />
           <Bar
             dataKey="spent"
+            isAnimationActive={ANIMATE_CHARTS}
             radius={[6, 6, 0, 0]}
             onClick={(d) => { if (d && d.key !== curKey) onBarClick?.(d.key); }}
           >
@@ -122,10 +123,12 @@ export function SavingsChart({ series }) {
   if (!series || series.length < 2) {
     return <div style={s.chartEmpty}>{t("Close out a month to start tracking savings.")}</div>;
   }
+  // The first point is the starting line, labelled in the reader's language.
+  const data = series.map((p) => (p.key === "start" ? { ...p, label: t("Start") } : p));
   return (
     <div style={{ width: "100%", height: 220 }}>
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={series} margin={{ top: 10, right: 10, bottom: 0, left: 10 }}>
+        <AreaChart data={data} margin={{ top: 10, right: 10, bottom: 0, left: 10 }}>
           <defs>
             <linearGradient id="savingsFill" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={theme.success} stopOpacity={0.35} />
@@ -151,7 +154,7 @@ export function SavingsChart({ series }) {
               </div>
             );
           }} />
-          <Area type="monotone" dataKey="balance" stroke={theme.success} strokeWidth={2} fill="url(#savingsFill)" />
+          <Area type="monotone" dataKey="balance" stroke={theme.success} strokeWidth={2} fill="url(#savingsFill)" isAnimationActive={ANIMATE_CHARTS} />
         </AreaChart>
       </ResponsiveContainer>
     </div>

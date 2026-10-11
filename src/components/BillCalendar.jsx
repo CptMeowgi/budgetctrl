@@ -2,7 +2,7 @@ import { Area, AreaChart, CartesianGrid, Line, ReferenceLine, ResponsiveContaine
 import { periodDays, scheduledItems } from "../lib/forecast.js";
 import { isoDay } from "../lib/periods.js";
 import { fmt, fmtWhole } from "../money.js";
-import { FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
+import { ANIMATE_CHARTS, FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
 import { fmtDate, t, tk } from "../i18n.js";
 
 // Monday to Sunday in the reader's language: 1 January 2024 was a Monday.
@@ -144,8 +144,8 @@ export function ForecastCard({ fc }) {
                 </div>
               );
             }} />
-            <Area type="monotone" dataKey="withEveryday" stroke={theme.accent} strokeWidth={2} fill="url(#forecastFill)" />
-            <Line type="stepAfter" dataKey="balance" stroke={theme.textFaint} strokeDasharray="4 4" dot={false} strokeWidth={1.5} />
+            <Area type="monotone" dataKey="withEveryday" stroke={theme.accent} strokeWidth={2} fill="url(#forecastFill)" isAnimationActive={ANIMATE_CHARTS} />
+            <Line type="stepAfter" dataKey="balance" stroke={theme.textFaint} strokeDasharray="4 4" dot={false} isAnimationActive={ANIMATE_CHARTS} strokeWidth={1.5} />
           </AreaChart>
         </ResponsiveContainer>
       </div>

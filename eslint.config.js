@@ -5,7 +5,8 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  // Build output and the local design reference are not ours to lint.
+  globalIgnores(['dist', 'src-tauri/target', 'designs', '.claude']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [
