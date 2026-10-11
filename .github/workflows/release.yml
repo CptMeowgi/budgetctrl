@@ -27,6 +27,7 @@ jobs:
     runs-on: ubuntu-22.04
     outputs:
       release-id: ${{ steps.release.outputs.id }}
+      notes: ${{ steps.notes.outputs.body }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -52,6 +53,7 @@ jobs:
 
       # The same notes appear on the release page and in the app's "What's new".
       - name: Release notes from CHANGELOG.md
+        id: notes
         run: |
           awk -v v="$GITHUB_REF_NAME" '
             /^## / { if (found) exit; if ($2 == v) { found = 1; next } }
@@ -61,6 +63,11 @@ jobs:
             echo "::error::CHANGELOG.md has no '## $GITHUB_REF_NAME' section"
             exit 1
           fi
+          {
+            echo "body<<END_OF_NOTES"
+            cat notes.md
+            echo "END_OF_NOTES"
+          } >> "$GITHUB_OUTPUT"
 
       # Reused if it already exists, so a failed run can simply be re-run.
       - name: Open the draft release
@@ -128,5 +135,9 @@ jobs:
           releaseId: ${{ needs.prepare.outputs.release-id }}
           tagName: ${{ github.ref_name }}
           releaseDraft: true
+          # Not used for the release page (prepare wrote that), but it is
+          # what latest.json carries as the notes "What's new" shows. Left
+          # out, 0.5.1 went out with empty notes.
+          releaseBody: ${{ needs.prepare.outputs.notes }}
           uploadUpdaterJson: true
           args: --bundles ${{ matrix.bundles }}
