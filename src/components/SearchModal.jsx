@@ -6,7 +6,7 @@ import { fmt } from "../money.js";
 import { FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
 import { CategoryPill } from "./controls.jsx";
 import { Modal } from "./Modal.jsx";
-import { t, tk, tn } from "../i18n.js";
+import { fmtDate, t, tk, tn } from "../i18n.js";
 import { catName } from "../text.js";
 
 const KINDS = [
@@ -20,9 +20,7 @@ const KIND_LABEL = { expense: tk("Expense"), recurring: tk("Recurring bill"), up
 const SHOWN = 200;
 
 function dayLabel(iso) {
-  if (!iso) return "";
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  return iso ? fmtDate(iso, { day: "numeric", month: "short", year: "numeric" }) : "";
 }
 
 export function SearchModal({ data, query, onQueryChange, onClose, onOpen }) {

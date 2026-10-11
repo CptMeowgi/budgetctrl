@@ -198,13 +198,15 @@ what your budget leaves over, starting from your old starting balance, so it
 shows exactly what it did before. The separate Starting balance setting is
 gone, and the Savings tab's history is now "Left over each month".
 
-### Po polsku
-Budget Ctrl speaks Polish. Every screen, dialog, reminder and message is
-translated, with Polish plurals (1 cel, 2 cele, 5 celów) and Polish dates
-(11 października). It follows your Windows language, or choose one under
+### Deutsch, Español, Polski, 中文
+Budget Ctrl now speaks German, Spanish, Polish and Simplified Chinese as well
+as English. Every screen, dialog, reminder and message is translated, with each
+language's own plurals (1 cel, 2 cele, 5 celów) and dates (11. Oktober,
+11 de octubre, 10月11日). It follows your Windows language, or choose one under
 **Settings → Language** or on the first welcome screen. A budget set up in
-Polish starts with Polish category names; categories you already have keep
-the names you gave them, and can be renamed in **Settings → Categories**.
+another language starts with its category names in that language; categories
+you already have keep the names you gave them, and can be renamed in
+**Settings → Categories**.
 
 ### A tidier layout
 - **The sidebar is just navigation now.** This month's income is set on the

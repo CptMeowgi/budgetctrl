@@ -26,9 +26,13 @@ export function due(inDays) {
   return tn(inDays, "due in {n} day", "due in {n} days");
 }
 
-// 1st, 2nd, 3rd, 4th ... 11th, 12th, 13th ... 21st - or "25." in Polish.
+// 1st, 2nd, 3rd, 4th ... 11th, 12th, 13th ... 21st - or "25." in Polish and
+// German, "25" in Spanish ("el día 25") and "25日" in Chinese.
 export function ordinal(n) {
-  if (getLanguage() === "pl") return `${n}.`;
+  const lang = getLanguage();
+  if (lang === "pl" || lang === "de") return `${n}.`;
+  if (lang === "es") return String(n);
+  if (lang === "zh") return `${n}日`;
   const teen = n % 100 >= 11 && n % 100 <= 13;
   return `${n}${teen ? "th" : ({ 1: "st", 2: "nd", 3: "rd" }[n % 10] || "th")}`;
 }

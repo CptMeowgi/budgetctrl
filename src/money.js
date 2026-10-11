@@ -78,6 +78,7 @@ export const LOCALE_OPTIONS = [
   { value: "cs-CZ", label: "Čeština — 1 234,56" },
   { value: "pt-BR", label: "Português (BR) — 1.234,56" },
   { value: "ja-JP", label: "日本語 — 1,234.56" },
+  { value: "zh-CN", label: "中文 — 1,234.56" },
 ];
 
 export function detectCurrency() {

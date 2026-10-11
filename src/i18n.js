@@ -4,7 +4,7 @@
 //
 //   t("Search everything")
 //   t("Lowest point {amount} on {date}", { amount: fmt(x), date })
-//   tn(n, "{n} goal", "{n} goals")      - plurals, with Polish's three forms
+//   tn(n, "{n} goal", "{n} goals")      - plurals, in each language's forms
 //
 // A placeholder may also be given a React element (a <strong>, a button);
 // t() then returns an array of strings and elements to render.
@@ -13,20 +13,36 @@
 // same way the money format is: t() is called from plain functions as well as
 // components.
 
+import de from "./locales/de.js";
+import es from "./locales/es.js";
 import pl from "./locales/pl.js";
+import zh from "./locales/zh.js";
 
-const DICTS = { pl };
+const DICTS = { de, es, pl, zh };
 let lang = "en";
 
 export const LANGUAGES = [
   { value: "", label: "System default" },
   { value: "en", label: "English" },
+  { value: "de", label: "Deutsch" },
+  { value: "es", label: "Español" },
   { value: "pl", label: "Polski" },
+  { value: "zh", label: "中文（简体）" },
 ];
 
+// The plural forms each dictionary writes, in order, by Intl.PluralRules'
+// names for them: a plural is stored as "1 Ziel|{n} Ziele", "1 cel|{n} cele|
+// {n} celów", or Chinese's single form. A count in a form a dictionary
+// doesn't write - Spanish "many" for a million, a Polish fraction - takes
+// the last one.
+export const PLURAL_FORMS = { de: ["one", "other"], es: ["one", "other"], pl: ["one", "few", "many"], zh: ["other"] };
+
+// Dates and month names. English is British: day before month.
+const DATE_LOCALES = { en: "en-GB", de: "de-DE", es: "es-ES", pl: "pl-PL", zh: "zh-CN" };
+
 export function systemLanguage() {
-  const nav = (typeof navigator !== "undefined" && navigator.language) || "";
-  return nav.toLowerCase().startsWith("pl") ? "pl" : "en";
+  const nav = ((typeof navigator !== "undefined" && navigator.language) || "").toLowerCase().split("-")[0];
+  return DICTS[nav] ? nav : "en";
 }
 
 export function setLanguage(choice) {
@@ -40,7 +56,7 @@ export function getLanguage() {
 
 // Locale for dates and month names in the active language.
 export function dateLocale() {
-  return lang === "pl" ? "pl-PL" : "en-GB";
+  return DATE_LOCALES[lang] || "en-GB";
 }
 
 export function interpolate(str, vars) {
@@ -65,16 +81,17 @@ export function t(key, vars) {
   return interpolate((dict && dict[key]) || key, vars);
 }
 
-// Plurals. English has one and other; Polish has one (1), few (2-4, 22-24 ...)
-// and many (5-21, 25 ...), stored as "one|few|many" under "one|other".
+// Plurals, looked up under "one|other" and written in the forms PLURAL_FORMS
+// lists for the language: Polish has one (1), few (2-4, 22-24 ...) and many
+// (5-21, 25 ...); German and Spanish one and other; Chinese a single form.
 export function tn(n, one, other, vars) {
   const v = { n, ...vars };
   const dict = DICTS[lang];
   const forms = dict && dict[`${one}|${other}`];
   if (forms) {
-    const [o, f, m] = forms.split("|");
-    const cat = new Intl.PluralRules(lang).select(n);
-    return interpolate(cat === "one" ? o : cat === "few" ? (f ?? m) : (m ?? f ?? o), v);
+    const list = forms.split("|");
+    const i = PLURAL_FORMS[lang].indexOf(new Intl.PluralRules(lang).select(n));
+    return interpolate(list[i === -1 || i >= list.length ? list.length - 1 : i], v);
   }
   return interpolate(n === 1 ? one : other, v);
 }

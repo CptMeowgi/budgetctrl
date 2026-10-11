@@ -24,8 +24,9 @@ and will settle on their own date without ever reminding you.
 **Your currency and number format.** Both are settings — pick the currency you
 actually hold and how you want figures punctuated.
 
-**English or Polish.** The whole app, its reminders and its dates are available
-in Polish, following your Windows language or chosen in Settings.
+**In your language.** English, German, Spanish, Polish or Simplified Chinese —
+the whole app, its reminders and its dates, following your Windows language or
+chosen in Settings.
 
 **Money in, not just money out.** Credits cover refunds, gifts, bonuses and
 salary, as one-offs or recurring, and are kept separate from spending so they
@@ -148,7 +149,7 @@ Menu shortcut that only the installer creates, so they may not appear under
 src/App.jsx          the app shell and the tab views
 src/components/      dialogs and views (Settings, Reports, Accounts, ...)
 src/lib/             the budget arithmetic, with tests beside each file
-src/locales/pl.js    the Polish translation
+src/locales/        the translations, one file per language
 src-tauri/src/lib.rs tray, close-to-tray, autostart, reminders, window lifecycle
 ```
 
