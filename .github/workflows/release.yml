@@ -1,9 +1,10 @@
 name: Release
 
-# Push a version tag (for example 0.5.0) and this builds the signed installer
-# and the update manifest (latest.json), then opens a draft release with that
-# version's notes from CHANGELOG.md. Publishing the draft is the moment
-# installed copies start offering the update - nothing reaches anyone before.
+# Push a version tag (for example 0.5.1) and this builds the signed Windows and
+# Linux installers and the update manifest (latest.json), into a draft release
+# with that version's notes from CHANGELOG.md. Publishing the draft is the
+# moment installed copies start offering the update - nothing reaches anyone
+# before.
 #
 # Needs two repository secrets, set by the key's owner:
 #   TAURI_SIGNING_PRIVATE_KEY           contents of the private .key file
@@ -21,8 +22,77 @@ permissions:
 # with it. Bump a pin by looking up the new release's commit, deliberately.
 
 jobs:
-  release:
-    runs-on: windows-latest
+  # Checks first, then opens the one draft release every platform adds to.
+  prepare:
+    runs-on: ubuntu-22.04
+    outputs:
+      release-id: ${{ steps.release.outputs.id }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
+      # The updater compares versions, so a tag that disagrees with the app's
+      # own version would publish an update nobody is offered - or one offered
+      # forever.
+      - name: Check the tag matches the app version
+        run: |
+          v=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          if [ "$v" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag is $GITHUB_REF_NAME but tauri.conf.json says $v"
+            exit 1
+          fi
+
+      # The same notes appear on the release page and in the app's "What's new".
+      - name: Release notes from CHANGELOG.md
+        run: |
+          awk -v v="$GITHUB_REF_NAME" '
+            /^## / { if (found) exit; if ($2 == v) { found = 1; next } }
+            found && $0 != "---" { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "::error::CHANGELOG.md has no '## $GITHUB_REF_NAME' section"
+            exit 1
+          fi
+
+      # Reused if it already exists, so a failed run can simply be re-run.
+      - name: Open the draft release
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
+              --title "Budget Ctrl $GITHUB_REF_NAME" --notes-file notes.md
+          fi
+          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" \
+            --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\") | .id" | head -n 1)
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      # One platform at a time: each adds itself to the release's latest.json,
+      # and two writing it at once would lose one of them.
+      max-parallel: 1
+      matrix:
+        include:
+          - os: windows-latest
+            bundles: nsis
+          # The oldest supported Ubuntu, so the .deb and the AppImage run on as
+          # many distributions as possible: they need a system at least as new
+          # as the one they were built on.
+          - os: ubuntu-22.04
+            bundles: deb,appimage
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -37,40 +107,15 @@ jobs:
         with:
           workspaces: "./src-tauri -> target"
 
+      # WebKitGTK for the window, and the Ayatana indicator library for the
+      # tray icon (the AppImage carries a copy; the .deb depends on it).
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev patchelf
+
       - run: npm ci
-
-      - run: npm test
-
-      # The updater compares versions, so a tag that disagrees with the app's
-      # own version would publish an update nobody is offered - or one offered
-      # forever.
-      - name: Check the tag matches the app version
-        shell: bash
-        run: |
-          v=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          if [ "$v" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::Tag is $GITHUB_REF_NAME but tauri.conf.json says $v"
-            exit 1
-          fi
-
-      # The same notes appear on the release page and in the app's "What's new".
-      - name: Release notes from CHANGELOG.md
-        id: notes
-        shell: bash
-        run: |
-          awk -v v="$GITHUB_REF_NAME" '
-            /^## / { if (found) exit; if ($2 == v) { found = 1; next } }
-            found && $0 != "---" { print }
-          ' CHANGELOG.md > notes.md
-          if [ ! -s notes.md ]; then
-            echo "::error::CHANGELOG.md has no '## $GITHUB_REF_NAME' section"
-            exit 1
-          fi
-          {
-            echo "body<<END_OF_NOTES"
-            cat notes.md
-            echo "END_OF_NOTES"
-          } >> "$GITHUB_OUTPUT"
 
       - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
         env:
@@ -78,8 +123,10 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
+          # The release `prepare` opened. The tag as well, so latest.json links
+          # to this release's files rather than to whichever release is latest.
+          releaseId: ${{ needs.prepare.outputs.release-id }}
           tagName: ${{ github.ref_name }}
-          releaseName: Budget Ctrl ${{ github.ref_name }}
-          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: true
           uploadUpdaterJson: true
+          args: --bundles ${{ matrix.bundles }}

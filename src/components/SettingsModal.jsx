@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState } from "react";
 import { currencyOptions, LOCALE_OPTIONS } from "../money.js";
-import { isTauri } from "../platform.js";
+import { isTauri, isWindows } from "../platform.js";
 import { getStorageFault, listBackups } from "../storage.js";
 import { FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
 import { SettingRow, Switch } from "./controls.jsx";
@@ -135,8 +135,24 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
         </SettingRow>
       )}
       {rem.enabled && isTauri && (
-        <SettingRow label={t("Test it")} hint={t("Sends a reminder now. Clicking it should open the app on what's due.")}>
+        <SettingRow label={t("Test it")} hint={isWindows
+          ? t("Sends a reminder now. Clicking it should open the app on what's due.")
+          : t("Sends a reminder now, to check notifications reach you.")}>
           <button style={s.linkBtn} onClick={async () => {
+            // Elsewhere than Windows a reminder is an ordinary desktop
+            // notification, as the reminder check itself falls back to.
+            if (!isWindows) {
+              try {
+                const n = await import("@tauri-apps/plugin-notification");
+                let granted = await n.isPermissionGranted();
+                if (!granted) granted = (await n.requestPermission()) === "granted";
+                if (!granted) throw new Error("not allowed");
+                await n.sendNotification({ title: t("Budget Ctrl reminders are on"), body: t("Bills due soon will appear like this.") });
+              } catch (err) {
+                alert(t("Your desktop didn't show the reminder: {error}\n\nCheck that notifications are allowed for Budget Ctrl in your system settings.", { error: String(err) }));
+              }
+              return;
+            }
             try {
               const { invoke } = await import("@tauri-apps/api/core");
               await invoke("show_reminder", { title: t("Budget Ctrl reminders are on"), body: t("Click here to see what's due.") });
@@ -259,7 +275,7 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
 
           <div style={divider} />
           <div style={group}>{t("Startup")}</div>
-          <SettingRow label={t("Start with Windows")} hint={t("Launches hidden in the tray, so reminders work from boot.")}>
+          <SettingRow label={isWindows ? t("Start with Windows") : t("Start when you log in")} hint={t("Launches hidden in the tray, so reminders work from boot.")}>
             <Switch checked={!!autostart} onChange={toggleAutostart} />
           </SettingRow>
         </>

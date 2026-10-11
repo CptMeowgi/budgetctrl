@@ -1,8 +1,8 @@
 # Budget Ctrl
 
-A personal budgeting app for Windows. It lives in the system tray, follows your
-actual payday rather than the calendar month, and tells you about bills before
-they land.
+A personal budgeting app for Windows and Linux. It lives in the system tray,
+follows your actual payday rather than the calendar month, and tells you about
+bills before they land.
 
 Built with React and Tauri. Everything stays on your machine — there is no
 account, no server, and nothing leaves the device.
@@ -113,8 +113,29 @@ are marked, so a hand-adjusted figure never passes for a calculated one.
 
 ## Install
 
+### Windows
+
 Download `Budget Ctrl_x.y.z_x64-setup.exe` from [Releases](../../releases) and
 run it. It installs for your Windows account only, so it needs no admin rights.
+
+### Linux
+
+Linux builds are on [Releases](../../releases) from 0.5.1. Pick one:
+
+- **AppImage** — runs on most distributions and updates itself. Make it
+  executable and open it:
+  `chmod +x Budget.Ctrl_*_amd64.AppImage && ./Budget.Ctrl_*_amd64.AppImage`
+- **.deb** — for Ubuntu, Debian and Linux Mint:
+  `sudo apt install ./Budget.Ctrl_*_amd64.deb`. Updates ask for your password,
+  since they install for the whole system.
+
+Reminders arrive as ordinary desktop notifications. The tray icon needs a
+desktop that shows tray icons — Ubuntu, KDE Plasma and Cinnamon do; on plain
+GNOME, install the *AppIndicator and KStatusNotifierItem Support* extension.
+Without one, a closed window comes back when you open Budget Ctrl again from
+the app menu.
+
+### Updates
 
 From 0.5.0 on, the app **updates itself**. It checks GitHub once a day, shows a
 banner when a new version is out, and installs it only when you click **Install
@@ -155,8 +176,10 @@ two copies, and anything entered in the old one wouldn't appear in the new.
 
 Requires [Node.js](https://nodejs.org) 20.19+ or 22.12+ (Vite 8's floor) and the
 [Rust toolchain](https://www.rust-lang.org/tools/install) with the
-[Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for Windows
-(Microsoft C++ Build Tools and WebView2).
+[Tauri prerequisites](https://v2.tauri.app/start/prerequisites/): on Windows the
+Microsoft C++ Build Tools and WebView2; on Linux WebKitGTK and friends
+(`libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev`
+on Ubuntu).
 
 ```bash
 npm install
@@ -231,8 +254,10 @@ undoes either.
 
 ## Known limitations
 
-- **Windows only.** Nothing is deliberately platform-locked, but the tray
-  behaviour, window chrome and installer are only built and tested here.
+- **Windows and Linux.** There's no macOS build: one that opens without
+  warnings needs a paid Apple developer account to sign it.
+- **Clicking a reminder opens the app on Windows only.** On Linux a reminder is
+  an ordinary desktop notification.
 - **One currency at a time** — set it in Settings, along with number
   formatting. Amounts are not converted between currencies.
 - **Notifications need the installed build**, as above.
@@ -260,7 +285,12 @@ running, headless Edge or Chrome can save one, for example
 
 ### Publishing a release
 
-Releases are built by GitHub Actions ([release.yml](.github/workflows/release.yml)).
+Releases are built by GitHub Actions ([release.yml](.github/workflows/release.yml)):
+the Windows installer, the Linux AppImage and .deb, and `latest.json`.
+
+To check a change builds on both systems before releasing, run **Test build**
+([build.yml](.github/workflows/build.yml)) from the Actions tab. It builds
+unsigned installers and keeps them with the run, without releasing anything.
 
 1. In `CHANGELOG.md`, rename `## Unreleased` to the new version, e.g. `## 0.5.1`.
    That section becomes the release notes, and the "What's new" text in the app.

@@ -4,6 +4,10 @@
 // i18n.test.js fails if any string the app translates is missing here.
 export default {
   // App
+  "Start when you log in": "Uruchamiaj po zalogowaniu",
+  "Sends a reminder now, to check notifications reach you.": "Wysyła przypomnienie teraz, żeby sprawdzić, czy powiadomienia docierają.",
+  "Bills due soon will appear like this.": "Rachunki do zapłaty będą pojawiać się właśnie tak.",
+  "Your desktop didn't show the reminder: {error}\n\nCheck that notifications are allowed for Budget Ctrl in your system settings.": "Pulpit nie pokazał przypomnienia: {error}\n\nSprawdź w ustawieniach systemu, czy powiadomienia dla Budget Ctrl są dozwolone.",
   "Start": "Start",
   "Show fewer": "Pokaż mniej",
   "Show all categories ({n})": "Pokaż wszystkie kategorie ({n})",

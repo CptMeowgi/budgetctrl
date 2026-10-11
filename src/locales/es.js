@@ -4,6 +4,10 @@
 // any string the app translates is missing here.
 export default {
   // App
+  "Start when you log in": "Iniciar al iniciar sesión",
+  "Sends a reminder now, to check notifications reach you.": "Envía un recordatorio ahora para comprobar que las notificaciones llegan.",
+  "Bills due soon will appear like this.": "Los pagos que vencen pronto aparecerán así.",
+  "Your desktop didn't show the reminder: {error}\n\nCheck that notifications are allowed for Budget Ctrl in your system settings.": "Tu escritorio no mostró el recordatorio: {error}\n\nComprueba en los ajustes del sistema que las notificaciones de Budget Ctrl están permitidas.",
   "Start": "Inicio",
   "Show fewer": "Mostrar menos",
   "Show all categories ({n})": "Mostrar todas las categorías ({n})",

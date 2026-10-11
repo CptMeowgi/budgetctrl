@@ -4,6 +4,10 @@
 // any string the app translates is missing here.
 export default {
   // App
+  "Start when you log in": "登录时启动",
+  "Sends a reminder now, to check notifications reach you.": "立即发送一条提醒，检查通知能否送达。",
+  "Bills due soon will appear like this.": "即将到期的账单会这样提醒你。",
+  "Your desktop didn't show the reminder: {error}\n\nCheck that notifications are allowed for Budget Ctrl in your system settings.": "桌面未显示提醒：{error}\n\n请在系统设置中确认已允许 Budget Ctrl 发送通知。",
   "Start": "起点",
   "Show fewer": "收起",
   "Show all categories ({n})": "显示全部分类（{n}）",

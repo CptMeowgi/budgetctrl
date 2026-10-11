@@ -32,9 +32,16 @@
     "active": true,
     "targets": ["nsis"],
     "createUpdaterArtifacts": true,
+    "category": "Finance",
+    "shortDescription": "Personal budgeting that follows your payday",
     "windows": {
       "nsis": {
         "installMode": "currentUser"
+      }
+    },
+    "linux": {
+      "deb": {
+        "depends": ["libayatana-appindicator3-1"]
       }
     },
     "icon": [

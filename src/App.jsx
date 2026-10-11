@@ -34,7 +34,7 @@ import { useUpdater } from "./hooks/useUpdater.js";
 import { ENTRY_COLUMNS, filterAndSort, toggleSort } from "./listView.js";
 import { countRebucketMoves, CREDIT_UNCATEGORIZED, defaultData, emptyMonth, ensureCategory, ensureCreditCategory, ensureCurrentMonth, hydrate, migrate, rebucketData, STORAGE_KEY, uid } from "./model.js";
 import { currencyCode, fmt, setMoneyFormat } from "./money.js";
-import { isTauri } from "./platform.js";
+import { isLinux, isTauri } from "./platform.js";
 import { due, ordinal, shortDate } from "./text.js";
 import { readBackup, readLock, writeBackup, writeLock } from "./storage.js";
 import { DARK_THEME, FOCUS_RING, FONT, LIGHT_THEME, makeStyles, RADIUS, SPACE, ThemeContext, TYPE } from "./theme.js";
@@ -548,6 +548,7 @@ export default function App() {
           100% { transform: translate3d(-.5%, 3%, 0) scale(1.01) rotate(-.4deg); }
         }
         @media (prefers-reduced-motion: reduce) { .ambient { animation: none; } }
+        ${isLinux ? ".ambient { animation: none; }" : ""}
 
         /* Dashboard grid, after the design; stacks when the window is narrow. */
         .dash-top { display: grid; grid-template-columns: minmax(0, 1.72fr) minmax(0, .86fr); gap: 18px; }

@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Linux
+Budget Ctrl now runs on Linux as well as Windows. Each release has an
+**AppImage**, which runs on most distributions and keeps itself up to date,
+and a **.deb** for Ubuntu, Debian and Linux Mint, whose updates ask for your
+password because they install for the whole system.
+
+Bill reminders arrive as ordinary desktop notifications. The tray icon needs a
+desktop that shows tray icons: Ubuntu, KDE Plasma, Cinnamon and most others
+do; on plain GNOME, add the AppIndicator extension. Without one, open Budget
+Ctrl from your app menu to bring back a window you closed.
+
 ## 0.5.0
 
 > **Upgrading from 0.4.x?** Your budget comes with you - 0.5.0 finds it on

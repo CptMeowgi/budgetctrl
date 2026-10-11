@@ -1,0 +1,58 @@
+name: Test build
+
+# Builds the Windows and Linux installers without releasing anything, to check
+# a change builds everywhere before it is tagged. Run it from the Actions tab
+# (Test build → Run workflow); the installers are kept with the run for a week
+# under "Artifacts".
+#
+# Unsigned, so it needs no secrets: these files can be installed by hand but
+# are not offered to anyone as an update.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            bundles: nsis
+          - os: ubuntu-22.04
+            bundles: deb,appimage
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev patchelf
+
+      - run: npm ci
+
+      - run: npm test
+
+      # No release inputs, so nothing is published; the bundles are kept as
+      # workflow artifacts instead. test-build.conf.json turns off the signed
+      # update files, which would need the private key.
+      - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
+        with:
+          uploadWorkflowArtifacts: true
+          args: --bundles ${{ matrix.bundles }} --config src-tauri/test-build.conf.json
