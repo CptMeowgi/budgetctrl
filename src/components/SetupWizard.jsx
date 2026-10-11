@@ -5,6 +5,7 @@ import { currencyOptions, LOCALE_OPTIONS } from "../money.js";
 import { ordinal } from "../text.js";
 import { ELEVATION, FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
 import { LANGUAGES, t, tk } from "../i18n.js";
+import { BrandMark } from "./Icon.jsx";
 
 const STEPS = [tk("Money"), tk("Your month"), tk("Categories")];
 
@@ -39,8 +40,8 @@ export function SetupWizard({ data, onFinish, onRestore, onSkip, onChangeLanguag
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 150, background: theme.outerBg, display: "flex", alignItems: "center",
                   justifyContent: "center", padding: SPACE.lg, boxSizing: "border-box", overflowY: "auto", fontFamily: FONT }}>
-      <div role="dialog" aria-label={t("Set up Budget Ctrl")} style={{ width: "100%", maxWidth: 560, background: theme.surface, borderRadius: RADIUS.lg,
-                    border: `1px solid ${theme.border}`, boxShadow: ELEVATION, padding: SPACE.xl, boxSizing: "border-box", color: theme.text }}>
+      <div role="dialog" aria-label={t("Set up Budget Ctrl")} style={{ width: "100%", maxWidth: 560, background: theme.modalBg, borderRadius: RADIUS.xl,
+                    border: `1px solid ${theme.cardBorder}`, boxShadow: ELEVATION, padding: SPACE.xl, boxSizing: "border-box", color: theme.text }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: SPACE.md }}>
           <div style={{ display: "flex", gap: 6 }}>
             {STEPS.map((name, i) => (
@@ -53,7 +54,8 @@ export function SetupWizard({ data, onFinish, onRestore, onSkip, onChangeLanguag
 
         {step === 0 && (
           <>
-            <div style={{ ...TYPE.lead, fontWeight: 700 }}>{t("Welcome to Budget Ctrl")}</div>
+            <BrandMark size={34} />
+            <div style={{ ...TYPE.lead, fontWeight: 700, marginTop: SPACE.md }}>{t("Welcome to Budget Ctrl")}</div>
             <div style={{ ...TYPE.caption, color: theme.textMuted, margin: `${SPACE.xs}px 0 ${SPACE.lg}px`, lineHeight: 1.5 }}>{t("Your budget stays on this computer; nothing is sent anywhere. Three quick questions and you're set. All of it can be changed later in Settings.")}</div>
             {/* First, so everything after it is already in the chosen language. */}
             <label style={label}>{t("Language")}</label>

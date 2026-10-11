@@ -1,5 +1,5 @@
 // Small pieces of wording shared across screens.
-import { getLanguage, t, tk, tn } from "./i18n.js";
+import { fmtDate, getLanguage, t, tk, tn } from "./i18n.js";
 import { DEFAULT_CREDIT_CATEGORIES, STARTER_CATEGORIES } from "./lib/setup.js";
 
 // "just now", "5 minutes ago", "3 hours ago", "2 days ago".
@@ -29,6 +29,14 @@ export function storedCatName(typed, categories) {
   if (!v) return typed;
   const hit = (categories || []).find((c) => catName(c.name).toLowerCase() === v);
   return hit ? hit.name : typed;
+}
+
+// A date in a table: "11 Oct" in the reader's language, with the year only
+// when it isn't this year's.
+export function shortDate(iso) {
+  if (!iso) return "";
+  const sameYear = iso.slice(0, 4) === String(new Date().getFullYear());
+  return fmtDate(iso, sameYear ? { day: "numeric", month: "short" } : { day: "numeric", month: "short", year: "numeric" });
 }
 
 // When a bill is due, relative to today.

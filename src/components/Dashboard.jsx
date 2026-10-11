@@ -96,7 +96,7 @@ function MoneyLeftCard({ data, curKey, today, cutoffDay, fc, remaining, sub, sti
                 <line x1="1.5" x2="1.5" y1="0" y2="10" stroke={theme.accent} strokeWidth="3" strokeOpacity="0.22" />
               </pattern>
             </defs>
-            <XAxis dataKey="date" ticks={ticks} tickFormatter={shortDay} stroke={theme.textSoft} fontSize={11} tickLine={false} axisLine={false} interval={0} />
+            <XAxis dataKey="date" ticks={ticks} tickFormatter={shortDay} stroke={theme.textSoft} fontSize={11} tickLine={false} axisLine={false} interval={0} padding={{ left: 18, right: 18 }} />
             <YAxis hide domain={["dataMin - 200", "dataMax + 200"]} />
             <RTooltip cursor={{ stroke: theme.border }} content={({ active, payload }) => {
               if (!active || !payload?.length) return null;

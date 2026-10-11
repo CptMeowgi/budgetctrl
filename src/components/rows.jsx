@@ -8,6 +8,7 @@ import { FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
 import { CategoryPill } from "./controls.jsx";
 import { isSplit } from "../lib/splits.js";
 import { t, tn } from "../i18n.js";
+import { shortDate } from "../text.js";
 
 // The trailing edit/delete cell on every entry row. Previously eight
 // near-identical copies. onDelete stays a callback because the action really
@@ -92,7 +93,7 @@ export function ExpenseRow({ entry: e, categories, onEdit, onDelete }) {
           </span>
         ) : <CategoryPill categoryName={e.category} categories={categories} />}
       </div>
-      <div style={{ flex: 1, color: theme.textMuted, ...TYPE.caption }}>{e.date}</div>
+      <div style={{ flex: 1, color: theme.textMuted, ...TYPE.caption }} title={e.date}>{shortDate(e.date)}</div>
       <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: theme.danger }}>{fmt(e.amount)}</div>
       <RowActions id={e.id} onEdit={onEdit} onDelete={onDelete} />
     </div>
@@ -128,7 +129,7 @@ export function UpcomingRow({ entry: u, categories, today, onTogglePaid, onEdit,
         {u.autoPay && <span title={t("Pays itself")} style={{ ...TYPE.microLegal, color: theme.textFaint, marginLeft: 6 }}>{t("auto")}</span>}
       </EntryName>
       <div style={{ flex: 1.2 }}><CategoryPill categoryName={u.category} categories={categories} /></div>
-      <div style={{ flex: 1, color: theme.textMuted, ...TYPE.caption }}>{u.dueDate}</div>
+      <div style={{ flex: 1, color: theme.textMuted, ...TYPE.caption }} title={u.dueDate}>{shortDate(u.dueDate)}</div>
       <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: settled ? theme.success : theme.warning }}>{fmt(u.amount)}</div>
       <div style={{ flex: 0.7, textAlign: "center" }}>
         <span style={{ ...TYPE.microLegal, padding: "3px 10px", borderRadius: RADIUS.pill, fontWeight: 600,

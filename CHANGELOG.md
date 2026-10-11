@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### A new look
+Budget Ctrl has been redesigned: a dark canvas with soft colour glows, glass
+cards, the DM Sans typeface and line icons, with violet as the accent, green
+for money in and orange for money out. Dark is the default; the sun/moon
+button switches to a light version of the same design.
+
+- **The Dashboard** leads with the money left this month: a line of how it
+  has moved so far and, dashed, where it's heading by payday. Beside it,
+  this month's spending as a running total, how it compares with the same
+  day last month, and the three biggest categories. Below: recent
+  transactions, category budgets - only the ones in use, the rest a click
+  away - and this month's income plan. Bills due soon sit in a strip at the
+  top.
+- **The top bar** greets you on the Dashboard and has a search box, a bell
+  that lights up when something is due, and the Add button.
+- **Settings and the lock** are at the bottom of the sidebar.
+- **Dates in lists** read "11 Oct" in your language instead of 2026-10-11.
+- The font now ships with the app. It used to be fetched from Google Fonts
+  each time the app started, the one thing that went online uninvited.
+
 ### Your currency and number format
 Currency and number formatting are settings now, and separate ones — someone in
 Poland holding euros still wants `1 234,56`. Existing budgets keep exactly the

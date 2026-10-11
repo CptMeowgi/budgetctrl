@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { t, tn, setLanguage, interpolate, fmtDate, LANGUAGES, PLURAL_FORMS, systemLanguage } from "./i18n.js";
-import { ago, catName, due, ordinal, storedCatName } from "./text.js";
+import { ago, catName, due, ordinal, shortDate, storedCatName } from "./text.js";
 import de from "./locales/de.js";
 import es from "./locales/es.js";
 import pl from "./locales/pl.js";
@@ -124,6 +124,15 @@ describe("due and ordinal", () => {
     expect(catName("Groceries")).toBe(de["Groceries"]);
     // ...and a category someone named themselves stays as typed.
     expect(catName("Biedronka")).toBe("Biedronka");
+  });
+
+  it("write table dates short, with the year only when it isn't this one", () => {
+    const year = new Date().getFullYear();
+    expect(shortDate(`${year}-10-11`)).toBe("11 Oct");
+    expect(shortDate("2020-10-11")).toBe("11 Oct 2020");
+    expect(shortDate("")).toBe("");
+    setLanguage("de");
+    expect(shortDate(`${year}-10-11`)).toBe("11. Okt.");
   });
 
   it("number days the local way", () => {

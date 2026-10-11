@@ -3,6 +3,7 @@ import { checkPin, makeLock, PIN_MAX, PIN_MIN, retryDelayMs, validPin } from "..
 import { isTauri } from "../platform.js";
 import { LOCK_FILE } from "../storage.js";
 import { ELEVATION, FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
+import { BrandMark } from "./Icon.jsx";
 import { Modal } from "./Modal.jsx";
 import { t } from "../i18n.js";
 
@@ -60,10 +61,12 @@ export function LockScreen({ lock, onUnlock }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: theme.outerBg, display: "flex", alignItems: "center", justifyContent: "center",
                   padding: SPACE.lg, boxSizing: "border-box", fontFamily: FONT, color: theme.text }}>
-      <div style={{ width: "100%", maxWidth: 360, background: theme.surface, borderRadius: RADIUS.lg, border: `1px solid ${theme.border}`,
+      <div style={{ width: "100%", maxWidth: 360, background: theme.modalBg, borderRadius: RADIUS.xl, border: `1px solid ${theme.cardBorder}`,
                     boxShadow: ELEVATION, padding: SPACE.xl, boxSizing: "border-box", textAlign: "center" }}>
-        <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.5 }}>BUDGET</div>
-        <div style={{ fontSize: 10, letterSpacing: 3, color: theme.accent, fontWeight: 700, marginBottom: SPACE.lg }}>CTRL</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: SPACE.lg }}>
+          <BrandMark />
+          <span style={{ fontSize: 20, fontWeight: 700, letterSpacing: -0.7 }}>Budget Ctrl</span>
+        </div>
         <div style={{ ...TYPE.caption, color: theme.textMuted, marginBottom: SPACE.md }}>{t("Locked. Enter your PIN to open.")}</div>
         <input type="password" inputMode="numeric" autoFocus aria-label={t("PIN")} maxLength={PIN_MAX} value={pin}
           onChange={(e) => { setPin(e.target.value.replace(/\D/g, "")); setError(""); }}

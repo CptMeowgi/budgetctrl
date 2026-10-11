@@ -11,6 +11,9 @@ account, no server, and nothing leaves the device.
 
 ## What it does
 
+A dark, glassy desktop budgeting app (with a light version), built around
+the month: what's left, what's coming, and where it went.
+
 **Budget periods that match your payday.** If you're paid on the 10th, a budget
 period runs the 10th to the 9th. Recurring bills resolve to the date they
 actually land inside that period, including short months.

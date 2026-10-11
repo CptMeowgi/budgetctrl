@@ -35,7 +35,7 @@ import { ENTRY_COLUMNS, filterAndSort, toggleSort } from "./listView.js";
 import { countRebucketMoves, CREDIT_UNCATEGORIZED, defaultData, emptyMonth, ensureCategory, ensureCreditCategory, ensureCurrentMonth, hydrate, migrate, rebucketData, STORAGE_KEY, uid } from "./model.js";
 import { currencyCode, fmt, setMoneyFormat } from "./money.js";
 import { isTauri } from "./platform.js";
-import { due, ordinal } from "./text.js";
+import { due, ordinal, shortDate } from "./text.js";
 import { readBackup, readLock, writeBackup, writeLock } from "./storage.js";
 import { DARK_THEME, FOCUS_RING, FONT, LIGHT_THEME, makeStyles, RADIUS, SPACE, ThemeContext, TYPE } from "./theme.js";
 import { BrandMark, Icon } from "./components/Icon.jsx";
@@ -698,7 +698,7 @@ export default function App() {
                           </span>
                         )}
                       </div>
-                      <div style={{ flex: 1, color: theme.textMuted, ...TYPE.caption }}>{b.dueISO}</div>
+                      <div style={{ flex: 1, color: theme.textMuted, ...TYPE.caption }} title={b.dueISO}>{shortDate(b.dueISO)}</div>
                       <div style={{ flex: 1, ...TYPE.caption, color: b.inDays < 0 ? theme.danger : b.inDays === 0 ? theme.warning : theme.textMuted }}>
                         {due(b.inDays)}
                         {b.inDays < -OVERDUE_GRACE_DAYS && (
@@ -873,7 +873,7 @@ export default function App() {
                 <div style={{ flex: 1.2 }}><CategoryPill categoryName={c.category || c.source} categories={data.creditCategories || []} fallback={CREDIT_UNCATEGORIZED} /></div>
                 {kind === "recurring"
                   ? <div style={{ flex: 1, textAlign: "center", color: theme.textMuted, fontSize: 13 }}>{c.dayOfMonth || "—"}</div>
-                  : <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{c.date}</div>}
+                  : <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }} title={c.date}>{shortDate(c.date)}</div>}
                 <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: isReceived(c) ? theme.success : theme.textMuted }}>+{fmt(c.amount)}</div>
                 <RowActions
                   id={c.id}
@@ -1101,7 +1101,7 @@ export default function App() {
                         <div key={c.id} style={s.tableRow}>
                           <EntryName name={c.name} note={c.note} every={c.every} />
                           <div style={{ flex: 1.2 }}><CategoryPill categoryName={c.category || c.source} categories={data.creditCategories || []} fallback={CREDIT_UNCATEGORIZED} /></div>
-                          <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{c.date}</div>
+                          <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }} title={c.date}>{shortDate(c.date)}</div>
                           <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: theme.success }}>+{fmt(c.amount)}</div>
                           <RowActions
                             id={c.id}
