@@ -4,9 +4,12 @@ import { FONT, SPACE, TYPE, useThemed } from "../theme.js";
 import { t } from "../i18n.js";
 import { catName } from "../text.js";
 
-export function CategoryBudgets({ categories, spent, average, envelopeOf, onSetBudget, onStartFresh }) {
+// `compact` (the Dashboard) lists only categories with a budget or spending
+// this period, with the rest a click away.
+export function CategoryBudgets({ categories, spent, average, envelopeOf, onSetBudget, onStartFresh, compact }) {
   const { theme, s } = useThemed();
   const [editing, setEditing] = useState(null);
+  const [showAll, setShowAll] = useState(false);
   const [draftCap, setDraftCap] = useState("");
   const [draftRollover, setDraftRollover] = useState(false);
 
@@ -44,10 +47,13 @@ export function CategoryBudgets({ categories, spent, average, envelopeOf, onSetB
   if (rows.length === 0) {
     return <div style={s.empty}>{t("No categories yet. Add an expense to start tracking.")}</div>;
   }
+  const active = rows.filter((r) => r.env.available != null || r.sp > 0 || r.name === editing);
+  const shown = compact && !showAll ? active : rows;
+  const hidden = rows.length - active.length;
 
   return (
     <div>
-      {rows.map((r) => {
+      {shown.map((r) => {
         const isEditing = editing === r.name;
         const avg = average(r.name);
         const barColor = r.pct == null ? theme.border
@@ -99,8 +105,8 @@ export function CategoryBudgets({ categories, spent, average, envelopeOf, onSetB
               </div>
             )}
             {r.env.available != null && (
-              <div style={{ height: 6, background: theme.bg, borderRadius: 3, overflow: "hidden" }}>
-                <div style={{ width: `${Math.min(100, r.pct)}%`, height: "100%", background: barColor, transition: "width .3s" }} />
+              <div style={{ height: 7, background: theme.track, borderRadius: 99, overflow: "hidden", marginTop: 4 }}>
+                <div style={{ width: `${Math.min(100, r.pct)}%`, height: "100%", borderRadius: 99, background: barColor, transition: "width .3s" }} />
               </div>
             )}
             {(r.rollover || avg != null) && (
@@ -122,6 +128,11 @@ export function CategoryBudgets({ categories, spent, average, envelopeOf, onSetB
           </div>
         );
       })}
+      {compact && hidden > 0 && (
+        <button style={{ ...s.linkBtn, marginTop: SPACE.xs }} onClick={() => setShowAll((v) => !v)}>
+          {showAll ? t("Show fewer") : t("Show all categories ({n})", { n: rows.length })}
+        </button>
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { closeAccount, recordBalance, removeBalance, reopenAccount } from "./lib/accounts.js";
-import { envelope, startFresh, withCap, withRollover } from "./lib/envelopes.js";
+import { startFresh, withCap, withRollover } from "./lib/envelopes.js";
 import { goalStatus, goalsMonthlyNeed, leftOverHistory } from "./lib/goals.js";
 import { convertToRecurring, dismissRegular, findRegularPayments } from "./lib/regular.js";
 import { forecast } from "./lib/forecast.js";
@@ -8,12 +8,10 @@ import { applySetup } from "./lib/setup.js";
 import { currentPeriodKey, isoDay, newEntryDate, periodLabel, setLabelLocale } from "./lib/periods.js";
 import { collectDueBills, OVERDUE_GRACE_DAYS, upcomingSettled } from "./lib/reminders.js";
 import { everyFromLabel, FREQUENCIES, frequencyLabel, isOnCycle } from "./lib/schedule.js";
-import { categoryAverage, creditReceived, periodIncome, periodSpending } from "./lib/totals.js";
+import { creditReceived, periodIncome, periodSpending } from "./lib/totals.js";
 import { AccountModal, AccountsView } from "./components/AccountsView.jsx";
-import { CategoryBudgets } from "./components/CategoryBudgets.jsx";
 import { CategoryManager } from "./components/CategoryManager.jsx";
-import { CategoryDonut } from "./components/charts.jsx";
-import { CategoryPill, InfoHint, StatCard, TableHeader, Toast } from "./components/controls.jsx";
+import { CategoryPill, StatCard, TableHeader, Toast } from "./components/controls.jsx";
 import { GoalModal, SavingsView } from "./components/SavingsView.jsx";
 import { SearchModal } from "./components/SearchModal.jsx";
 import { RulesManager } from "./components/RulesManager.jsx";
@@ -34,15 +32,24 @@ import { cleanNote, NOTE_FIELD } from "./forms.js";
 import { useReminders } from "./hooks/useReminders.js";
 import { useUpdater } from "./hooks/useUpdater.js";
 import { ENTRY_COLUMNS, filterAndSort, toggleSort } from "./listView.js";
-import { categoryBreakdown, countRebucketMoves, CREDIT_UNCATEGORIZED, defaultData, emptyMonth, ensureCategory, ensureCreditCategory, ensureCurrentMonth, hydrate, migrate, rebucketData, STORAGE_KEY, uid } from "./model.js";
+import { countRebucketMoves, CREDIT_UNCATEGORIZED, defaultData, emptyMonth, ensureCategory, ensureCreditCategory, ensureCurrentMonth, hydrate, migrate, rebucketData, STORAGE_KEY, uid } from "./model.js";
 import { currencyCode, fmt, setMoneyFormat } from "./money.js";
 import { isTauri } from "./platform.js";
 import { due, ordinal } from "./text.js";
 import { readBackup, readLock, writeBackup, writeLock } from "./storage.js";
-import { CHIP_GRAY, DARK_THEME, FOCUS_BLUE, FONT, LIGHT_THEME, makeStyles, RADIUS, SPACE, ThemeContext, TYPE } from "./theme.js";
+import { DARK_THEME, FOCUS_RING, FONT, LIGHT_THEME, makeStyles, RADIUS, SPACE, ThemeContext, TYPE } from "./theme.js";
+import { BrandMark, Icon } from "./components/Icon.jsx";
+import { Dashboard } from "./components/Dashboard.jsx";
 import { dateLocale, fmtDate, setLanguage, t, tk, tn } from "./i18n.js";
 
 const UNDO_LIMIT = 50;
+const THEME_KEY = "budget-ctrl-theme";
+
+// The Dashboard greets rather than names the tab.
+function greeting(now) {
+  const h = now.getHours();
+  return h < 5 ? t("Good evening") : h < 12 ? t("Good morning") : h < 18 ? t("Good afternoon") : t("Good evening");
+}
 
 function monthShort(key) {
   const [y, m] = key.split("-").map(Number);
@@ -53,24 +60,25 @@ function monthShort(key) {
 // Previously three parallel inline ternaries in the header that had to be kept
 // in sync by hand.
 const ADD_LABELS = {
+  dashboard: tk("+ Add Expense"),
   expenses: tk("+ Add Expense"),
   recurring: tk("+ Add Recurring"),
   upcoming: tk("+ Add Payment"),
   accounts: tk("+ Add Account"),
   savings: tk("+ Add Goal"),
 };
-const MODAL_FOR_TAB = { expenses: "expense", accounts: "account", savings: "goal" };
+const MODAL_FOR_TAB = { dashboard: "expense", expenses: "expense", accounts: "account", savings: "goal" };
 
 const TABS = [
-  { id: "dashboard", label: tk("Dashboard"), icon: "◉" },
-  { id: "expenses", label: tk("Expenses"), icon: "↗" },
-  { id: "recurring", label: tk("Recurring"), icon: "↻" },
-  { id: "upcoming", label: tk("Upcoming"), icon: "◈" },
-  { id: "credits", label: tk("Credits"), icon: "+" },
-  { id: "history", label: tk("History"), icon: "◷" },
-  { id: "reports", label: tk("Reports"), icon: "▦" },
-  { id: "savings", label: tk("Savings"), icon: "◆" },
-  { id: "accounts", label: tk("Accounts"), icon: "¤" },
+  { id: "dashboard", label: tk("Dashboard"), icon: "grid" },
+  { id: "expenses", label: tk("Expenses"), icon: "receipt" },
+  { id: "recurring", label: tk("Recurring"), icon: "repeat" },
+  { id: "upcoming", label: tk("Upcoming"), icon: "calendar" },
+  { id: "credits", label: tk("Credits"), icon: "money-in" },
+  { id: "history", label: tk("History"), icon: "clock" },
+  { id: "reports", label: tk("Reports"), icon: "chart" },
+  { id: "savings", label: tk("Savings"), icon: "target" },
+  { id: "accounts", label: tk("Accounts"), icon: "wallet" },
 ];
 
 export default function App() {
@@ -89,8 +97,10 @@ export default function App() {
   const [reportRange, setReportRange] = useState(null);
   const importInputRef = useRef(null);
   const [pendingDelete, setPendingDelete] = useState(null);
+  // Dark by default. A new key rather than the old "themeMode", so everyone
+  // meets the redesign in dark once and keeps whatever they choose after.
   const [themeMode, setThemeMode] = useState(() => {
-    try { return localStorage.getItem("themeMode") || "light"; } catch { return "light"; }
+    try { return localStorage.getItem(THEME_KEY) || "dark"; } catch { return "dark"; }
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
@@ -206,7 +216,7 @@ export default function App() {
   }, [pendingDelete]);
 
   useEffect(() => {
-    try { localStorage.setItem("themeMode", themeMode); } catch { /* theme falls back to light next launch */ }
+    try { localStorage.setItem(THEME_KEY, themeMode); } catch { /* theme falls back to dark next launch */ }
   }, [themeMode]);
 
   const themedValue = useMemo(() => {
@@ -361,7 +371,7 @@ export default function App() {
   // isRecurringDue, which treat period bounds as whole days.
   const today = useMemo(() => new Date(`${todayKey}T00:00:00`), [todayKey]);
 
-  if (!loaded || lockCfg === undefined) return <div style={s.shell}><div style={{ color: "#6b7280", textAlign: "center", marginTop: 200, fontSize: 14 }}>{t("Loading...")}</div></div>;
+  if (!loaded || lockCfg === undefined) return <div style={s.shell}><div style={{ color: theme.textFaint, textAlign: "center", marginTop: 200, fontSize: 14 }}>{t("Loading...")}</div></div>;
 
   if (lockCfg && locked) {
     return (
@@ -404,7 +414,6 @@ export default function App() {
   const savingsShortfall = Math.max(0, savingsGoal.monthly - availableAfterCommitted);
   const leftToSpend = Math.max(0, availableAfterCommitted - savingsTarget);
   const remaining = effectiveIncome - totalCommitted;
-  const unpaidCount = cur.upcoming.filter((u) => !upcomingSettled(u, today)).length;
   // Only bills due THIS period can be missing from it. Without the cycle check a
   // yearly bill would be reported missing in the eleven periods it is not due.
   const missingRecurring = (data.recurringTemplate || []).filter(
@@ -419,8 +428,6 @@ export default function App() {
   const dueBills = collectDueBills(data, today, reminderLeadDays, Infinity);
   const totalUpcoming = totalUnpaidUpcoming;
 
-  const catBreakdown = categoryBreakdown(spending.byCategory, data.categories || []);
-  const catTotal = spending.total;
   const leftOver = leftOverHistory(data, today);
   const goals = data.goals || [];
   const goalStatuses = goals.map((g) => goalStatus(g, data, today, leftOver));
@@ -486,7 +493,6 @@ export default function App() {
     <ThemeContext.Provider value={themedValue}>
     <DeleteArmContext.Provider value={deleteArm}>
     <div style={s.shell}>
-      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,600;0,700&display=swap" rel="stylesheet" />
       <style>{`
         *[data-tauri-drag-region] { app-region: drag; -webkit-app-region: drag; }
         *[data-tauri-drag-region] button,
@@ -503,83 +509,132 @@ export default function App() {
         ::-webkit-scrollbar-thumb:hover { background: ${theme.textFaint}; }
         ::-webkit-scrollbar-corner { background: transparent; }
 
-        /* Interaction states. Active compresses to 0.95, focus is a 2px ring in
-           Focus Blue; both are spec'd for every button. */
+        /* Interaction states: buttons press in slightly, and keyboard focus
+           shows a violet ring. */
         button, input, select, textarea { font-family: inherit; }
-        button { transition: transform .12s ease, background-color .2s ease, color .2s ease, opacity .2s ease; }
-        button:active:not(:disabled) { transform: scale(0.95); }
-        :focus-visible { outline: 2px solid ${FOCUS_BLUE}; outline-offset: 2px; }
-        .icon-btn:hover { background: ${CHIP_GRAY} !important; }
+        button { transition: transform .12s ease, background-color .2s ease, color .2s ease, opacity .2s ease, border-color .2s ease; }
+        button:active:not(:disabled) { transform: scale(0.97); }
+        :focus-visible { outline: 2px solid ${FOCUS_RING}; outline-offset: 2px; }
+        .icon-btn:hover { background: ${theme.hover} !important; }
+        .nav-item:hover { color: ${theme.outerText} !important; background: ${theme.hover}; }
+        .add-btn:hover { background: ${theme.addBgHover} !important; }
+        .search-pill:hover { border-color: ${theme.addBorder} !important; }
+        .row-hover:hover { background: ${theme.hover}; }
+
+        /* The soft colour glows behind everything, drifting slowly. */
+        .ambient { position: absolute; z-index: -1; inset: -34% -28% -28% -12%; pointer-events: none;
+          background:
+            radial-gradient(ellipse 74% 46% at 20% 40%, ${theme.glowA}, transparent 76%),
+            radial-gradient(ellipse 78% 50% at 82% 60%, ${theme.glowB}, transparent 78%),
+            radial-gradient(circle at 74% 2%, ${theme.glowC}, transparent 25%);
+          filter: blur(88px); animation: ambient-drift 38s ease-in-out infinite alternate; }
+        @keyframes ambient-drift {
+          0% { transform: translate3d(-2%, -1%, 0) scale(.98) rotate(-1deg); }
+          50% { transform: translate3d(2.5%, 1.5%, 0) scale(1.025) rotate(.6deg); }
+          100% { transform: translate3d(-.5%, 3%, 0) scale(1.01) rotate(-.4deg); }
+        }
+        @media (prefers-reduced-motion: reduce) { .ambient { animation: none; } }
+
+        /* Dashboard grid, after the design; stacks when the window is narrow. */
+        .dash-top { display: grid; grid-template-columns: minmax(0, 1.72fr) minmax(0, .86fr); gap: 18px; }
+        .dash-lower { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, .9fr); gap: 18px; margin-top: 18px; }
+        .dash-plan { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, .95fr) minmax(0, 1.5fr); gap: 28px; align-items: start; }
+        @media (max-width: 1180px) {
+          .dash-top, .dash-lower { grid-template-columns: minmax(0, 1fr); }
+          .dash-plan { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+          .dash-plan > :last-child { grid-column: 1 / -1; }
+        }
 
         /* Inline-editable cells read as text until you reach for them. */
         .inline-edit { border: 1px solid transparent; transition: border-color .15s ease, background-color .15s ease; }
         .inline-edit:hover { border-color: ${theme.border}; }
-        .inline-edit:focus { border-color: ${FOCUS_BLUE}; background: ${theme.bg} !important; }
+        .inline-edit:focus { border-color: ${FOCUS_RING}; background: ${theme.bg} !important; }
       `}</style>
+
+      <div className="ambient" aria-hidden="true" />
 
       {/* SIDEBAR */}
       <aside style={s.sidebar}>
         <div data-tauri-drag-region style={s.logo}>
-          <div data-tauri-drag-region style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.5, color: theme.outerText }}>BUDGET</div>
-          <div data-tauri-drag-region style={{ fontSize: 10, letterSpacing: 3, color: theme.accent, fontWeight: 700 }}>CTRL</div>
+          <BrandMark />
+          <span data-tauri-drag-region style={{ fontSize: 20, fontWeight: 700, letterSpacing: -0.7, color: theme.outerText, whiteSpace: "nowrap" }}>Budget Ctrl</span>
         </div>
         <nav style={s.nav}>
-          {TABS.map((tb) => (
-            <button key={tb.id} onClick={() => { setTab(tb.id); if (tb.id !== "history") setHistoryKey(null); }}
-              style={tab === tb.id ? { ...s.navItem, ...s.navItemActive } : s.navItem}>
-              <span style={{ fontSize: 16, width: 24, textAlign: "center" }}>{tb.icon}</span>
-              <span>{t(tb.label)}</span>
-              {tb.id === "upcoming" && dueBills.length > 0 && <span style={s.badge} title={t("Due soon or overdue")}>{dueBills.length}</span>}
-            </button>
-          ))}
+          {TABS.map((tb) => {
+            const active = tab === tb.id;
+            return (
+              <button key={tb.id} className={active ? undefined : "nav-item"} onClick={() => { setTab(tb.id); if (tb.id !== "history") setHistoryKey(null); }}
+                style={active ? { ...s.navItem, ...s.navItemActive } : s.navItem} aria-current={active ? "page" : undefined}>
+                <Icon name={tb.icon} />
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t(tb.label)}</span>
+                {tb.id === "upcoming" && dueBills.length > 0
+                  ? <span style={s.badge} title={t("Due soon or overdue")}>{dueBills.length}</span>
+                  : active && <span style={{ marginLeft: "auto", width: 5, height: 5, borderRadius: "50%", background: theme.accent, flex: "none" }} />}
+              </button>
+            );
+          })}
         </nav>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, borderTop: `1px solid ${theme.outerBorder}`, paddingTop: SPACE.sm, marginTop: SPACE.md }}>
+          {lockCfg && (
+            <button className="nav-item" style={s.navItem} onClick={() => setLocked(true)} title={t("Lock now (Ctrl+L)")}>
+              <Icon name="lock" /><span>{t("Lock")}</span>
+            </button>
+          )}
+          <button className="nav-item" style={s.navItem} onClick={() => setSettingsOpen(true)}>
+            <Icon name="sliders" /><span>{t("Settings")}</span>
+          </button>
+        </div>
         <input type="file" accept=".json" ref={importInputRef} onChange={onImportFile} style={{ display: "none" }} />
       </aside>
 
       {/* MAIN */}
       <main style={s.main}>
-        <header data-tauri-drag-region style={{ ...s.topbar, position: "relative", paddingTop: isTauri ? 44 : SPACE.lg, paddingRight: SPACE.md }}>
+        <header data-tauri-drag-region style={{ ...s.topbar, position: "relative", paddingTop: isTauri ? 40 : 20 }}>
           <WindowControls />
           {/* The whole bar drags; interactive children opt out via app-region: no-drag */}
-          <div data-tauri-drag-region style={{ flex: 1, alignSelf: "stretch", display: "flex", flexDirection: "column", justifyContent: "center" }}>
-            <h1 data-tauri-drag-region style={{ ...TYPE.tagline, margin: 0, color: theme.outerText }}>
-              {t(TABS.find((tb) => tb.id === tab)?.label || "")}
+          <div data-tauri-drag-region style={{ flex: 1, minWidth: 0, alignSelf: "stretch", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+            <span data-tauri-drag-region style={{ ...TYPE.navLink, textTransform: "uppercase", color: theme.outerTextMuted, marginBottom: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {fmtDate(new Date(), { weekday: "long", day: "numeric", month: "long" })}
+              {cutoffDay > 1 && ` · ${t("period {range}", { range: periodLabel(curKey, cutoffDay).range })}`}
+            </span>
+            <h1 data-tauri-drag-region style={{ ...TYPE.tagline, margin: 0, color: theme.outerText, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {tab === "dashboard" ? greeting(new Date()) : t(TABS.find((tb) => tb.id === tab)?.label || "")}
             </h1>
-            <div data-tauri-drag-region style={{ ...TYPE.navLink, color: theme.outerTextMuted, marginTop: 6 }}>
-              {fmtDate(new Date(), { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
-              {cutoffDay > 1 && (
-                <span style={{ color: theme.outerTextMuted }}> · {t("period {range}", { range: periodLabel(curKey, cutoffDay).range })}</span>
-              )}
-            </div>
           </div>
           {/* One right-hand group in normal flow: the Add CTA plus the two icon
               controls, sharing a baseline and ending flush at the edge. */}
-          <div style={{ display: "flex", alignItems: "center", gap: SPACE.xs, flexShrink: 0 }}>
-            {ADD_LABELS[tab] && (
-              <button style={s.addBtn} onClick={() => setModal({ type: MODAL_FOR_TAB[tab] || tab })}>
-                {t(ADD_LABELS[tab])}
-              </button>
-            )}
-            <button className="icon-btn" style={s.themeToggle} onClick={() => setSearchOpen(true)} title={t("Search everything (Ctrl+F)")}>⌕</button>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+            <button className="search-pill" onClick={() => setSearchOpen(true)} title={t("Search everything (Ctrl+F)")}
+              style={{ width: 215, height: 40, padding: "0 11px", display: "flex", alignItems: "center", gap: 8, border: `1px solid ${theme.outerBorder}`,
+                       borderRadius: 14, background: theme.bg, color: theme.textSoft, cursor: "pointer", fontSize: 13, fontFamily: FONT }}>
+              <Icon name="search" size={17} />
+              <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t("Search everything")}</span>
+              <kbd style={{ padding: "2px 5px", border: `1px solid ${theme.outerBorder}`, borderRadius: 4, fontSize: 10, fontFamily: FONT, whiteSpace: "nowrap" }}>Ctrl F</kbd>
+            </button>
             <button
               className="icon-btn"
               style={{ ...s.themeToggle, opacity: historySize.past ? 1 : 0.35, cursor: historySize.past ? "pointer" : "default" }}
               disabled={!historySize.past}
               onClick={undo}
               title={t("Undo (Ctrl+Z)")}
-            >↶</button>
+            ><Icon name="undo" size={17} /></button>
             <button
               className="icon-btn"
               style={s.themeToggle}
               onClick={() => setThemeMode((m) => m === "dark" ? "light" : "dark")}
               title={themeMode === "dark" ? t("Switch to light panel") : t("Switch to dark panel")}
-            >
-              {themeMode === "dark" ? "☀" : "☾"}
+            ><Icon name={themeMode === "dark" ? "sun" : "moon"} size={17} /></button>
+            <button className="icon-btn" style={s.themeToggle} onClick={() => setTab("upcoming")}
+              title={dueBills.length ? t("Due soon or overdue") : t("Nothing due soon")}>
+              <Icon name="bell" size={17} />
+              {dueBills.length > 0 && <span style={{ position: "absolute", top: 8, right: 9, width: 6, height: 6, borderRadius: "50%", background: theme.danger, boxShadow: `0 0 0 2px ${theme.canvas}` }} />}
             </button>
-            {lockCfg && (
-              <button className="icon-btn" style={{ ...s.themeToggle, filter: "grayscale(1)" }} onClick={() => setLocked(true)} title={t("Lock now (Ctrl+L)")}>🔒</button>
+            {ADD_LABELS[tab] && (
+              <button className="add-btn" style={s.addBtn} onClick={() => setModal({ type: MODAL_FOR_TAB[tab] || tab })}>
+                <Icon name="plus" size={16} />
+                {t(ADD_LABELS[tab]).replace(/^\+\s*/, "")}
+              </button>
             )}
-            <button className="icon-btn" style={s.themeToggle} onClick={() => setSettingsOpen(true)} title={t("Settings")}>⚙</button>
           </div>
         </header>
 
@@ -588,161 +643,20 @@ export default function App() {
           <UpdateBanner updater={updater} onInstall={installUpdate} />
           {/* DASHBOARD */}
           {tab === "dashboard" && (
-            <>
-              {/* Column count is left to statsRow's auto-fit. Pinning it to
-                  repeat(5, 1fr) overflowed the row, because a bare 1fr is
-                  minmax(auto, 1fr) and the largest currency value refused to
-                  shrink below its own content width. */}
-              <div style={s.statsRow}>
-                <StatCard label={t("Remaining")} value={fmt(remaining)} accent={remaining >= 0 && !fc.runsShortOn ? "#10b981" : "#ef4444"}
-                  sub={fc.series.length < 2 || fc.lowestWithEveryday.date === fc.series[0].date
-                    // Nothing ahead brings it lower than now: no dip worth naming.
-                    ? (totalStillScheduled > 0 ? t("{amount} still scheduled", { amount: fmt(totalStillScheduled) }) : t("Everything's landed"))
-                    : fc.runsShortOn
-                      ? t("Runs short around {date} at this pace", { date: fcDay(fc.runsShortOn) })
-                      : t("Lowest ahead {amount} on {date}", { amount: fmt(fc.lowestWithEveryday.amount), date: fcDay(fc.lowestWithEveryday.date) })} icon="↓" />
-                <StatCard label={t("Still to Pay")} value={fmt(totalUpcoming)} accent="#f59e0b" sub={tn(unpaidCount, "{n} upcoming payment", "{n} upcoming payments")} icon="◈" />
-                <StatCard label={t("Total Spent")} value={fmt(totalActuallySpent)} accent="#ef4444" sub={t("{oneOff} one-off · {recurring} recurring", { oneOff: cur.expenses.length, recurring: cur.recurring.length })} icon="↻" />
-                {goals.length > 0 && (
-                  <StatCard label={t("Saved for Goals")} value={fmt(goalsSaved)} accent="#0066cc"
-                    sub={goalsTarget > 0
-                      ? `${Math.round(Math.min(1, goalsSaved / goalsTarget) * 100)}% of ${fmt(goalsTarget)} · ${goals.length} goal${goals.length !== 1 ? "s" : ""}`
-                      : `${goals.length} goal${goals.length !== 1 ? "s" : ""}`} icon="◆" />
-                )}
-              </div>
-              {dueBills.length > 0 && (
-                <div style={{ ...s.card, marginBottom: 16 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={s.cardTitle}>{t("Due soon")}</div>
-                    <button style={s.linkBtn} onClick={() => setTab("upcoming")}>{t("View all →")}</button>
-                  </div>
-                  {dueBills.slice(0, 5).map((b) => (
-                    <div key={b.id} style={s.miniRow}>
-                      <div>
-                        <div style={{ fontWeight: 600, fontSize: 13 }}>{b.name}</div>
-                        <div style={{ fontSize: 11, color: b.inDays < 0 ? theme.danger : theme.textMuted }}>
-                          {due(b.inDays)} · {b.kind === "recurring" ? t("recurring bill") : t("payment")}
-                        </div>
-                      </div>
-                      <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: theme.warning, fontSize: 13 }}>{fmt(b.amount)}</div>
-                    </div>
-                  ))}
-                  {dueBills.length > 5 && (
-                    <div style={{ ...TYPE.finePrint, color: theme.textFaint, marginTop: SPACE.xs }}>{t("+{n} more", { n: dueBills.length - 5 })}</div>
-                  )}
-                </div>
-              )}
-
-              {/* This period's income, what to set aside, and where it is going */}
-              <div style={{ ...s.card, marginBottom: 16 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 0.85fr) minmax(0, 0.95fr) minmax(0, 1.5fr)", gap: 28, alignItems: "start" }}>
-                  <div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <div style={s.cardTitle}>{cutoffDay === 1 ? t("Income this month") : t("Income this period")}</div>
-                      <InfoHint text={t("Your pay for this period. A new period starts with the last one's figure, so change it here when your pay changes. Credits are added on top.")} />
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
-                      <input type="number" min={0} value={cur.income || ""} placeholder="0" aria-label={t("Income this period")}
-                        onChange={(e) => patchCur({ income: Math.max(0, +e.target.value || 0) })}
-                        style={{ ...s.input, width: 130, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 18, color: theme.success }} />
-                      <span style={{ ...TYPE.caption, color: theme.textMuted, fontWeight: 600 }}>{data.currency}</span>
-                    </div>
-                    {(totalCredits > 0 || totalCreditsPending > 0) && (
-                      <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.success, marginTop: 8, fontVariantNumeric: "tabular-nums" }}>
-                        {t("+ {amount} credits", { amount: fmt(totalCredits) })}
-                        {totalCreditsPending > 0 && <span style={{ color: theme.textFaint }}> · {t("{amount} pending", { amount: fmt(totalCreditsPending) })}</span>}
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <div style={s.cardTitle}>{cutoffDay === 1 ? t("Set aside each month") : t("Set aside each period")}</div>
-                      <InfoHint text={t("How much you mean to save out of this period's money. It is taken off before Left to Spend, so what remains is genuinely free.")} />
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
-                      <input type="number" min={0} value={savingsGoal.monthly || ""} placeholder="0"
-                        onChange={(e) => save({ ...data, savingsGoal: { ...savingsGoal, monthly: Math.max(0, Math.floor(+e.target.value) || 0) } })}
-                        style={{ ...s.input, width: 140, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, fontSize: 18 }} />
-                      <span style={{ ...TYPE.caption, color: theme.textMuted, fontWeight: 600 }}>{data.currency}</span>
-                    </div>
-                    {savingsShortfall > 0 ? (
-                      <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.warning, marginTop: 8 }}>
-                        {t("{short} short this period · setting aside {amount}", { short: fmt(savingsShortfall), amount: fmt(savingsTarget) })}
-                      </div>
-                    ) : savingsGoal.monthly > 0 ? (
-                      <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginTop: 8 }}>
-                        {t("Covered · {amount} still free", { amount: fmt(leftToSpend) })}
-                      </div>
-                    ) : null}
-                    {goalsNeed > 0 && Math.round(goalsNeed) !== savingsGoal.monthly && (
-                      <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginTop: 8 }}>
-                        {t("Your dated goals need {amount} a month.", { amount: fmt(goalsNeed) })}{" "}
-                        <button style={{ ...s.linkBtn, padding: 0, ...TYPE.finePrint, fontWeight: 600 }}
-                          onClick={() => save({ ...data, savingsGoal: { ...savingsGoal, monthly: Math.round(goalsNeed) } })}>{t("Set aside that")}</button>
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <div style={s.cardTitle}>{t("Income Breakdown")}</div>
-                    {effectiveIncome > 0 ? (
-                      <>
-                        <div style={s.breakdownBar}>
-                          {[
-                            { pct: (totalActuallySpent / effectiveIncome) * 100, color: "#ef4444" },
-                            { pct: (totalStillScheduled / effectiveIncome) * 100, color: "#f59e0b" },
-                            { pct: (savingsTarget / effectiveIncome) * 100, color: "#0066cc" },
-                            { pct: (leftToSpend / effectiveIncome) * 100, color: "#10b981" },
-                          ].filter((x) => x.pct > 0 && isFinite(x.pct)).map((seg, i) => (
-                            <div key={i} style={{ height: "100%", background: seg.color, width: `${Math.min(seg.pct, 100)}%`, transition: "width .3s" }} />
-                          ))}
-                        </div>
-                        <div style={{ display: "flex", gap: 20, marginTop: 10, flexWrap: "wrap" }}>
-                          {[
-                            { color: "#ef4444", label: tk("Spent"), val: totalActuallySpent },
-                            { color: "#f59e0b", label: tk("Upcoming"), val: totalStillScheduled },
-                            { color: "#0066cc", label: tk("Savings"), val: savingsTarget },
-                            { color: "#10b981", label: tk("Left to spend"), val: leftToSpend },
-                          ].map((l) => (
-                            <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
-                              <div style={{ width: 10, height: 10, borderRadius: 3, background: l.color }} />
-                              <span style={{ color: theme.textFaint }}>{t(l.label)}</span>
-                              <span style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 600, color: theme.text }}>{fmt(l.val)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </>
-                    ) : (
-                      <div style={s.emptySmall}>{t("Set income to see breakdown")}</div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Charts row 1: daily line + category donut */}
-              <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)", gap: 16, marginBottom: 16 }}>
-                <div style={s.card}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={s.cardTitle}>{t("Category Budgets")}</div>
-                    <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => setCategoriesOpen(true)}>{t("Manage")}</button>
-                  </div>
-                  <div style={{ marginTop: 12 }}>
-                    <CategoryBudgets
-                      categories={data.categories}
-                      spent={spentByCat}
-                      average={(name) => categoryAverage(data, name, curKey, today)}
-                      envelopeOf={(c, sp) => envelope(data, c, curKey, today, sp)}
-                      onSetBudget={onSetBudget}
-                      onStartFresh={onStartFresh}
-                    />
-                  </div>
-                </div>
-                <div style={s.card}>
-                  <div style={s.cardTitle}>{t("By Category")}</div>
-                  <CategoryDonut data={catBreakdown} total={catTotal} />
-                </div>
-              </div>
-
-            </>
+            <Dashboard
+              data={data} cur={cur} curKey={curKey} today={today} cutoffDay={cutoffDay} fc={fc}
+              remaining={remaining}
+              remainingSub={fc.series.length < 2 || fc.lowestWithEveryday.date === fc.series[0].date
+                // Nothing ahead brings it lower than now: no dip worth naming.
+                ? (totalStillScheduled > 0 ? t("{amount} still scheduled", { amount: fmt(totalStillScheduled) }) : t("Everything's landed"))
+                : t("Lowest ahead {amount} on {date}", { amount: fmt(fc.lowestWithEveryday.amount), date: fcDay(fc.lowestWithEveryday.date) })}
+              totalUpcoming={totalUpcoming} totalActuallySpent={totalActuallySpent} totalStillScheduled={totalStillScheduled}
+              goals={goals} goalsSaved={goalsSaved} goalsTarget={goalsTarget} goalsNeed={goalsNeed}
+              dueBills={dueBills} totalCredits={totalCredits} totalCreditsPending={totalCreditsPending}
+              savingsGoal={savingsGoal} savingsShortfall={savingsShortfall} savingsTarget={savingsTarget} leftToSpend={leftToSpend}
+              effectiveIncome={effectiveIncome} spentByCat={spentByCat} isReceived={isReceived}
+              onSetTab={setTab} onEdit={setModal} patchCur={patchCur} save={save}
+              onManageCategories={() => setCategoriesOpen(true)} onSetBudget={onSetBudget} onStartFresh={onStartFresh} />
           )}
 
           {/* EXPENSES */}
@@ -765,9 +679,9 @@ export default function App() {
               {(
                 <>
                   <TableHeader columns={[
-                    { label: "NAME", flex: 2 }, { label: "TYPE", flex: 0.9 },
-                    { label: "DUE", flex: 1 }, { label: "WHEN", flex: 1 },
-                    { label: "AMOUNT", flex: 1, align: "right" }, { label: "", flex: 1.1, align: "right" },
+                    { label: tk("NAME"), flex: 2 }, { label: tk("TYPE"), flex: 0.9 },
+                    { label: tk("DUE"), flex: 1 }, { label: tk("WHEN"), flex: 1 },
+                    { label: tk("AMOUNT"), flex: 1, align: "right" }, { label: "", flex: 1.1, align: "right" },
                   ]} />
                   {dueBills.map((b) => (
                     <div key={b.id} style={s.tableRow}>
@@ -822,7 +736,7 @@ export default function App() {
                   <div style={s.cardTitle}>{t("All Expenses")}</div>
                   <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => setStatementOpen(true)}>{t("Import from bank")}</button>
                 </div>
-                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444", fontSize: 16 }}>{t("Total: {amount}", { amount: fmt(totalExpenses) })}</div>
+                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: theme.danger, fontSize: 16 }}>{t("Total: {amount}", { amount: fmt(totalExpenses) })}</div>
               </div>
               <input
                 type="text"
@@ -873,7 +787,7 @@ export default function App() {
             <div style={s.card}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                 <div style={s.cardTitle}>{t("Recurring Payments")}</div>
-                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#0066cc", fontSize: 16 }}>{t("This period: {amount}", { amount: fmt(totalRecurringAll) })}</div>
+                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: theme.accent, fontSize: 16 }}>{t("This period: {amount}", { amount: fmt(totalRecurringAll) })}</div>
               </div>
               <MissingFromTemplate
                 missing={missingRecurring}
@@ -926,7 +840,7 @@ export default function App() {
             <div style={s.card}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                 <div style={s.cardTitle}>{t("Upcoming Payments")}</div>
-                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#f59e0b", fontSize: 16 }}>{t("Owed: {amount}", { amount: fmt(totalUpcoming) })}</div>
+                <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: theme.warning, fontSize: 16 }}>{t("Owed: {amount}", { amount: fmt(totalUpcoming) })}</div>
               </div>
               <input
                 type="text"
@@ -960,7 +874,7 @@ export default function App() {
                 {kind === "recurring"
                   ? <div style={{ flex: 1, textAlign: "center", color: theme.textMuted, fontSize: 13 }}>{c.dayOfMonth || "—"}</div>
                   : <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{c.date}</div>}
-                <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: isReceived(c) ? "#10b981" : theme.textMuted }}>+{fmt(c.amount)}</div>
+                <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: isReceived(c) ? theme.success : theme.textMuted }}>+{fmt(c.amount)}</div>
                 <RowActions
                   id={c.id}
                   onEdit={() => setModal({ type: kind === "recurring" ? "creditRecurring" : "credit", editId: c.id })}
@@ -983,7 +897,7 @@ export default function App() {
                 <div style={s.card}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                     <div style={s.cardTitle}>{t("Credits")}</div>
-                    <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#10b981", fontSize: 16 }}>
+                    <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: theme.success, fontSize: 16 }}>
                       {t("Received: {amount}", { amount: fmt(totalCredits) })}
                       {totalCreditsPending > 0 && <span style={{ color: theme.textMuted, fontSize: 13 }}> · {t("{amount} pending", { amount: fmt(totalCreditsPending) })}</span>}
                     </div>
@@ -1058,7 +972,7 @@ export default function App() {
                       const credits = inc.credits;
                       const spent = periodSpending(m, k, today, cutoffDay).total;
                       const rem = inc.total - spent;
-                      const color = rem >= 0 ? "#10b981" : "#ef4444";
+                      const color = rem >= 0 ? theme.success : theme.danger;
                       return (
                         <button key={k} onClick={() => setHistoryKey(k)} style={{
                           background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 12, padding: 20,
@@ -1076,12 +990,12 @@ export default function App() {
                             <div style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>{t("Income")}</div>
                             <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>{fmt(m.income)}</div>
                             {credits > 0 && (
-                              <div style={{ fontSize: 10, color: "#10b981", fontFamily: FONT, fontVariantNumeric: "tabular-nums" }}>+{fmt(credits)}</div>
+                              <div style={{ fontSize: 10, color: theme.success, fontFamily: FONT, fontVariantNumeric: "tabular-nums" }}>+{fmt(credits)}</div>
                             )}
                           </div>
                           <div>
                             <div style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>{t("Spent")}</div>
-                            <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#ef4444" }}>{fmt(spent)}</div>
+                            <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: theme.danger }}>{fmt(spent)}</div>
                           </div>
                           <div>
                             <div style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>{t("Remaining")}</div>
@@ -1120,9 +1034,9 @@ export default function App() {
                   <span style={{ fontSize: 12, color: theme.textMuted, fontWeight: 600 }}>{data.currency}</span>
                 </div>
                 <div style={s.statsRow}>
-                  <StatCard label={t("Income")} value={fmt(effective)} accent="#10b981" sub={credits > 0 ? t("+ {amount} credits", { amount: fmt(credits) }) : t("For this month")} icon="↑" />
-                  <StatCard label={t("Remaining")} value={fmt(rem)} accent={rem >= 0 ? "#10b981" : "#ef4444"} sub={t("After everything paid")} icon="↓" />
-                  <StatCard label={t("Total Spent")} value={fmt(spent)} accent="#ef4444" sub={t("{oneOff} one-off · {recurring} recurring", { oneOff: m.expenses.length, recurring: m.recurring.length })} icon="↻" />
+                  <StatCard label={t("Income")} value={fmt(effective)} accent={theme.success} sub={credits > 0 ? t("+ {amount} credits", { amount: fmt(credits) }) : t("For this month")} icon="↑" />
+                  <StatCard label={t("Remaining")} value={fmt(rem)} accent={rem >= 0 ? theme.success : theme.danger} sub={t("After everything paid")} icon="↓" />
+                  <StatCard label={t("Total Spent")} value={fmt(spent)} accent={theme.danger} sub={t("{oneOff} one-off · {recurring} recurring", { oneOff: m.expenses.length, recurring: m.recurring.length })} icon="↻" />
                 </div>
                 <div style={s.card}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -1131,7 +1045,7 @@ export default function App() {
                   </div>
                   {m.expenses.length === 0 ? <div style={s.emptySmall}>{t("No expenses")}</div> : (
                     <>
-                      <TableHeader columns={[{ label: "NAME", flex: 2 }, { label: "CATEGORY", flex: 1.2 }, { label: "DATE", flex: 1 }, { label: "AMOUNT", flex: 1, align: "right" }, { label: "", flex: 0.6, align: "center" }]} />
+                      <TableHeader columns={[{ label: tk("NAME"), flex: 2 }, { label: tk("CATEGORY"), flex: 1.2 }, { label: tk("DATE"), flex: 1 }, { label: tk("AMOUNT"), flex: 1, align: "right" }, { label: "", flex: 0.6, align: "center" }]} />
                       {m.expenses.map((e) => (
                         <ExpenseRow key={e.id} entry={e} categories={data.categories}
                           onEdit={() => setModal({ type: "expense", editId: e.id, monthKey: historyKey })}
@@ -1182,13 +1096,13 @@ export default function App() {
                   </div>
                   {(m.credits || []).length === 0 ? <div style={s.emptySmall}>{t("No credits")}</div> : (
                     <>
-                      <TableHeader columns={[{ label: "NAME", flex: 2 }, { label: "SOURCE", flex: 1.2 }, { label: "DATE", flex: 1 }, { label: "AMOUNT", flex: 1, align: "right" }, { label: "", flex: 0.6, align: "center" }]} />
+                      <TableHeader columns={[{ label: tk("NAME"), flex: 2 }, { label: tk("SOURCE"), flex: 1.2 }, { label: tk("DATE"), flex: 1 }, { label: tk("AMOUNT"), flex: 1, align: "right" }, { label: "", flex: 0.6, align: "center" }]} />
                       {(m.credits || []).map((c) => (
                         <div key={c.id} style={s.tableRow}>
                           <EntryName name={c.name} note={c.note} every={c.every} />
                           <div style={{ flex: 1.2 }}><CategoryPill categoryName={c.category || c.source} categories={data.creditCategories || []} fallback={CREDIT_UNCATEGORIZED} /></div>
                           <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }}>{c.date}</div>
-                          <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "#10b981" }}>+{fmt(c.amount)}</div>
+                          <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: theme.success }}>+{fmt(c.amount)}</div>
                           <RowActions
                             id={c.id}
                             onEdit={() => setModal({ type: "credit", editId: c.id, monthKey: historyKey })}

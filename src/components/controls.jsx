@@ -4,16 +4,17 @@ import { ELEVATION, FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
 import { t } from "../i18n.js";
 import { catName } from "../text.js";
 
-export function StatCard({ label, value, accent, sub, icon }) {
+// A figure with a label above and a line of context below. The figure takes
+// the colour of what it means: green for money in hand, orange for owed, red
+// for spent or short.
+export function StatCard({ label, value, accent, sub }) {
   const { theme, s } = useThemed();
   return (
-    <div style={{ ...s.statCard, borderTop: `3px solid ${accent}` }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div style={{ ...TYPE.finePrint, textTransform: "uppercase", letterSpacing: "0.8px", color: theme.textFaint, fontWeight: 600 }}>{label}</div>
-        <div style={{ fontSize: 20, opacity: 0.3 }}>{icon}</div>
-      </div>
-      <div style={{ ...TYPE.lead, fontWeight: 600, color: accent, fontFamily: FONT, fontVariantNumeric: "tabular-nums", margin: "12px 0 4px" }}>{value}</div>
-      {sub && <div style={{ ...TYPE.finePrint, lineHeight: 1.4, color: theme.textFaint }}>{sub}</div>}
+    <div style={s.statCard}>
+      <div style={{ fontSize: 12, fontWeight: 500, color: theme.textFaint }}>{label}</div>
+      <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-1px", lineHeight: 1.2, color: accent || theme.text, fontFamily: FONT,
+                    fontVariantNumeric: "tabular-nums", margin: "7px 0 5px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</div>
+      {sub && <div style={{ fontSize: 12, lineHeight: 1.4, color: theme.textFaint }}>{sub}</div>}
     </div>
   );
 }

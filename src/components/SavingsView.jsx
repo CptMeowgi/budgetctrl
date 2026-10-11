@@ -134,7 +134,7 @@ export function SavingsView({ data, history, today, cutoffDay, onAddGoal, onEdit
                     onChange={(v) => onChangeIncome(row.key, v)} />
                 </div>
                 <div style={{ flex: 1, textAlign: "right", ...money, color: theme.textMuted }}>{fmt(row.spent)}</div>
-                <div style={{ flex: 1, textAlign: "right", ...money, fontWeight: 700, color: row.delta >= 0 ? "#10b981" : "#ef4444" }}>
+                <div style={{ flex: 1, textAlign: "right", ...money, fontWeight: 700, color: row.delta >= 0 ? theme.success : theme.danger }}>
                   {row.delta >= 0 ? "+" : ""}{fmt(row.delta)}
                 </div>
                 <div style={{ flex: 1, textAlign: "right", ...money, fontWeight: 700 }}>{fmt(row.balance)}</div>

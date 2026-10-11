@@ -37,7 +37,7 @@ function CategoryTrends({ report, categories, curKey, onOpenPeriod }) {
     { label: tk("Spent"), values: report.periods.map((p) => p.spent), total: report.spent, avg: report.averageSpent, color: () => theme.text },
     { label: tk("Income"), values: report.periods.map((p) => p.income), total: report.income, avg: report.averageIncome, color: () => theme.text },
     { label: tk("Saved"), values: report.periods.map((p) => p.income - p.spent), total: report.saved, avg: report.averageSaved,
-      color: (v) => (v >= 0 ? "#10b981" : "#ef4444") },
+      color: (v) => (v >= 0 ? theme.success : theme.danger) },
   ];
   return (
     <div style={{ overflowX: "auto", marginTop: SPACE.md }}>
@@ -166,7 +166,7 @@ export function ReportsView({ data, today, curKey, range, onRange, onOpenPeriod 
 
   const catDonut = categoryBreakdown(new Map(report.categories.map((c) => [c.name, c.total])), data.categories || []);
   const incomeDonut = report.incomeSources.map(({ name, value }) => {
-    if (name === BASE_INCOME_NAME) return { name, value, color: "#0066cc", icon: "💼" };
+    if (name === BASE_INCOME_NAME) return { name, value, color: theme.accent, icon: "💼" };
     const cat = (data.creditCategories || []).find((c) => c.name === name) || CREDIT_UNCATEGORIZED;
     return { name, value, color: cat.color, icon: cat.icon };
   });
@@ -193,13 +193,13 @@ export function ReportsView({ data, today, curKey, range, onRange, onOpenPeriod 
       ) : (
         <>
           <div style={s.statsRow}>
-            <StatCard label={t("Income")} value={fmt(report.income)} accent="#10b981"
+            <StatCard label={t("Income")} value={fmt(report.income)} accent={theme.success}
               sub={vs("income") || t("Base income and credits received")} icon="↑" />
-            <StatCard label={t("Spent")} value={fmt(report.spent)} accent="#ef4444"
+            <StatCard label={t("Spent")} value={fmt(report.spent)} accent={theme.danger}
               sub={vs("spent") || (running ? t("Everything paid so far") : t("Everything paid"))} icon="↻" />
-            <StatCard label={t("Saved")} value={fmt(report.saved)} accent={report.saved >= 0 ? "#10b981" : "#ef4444"}
+            <StatCard label={t("Saved")} value={fmt(report.saved)} accent={report.saved >= 0 ? theme.success : theme.danger}
               sub={report.savingsRate == null ? t("No income recorded") : t("{pct}% of income", { pct: Math.round(report.savingsRate * 100) })} icon="↓" />
-            <StatCard label={monthly ? t("Avg per month") : t("Avg per period")} value={fmt(report.averageSpent)} accent="#0066cc"
+            <StatCard label={monthly ? t("Avg per month") : t("Avg per period")} value={fmt(report.averageSpent)} accent={theme.accent}
               sub={running && report.averagedOver < keys.length
                 ? (monthly ? tn(report.averagedOver, "Spent, over {n} completed month", "Spent, over {n} completed months") : tn(report.averagedOver, "Spent, over {n} completed period", "Spent, over {n} completed periods"))
                 : (monthly ? tn(report.averagedOver, "Spent, over {n} month", "Spent, over {n} months") : tn(report.averagedOver, "Spent, over {n} period", "Spent, over {n} periods"))} icon="◐" />
@@ -244,7 +244,7 @@ export function ReportsView({ data, today, curKey, range, onRange, onOpenPeriod 
                           </div>
                         </div>
                         <div style={{ textAlign: "right", whiteSpace: "nowrap", ...money }}>
-                          <div style={{ fontWeight: 700, color: up ? "#ef4444" : "#10b981" }}>{up ? "↑" : "↓"} {fmt(Math.abs(c.delta))}</div>
+                          <div style={{ fontWeight: 700, color: up ? theme.danger : theme.success }}>{up ? "↑" : "↓"} {fmt(Math.abs(c.delta))}</div>
                           {c.pct != null && <div style={{ ...TYPE.finePrint, color: theme.textFaint, marginTop: 2 }}>{up ? "+" : "−"}{Math.abs(c.pct * 100).toFixed(0)}%</div>}
                         </div>
                       </div>
@@ -276,7 +276,7 @@ export function ReportsView({ data, today, curKey, range, onRange, onOpenPeriod 
                         {isSplit(entry) ? t("Split · {parts}", { parts: entry.splits.map((p) => p.category).join(", ") }) : (entry.category || t("Uncategorized"))} · {shortDate(entry.date || entry.dueDate)}
                       </div>
                     </div>
-                    <div style={{ fontWeight: 700, color: "#ef4444", whiteSpace: "nowrap", ...money }}>{fmt(entry.amount)}</div>
+                    <div style={{ fontWeight: 700, color: theme.danger, whiteSpace: "nowrap", ...money }}>{fmt(entry.amount)}</div>
                   </div>
                 ))
               )}

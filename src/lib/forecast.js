@@ -107,3 +107,47 @@ export function forecast(data, periodKey, today) {
     runsShortOn: series.find((p) => p.withEveryday < 0)?.date || null,
   };
 }
+
+// The days of a period up to today - all of them once it has ended.
+function daysSoFar(periodKey, cutoffDay, today) {
+  const todayIso = isoDay(today);
+  return periodDays(periodKey, cutoffDay).filter((d) => d <= todayIso);
+}
+
+const dayDate = (iso) => new Date(`${iso}T00:00:00`);
+
+// What had been spent by the end of day `d`, by the same rules as Remaining:
+// an expense on its date, a recurring bill on its day, an Upcoming payment
+// once settled. What is dated after today, or was paid early, counts as of
+// today - so the last day always agrees with the Dashboard.
+function spentBy(m, periodKey, cutoffDay, d, todayIso) {
+  let total = 0;
+  for (const e of m?.expenses || []) if (!e.date || e.date <= d || d === todayIso) total += e.amount || 0;
+  for (const r of m?.recurring || []) if (isRecurringDue(r, periodKey, dayDate(d), cutoffDay)) total += r.amount || 0;
+  for (const u of m?.upcoming || []) {
+    if (!upcomingSettled(u, dayDate(todayIso))) continue;
+    if (!u.dueDate || u.dueDate <= d || d === todayIso) total += u.amount || 0;
+  }
+  return total;
+}
+
+// Money left at the end of each day so far: what the forecast's line comes
+// from. Income counts from the first day; a credit from the day it arrived.
+export function balanceHistory(data, periodKey, today) {
+  const cutoffDay = data.cutoffDay || 1;
+  const m = data.months?.[periodKey];
+  const todayIso = isoDay(today);
+  return daysSoFar(periodKey, cutoffDay, today).map((d) => {
+    const income = periodIncome(m, periodKey, dayDate(d), cutoffDay).total;
+    return { date: d, balance: income - spentBy(m, periodKey, cutoffDay, d, todayIso) };
+  });
+}
+
+// Spending added up day by day, to today or to the end of a finished period.
+export function spendingByDay(data, periodKey, today) {
+  const cutoffDay = data.cutoffDay || 1;
+  const m = data.months?.[periodKey];
+  const days = daysSoFar(periodKey, cutoffDay, today);
+  const last = days[days.length - 1];
+  return days.map((d) => ({ date: d, total: spentBy(m, periodKey, cutoffDay, d, last) }));
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { periodDays, scheduledItems, everydayRate, forecast } from "./forecast.js";
+import { periodDays, scheduledItems, everydayRate, forecast, balanceHistory, spendingByDay } from "./forecast.js";
 
 const D = (y, m, d) => new Date(y, m - 1, d);
 const TODAY = D(2026, 10, 10);
@@ -100,5 +100,52 @@ describe("forecast", () => {
     // Starts at 1010. The 300 owed, Netflix and 30 a day leave 241 on the
     // 24th; the 600 car service on the 25th takes it under.
     expect(forecast(tight, "2026-10", TODAY).runsShortOn).toBe("2026-10-25");
+  });
+});
+
+describe("balanceHistory", () => {
+  const h = balanceHistory(data, "2026-10", TODAY);
+  const at = (d) => h.find((p) => p.date === d).balance;
+
+  it("runs from the first day of the period to today", () => {
+    expect(h.map((p) => p.date)).toEqual(periodDays("2026-10", 1).slice(0, 10));
+  });
+
+  it("moves on the day each thing happened", () => {
+    // Income and the rent on the 1st, the shopping on the 5th, the paid gym on its day.
+    expect(at("2026-10-01")).toBe(8000 - 2400);
+    expect(at("2026-10-04")).toBe(8000 - 2400);
+    expect(at("2026-10-05")).toBe(8000 - 2400 - 1000);
+    expect(at("2026-10-08")).toBe(8000 - 2400 - 1000 - 90);
+  });
+
+  it("ends at the forecast's starting point", () => {
+    expect(h[h.length - 1].balance).toBe(forecast(data, "2026-10", TODAY).now);
+  });
+
+  it("counts something dated after today, or paid early, as of today", () => {
+    const early = { ...data, months: { ...data.months, "2026-10": { ...data.months["2026-10"],
+      expenses: [spend(1000, "2026-10-05"), spend(50, "2026-10-30")] } } };
+    const e = balanceHistory(early, "2026-10", TODAY);
+    expect(e[e.length - 1].balance).toBe(forecast(early, "2026-10", TODAY).now);
+    expect(e[e.length - 2].balance).toBe(8000 - 2400 - 1000 - 90);
+  });
+});
+
+describe("spendingByDay", () => {
+  it("adds up what was spent, day by day, to today", () => {
+    const s = spendingByDay(data, "2026-10", TODAY);
+    expect(s.length).toBe(10);
+    expect(s[0]).toEqual({ date: "2026-10-01", total: 2400 });
+    expect(s[4].total).toBe(3400);
+    expect(s[9].total).toBe(3490);
+  });
+
+  it("covers the whole of a period that has ended", () => {
+    const s = spendingByDay(data, "2026-09", TODAY);
+    expect(s.length).toBe(30);
+    expect(s[8].total).toBe(0);
+    expect(s[9].total).toBe(900);
+    expect(s[29].total).toBe(900);
   });
 });

@@ -159,13 +159,13 @@ export function AccountsView({ accounts, todayISO, onAdd, onEdit, onRecord, onRe
         </div>
       )}
       <div style={s.statsRow}>
-        <StatCard label={t("Net worth")} value={fmt(worth.net)} accent={worth.net >= 0 ? "#10b981" : "#ef4444"}
+        <StatCard label={t("Net worth")} value={fmt(worth.net)} accent={worth.net >= 0 ? theme.success : theme.danger}
           sub={change == null ? t("What you own, less what you owe")
             : change === 0 ? t("No change in 30 days")
             : t("{change} in 30 days", { change: `${change > 0 ? "↑" : "↓"} ${fmt(Math.abs(change))}` })} icon="¤" />
-        <StatCard label={t("Assets")} value={fmt(worth.assets)} accent="#0066cc"
+        <StatCard label={t("Assets")} value={fmt(worth.assets)} accent={theme.accent}
           sub={tn(assets.length, "{n} account", "{n} accounts")} icon="↑" />
-        <StatCard label={t("Debts")} value={fmt(worth.debts)} accent="#ef4444"
+        <StatCard label={t("Debts")} value={fmt(worth.debts)} accent={theme.danger}
           sub={debts.length ? tn(debts.length, "{n} card or loan", "{n} cards or loans") : t("None recorded")} icon="↓" />
       </div>
 
