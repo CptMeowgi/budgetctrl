@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.5.1
+
+On Windows, nothing changes in this release. It brings Budget Ctrl to Linux.
 
 ### Linux
 Budget Ctrl now runs on Linux as well as Windows. Each release has an
