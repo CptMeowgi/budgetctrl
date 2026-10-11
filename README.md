@@ -267,6 +267,13 @@ undoes either.
 
 ---
 
+## Security
+
+To report a security problem privately, see [SECURITY.md](SECURITY.md). It
+also explains what the app does with your data and how to verify a download.
+
+---
+
 ## Licence
 
 MIT — see [LICENSE](LICENSE). Use it, change it, ship it; attribution is the
