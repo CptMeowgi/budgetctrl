@@ -33,15 +33,12 @@
     "targets": ["nsis"],
     "createUpdaterArtifacts": true,
     "category": "Finance",
+    "publisher": "budget-ctrl",
     "shortDescription": "Personal budgeting that follows your payday",
+    "longDescription": "Budget Ctrl is a personal budgeting app that follows your payday rather than the calendar month. It reminds you about bills before they are due, imports bank statements without counting anything twice, and keeps your budget on your own computer.",
     "windows": {
       "nsis": {
         "installMode": "currentUser"
-      }
-    },
-    "linux": {
-      "deb": {
-        "depends": ["libayatana-appindicator3-1"]
       }
     },
     "icon": [

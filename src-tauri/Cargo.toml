@@ -1,8 +1,8 @@
 [package]
 name = "app"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "Personal budgeting that follows your payday"
+authors = ["CptMeowgi"]
 license = "MIT"
 repository = ""
 edition = "2021"
