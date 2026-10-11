@@ -1,7 +1,9 @@
 import { currentMonthKey, currentPeriodKey, monthKey, periodKeyFor } from "./lib/periods.js";
 import { isOnCycle } from "./lib/schedule.js";
 import { migrateGoals } from "./lib/goals.js";
+import { DEFAULT_CREDIT_CATEGORIES } from "./lib/setup.js";
 import { detectCurrency } from "./money.js";
+import { storedCatName } from "./text.js";
 
 const CATEGORY_COLORS = ["#ef4444", "#f59e0b", "#10b981", "#0066cc", "#8b5cf6", "#ec4899", "#14b8a6", "#f97316"];
 const CATEGORY_ICONS = ["🍔", "🚗", "🛍️", "📄", "🎮", "💊", "💰", "🏠", "✈️", "🎁", "☕", "📱"];
@@ -11,13 +13,6 @@ export const UNCATEGORIZED = { name: "Uncategorized", color: "#9ca3af", icon: "�
 export const PICKER_COLORS = [...CATEGORY_COLORS, "#06b6d4", "#84cc16", "#a855f7", "#64748b", "#e11d48", "#0ea5e9"];
 export const PICKER_ICONS = [...CATEGORY_ICONS, "🎓", "🐾", "💡", "🏋️", "🍷", "🧾", "💳", "🚌", "👶", "🎵", "🛠️", "💼"];
 
-export const DEFAULT_CREDIT_CATEGORIES = [
-  { name: "Refund", color: "#10b981", icon: "↩" },
-  { name: "Gift",   color: "#ec4899", icon: "🎁" },
-  { name: "Bonus",  color: "#f59e0b", icon: "⭐" },
-  { name: "Salary", color: "#0066cc", icon: "💼" },
-  { name: "Other",  color: "#9ca3af", icon: "·" },
-];
 export const CREDIT_UNCATEGORIZED = { name: "Other", color: "#9ca3af", icon: "·" };
 
 export const STORAGE_KEY = "budget-app-data";
@@ -57,8 +52,10 @@ export function findCategory(categories, name) {
   return categories.find((c) => c.name.toLowerCase() === n) || null;
 }
 
+// A name typed in the reader's language finds the built-in category it
+// translates ("Zakupy spożywcze" is "Groceries") rather than adding a copy.
 export function ensureCategory(categories, name) {
-  const trimmed = normalizeCatName(name);
+  const trimmed = normalizeCatName(storedCatName(name, categories));
   if (!trimmed) return { categories, category: UNCATEGORIZED };
   const existing = findCategory(categories, trimmed);
   if (existing) return { categories, category: existing };
@@ -77,7 +74,7 @@ function findCreditCategory(categories, name) {
 }
 
 export function ensureCreditCategory(categories, name) {
-  const trimmed = normalizeCatName(name);
+  const trimmed = normalizeCatName(storedCatName(name, categories));
   if (!trimmed) return { categories, category: CREDIT_UNCATEGORIZED };
   const existing = findCreditCategory(categories, trimmed);
   if (existing) return { categories, category: existing };

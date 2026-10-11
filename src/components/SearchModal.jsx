@@ -27,11 +27,11 @@ export function SearchModal({ data, query, onQueryChange, onClose, onOpen }) {
   const { theme, s } = useThemed();
   const q = query;
   const set = (patch) => onQueryChange({ ...q, ...patch });
-  const result = useMemo(() => (isEmptyQuery(q) ? null : search(data, q)), [data, q]);
+  const result = useMemo(() => (isEmptyQuery(q) ? null : search(data, q, catName)), [data, q]);
   const categories = [...new Set([
     ...(data.categories || []).map((c) => c.name),
     ...(data.creditCategories || []).map((c) => c.name),
-  ])].sort((a, b) => a.localeCompare(b));
+  ])].sort((a, b) => catName(a).localeCompare(catName(b)));
   const kinds = q.kinds || [];
   const toggleKind = (id) => set({ kinds: kinds.includes(id) ? kinds.filter((k) => k !== id) : [...kinds, id] });
   const chip = (active) => ({

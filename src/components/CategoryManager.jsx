@@ -8,7 +8,8 @@ import { catName } from "../text.js";
 
 function CategoryRow({ cat, kind, data, onRename, onRestyle, onDelete }) {
   const { theme, s } = useThemed();
-  const [draft, setDraft] = useState(cat.name);
+  const shown = catName(cat.name);
+  const [draft, setDraft] = useState(shown);
   const [styling, setStyling] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [moveTo, setMoveTo] = useState("");
@@ -22,8 +23,8 @@ function CategoryRow({ cat, kind, data, onRename, onRestyle, onDelete }) {
   // (a declined merge, or an error) has to put the old name back.
   const commit = () => {
     const next = draft.trim();
-    if (!next || next === cat.name) { setDraft(cat.name); return; }
-    if (!onRename(cat.name, next)) setDraft(cat.name);
+    if (!next || next === shown) { setDraft(shown); return; }
+    if (!onRename(cat.name, next)) setDraft(shown);
   };
 
   const usageText = usage.entries || usage.templates
@@ -51,7 +52,7 @@ function CategoryRow({ cat, kind, data, onRename, onRestyle, onDelete }) {
             onBlur={commit}
             onKeyDown={(e) => {
               if (e.key === "Enter") e.currentTarget.blur();
-              if (e.key === "Escape") { e.stopPropagation(); setDraft(cat.name); e.currentTarget.blur(); }
+              if (e.key === "Escape") { e.stopPropagation(); setDraft(shown); e.currentTarget.blur(); }
             }}
             className="inline-edit"
             style={{ flex: 1, background: "transparent", borderRadius: RADIUS.sm, padding: `${SPACE.xxs}px ${SPACE.xs}px`,
@@ -118,17 +119,19 @@ export function CategoryManager({ data, onClose, onChange }) {
 
   // Fallback first, then alphabetical, so the list is stable while editing.
   const ordered = [...list].sort((a, b) =>
-    (isFallback(kind, b.name) - isFallback(kind, a.name)) || a.name.localeCompare(b.name));
+    (isFallback(kind, b.name) - isFallback(kind, a.name)) || catName(a.name).localeCompare(catName(b.name)));
 
   // Returns whether the change was applied, so a row can restore its input.
   const run = (fn) => {
     try { onChange(fn()); return true; } catch (err) { alert(err.key ? t(err.key, { ...err.vars, name: catName(err.vars.name) }) : err.message); return false; }
   };
 
+  // Renaming onto another category's name - as stored or as shown - merges.
   const onRename = (from, to) => {
-    const target = list.find((c) => c.name.toLowerCase() === to.toLowerCase() && c.name !== from);
-    if (target && !confirm(t('Merge "{from}" into "{to}"?\n\nEverything in "{from}" moves to "{to}", and "{from}" is removed.', { from, to: target.name }))) return false;
-    return run(() => renameCategory(data, kind, from, to));
+    const lower = to.toLowerCase();
+    const target = list.find((c) => c.name !== from && (c.name.toLowerCase() === lower || catName(c.name).toLowerCase() === lower));
+    if (target && !confirm(t('Merge "{from}" into "{to}"?\n\nEverything in "{from}" moves to "{to}", and "{from}" is removed.', { from: catName(from), to: catName(target.name) }))) return false;
+    return run(() => renameCategory(data, kind, from, target ? target.name : to));
   };
 
   const onAdd = () => {

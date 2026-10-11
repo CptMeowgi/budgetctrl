@@ -25,8 +25,7 @@ export function SetupWizard({ data, onFinish, onRestore, onSkip, onChangeLanguag
   const stepValid = step !== 1 || (incomeNum != null && incomeNum >= 0 && asideNum != null && asideNum >= 0);
   const answers = () => ({
     currency, locale, cutoffDay, income: incomeNum || 0, setAside: asideNum || 0,
-    categories: STARTER_CATEGORIES.filter((c) => picked.has(c.name)).map((c) => ({ ...c, name: t(c.name) })),
-    creditNames: Object.fromEntries((data.creditCategories || []).map((c) => [c.name, t(c.name)])),
+    categories: STARTER_CATEGORIES.filter((c) => picked.has(c.name)),
   });
   const toggle = (name) => setPicked((p) => {
     const next = new Set(p);

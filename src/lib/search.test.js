@@ -86,6 +86,16 @@ describe("a split receipt", () => {
   });
 });
 
+describe("matches with category labels", () => {
+  it("finds a category by the name it is shown under", () => {
+    const item = { kind: "expense", entry: { name: "Biedronka" }, date: "2026-10-11", amount: 12, category: "Groceries" };
+    const label = (c) => (c === "Groceries" ? "Zakupy spożywcze" : c);
+    expect(matches(item, { text: "spożywcze" }, label)).toBe(true);
+    expect(matches(item, { text: "groceries" }, label)).toBe(true);
+    expect(matches(item, { text: "spożywcze" })).toBe(false);
+  });
+});
+
 describe("isEmptyQuery", () => {
   it("is empty with nothing typed or chosen", () => {
     expect(isEmptyQuery({ text: "  ", kinds: [], min: "" })).toBe(true);

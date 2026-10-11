@@ -3,16 +3,16 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { t, tn, setLanguage, interpolate, fmtDate, LANGUAGES, PLURAL_FORMS, systemLanguage } from "./i18n.js";
-import { ago, catName, due, ordinal } from "./text.js";
+import { ago, catName, due, ordinal, storedCatName } from "./text.js";
 import de from "./locales/de.js";
 import es from "./locales/es.js";
 import pl from "./locales/pl.js";
 import zh from "./locales/zh.js";
 import { ACCOUNT_KINDS } from "./lib/accounts.js";
 import { FREQUENCIES } from "./lib/schedule.js";
-import { STARTER_CATEGORIES } from "./lib/setup.js";
+import { DEFAULT_CREDIT_CATEGORIES, STARTER_CATEGORIES } from "./lib/setup.js";
 import { describeUpdateError } from "./lib/updates.js";
-import { DEFAULT_CREDIT_CATEGORIES } from "./model.js";
+import { ensureCategory, ensureCreditCategory } from "./model.js";
 
 afterEach(() => setLanguage("en"));
 
@@ -117,7 +117,13 @@ describe("due and ordinal", () => {
   it("show built-in category names in the reader's language", () => {
     setLanguage("pl");
     expect(catName("Uncategorized")).toBe(pl["Uncategorized"]);
-    expect(catName("Groceries")).toBe("Groceries");
+    // The starter categories and default money-in sources follow the language too...
+    expect(catName("Groceries")).toBe(pl["Groceries"]);
+    expect(catName("Salary")).toBe(pl["Salary"]);
+    setLanguage("de");
+    expect(catName("Groceries")).toBe(de["Groceries"]);
+    // ...and a category someone named themselves stays as typed.
+    expect(catName("Biedronka")).toBe("Biedronka");
   });
 
   it("number days the local way", () => {
@@ -130,6 +136,31 @@ describe("due and ordinal", () => {
     expect(ordinal(25)).toBe("25");
     setLanguage("zh");
     expect(ordinal(25)).toBe("25日");
+  });
+});
+
+describe("built-in categories typed in another language", () => {
+  const spend = [{ name: "Uncategorized", color: "#9ca3af", icon: "·" }, { name: "Groceries", color: "#10b981", icon: "🛒" }];
+
+  it("resolve to the category they are stored as", () => {
+    setLanguage("pl");
+    expect(storedCatName("zakupy spożywcze ", spend)).toBe("Groceries");
+    expect(storedCatName("Biedronka", spend)).toBe("Biedronka");
+    setLanguage("en");
+    expect(storedCatName("groceries", spend)).toBe("Groceries");
+  });
+
+  it("are not added a second time", () => {
+    setLanguage("pl");
+    const r = ensureCategory(spend, pl["Groceries"]);
+    expect(r.categories).toBe(spend);
+    expect(r.category.name).toBe("Groceries");
+    const credit = [{ name: "Salary", color: "#0066cc", icon: "💼" }, { name: "Other", color: "#9ca3af", icon: "·" }];
+    const c = ensureCreditCategory(credit, pl["Salary"]);
+    expect(c.categories).toBe(credit);
+    expect(c.category.name).toBe("Salary");
+    // Something new is still added, under the name typed.
+    expect(ensureCategory(spend, "Biedronka").category.name).toBe("Biedronka");
   });
 });
 

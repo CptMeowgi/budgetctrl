@@ -6,6 +6,7 @@ import { SPACE, TYPE, useThemed } from "../theme.js";
 import { CategoryPicker } from "./FormModal.jsx";
 import { Modal } from "./Modal.jsx";
 import { t } from "../i18n.js";
+import { catName } from "../text.js";
 
 const blankPart = () => ({ category: "", amount: "" });
 
@@ -16,13 +17,13 @@ export function ExpenseModal({ editing, categories, defaultDate, onClose, onSave
   const { theme, s } = useThemed();
   const [name, setName] = useState(editing?.name || "");
   const [amount, setAmount] = useState(editing ? String(editing.amount) : "");
-  const [category, setCategory] = useState(editing?.category || "");
+  const [category, setCategory] = useState(catName(editing?.category || ""));
   const [date, setDate] = useState(editing?.date || defaultDate);
   const [note, setNote] = useState(editing?.note || "");
   const [splitting, setSplitting] = useState(isSplit(editing));
   const [parts, setParts] = useState(isSplit(editing)
-    ? editing.splits.map((p) => ({ category: p.category, amount: String(p.amount) }))
-    : [{ category: editing?.category || "", amount: "" }, blankPart()]);
+    ? editing.splits.map((p) => ({ category: catName(p.category), amount: String(p.amount) }))
+    : [{ category: catName(editing?.category || ""), amount: "" }, blankPart()]);
 
   const total = parseAmount(amount);
   const numericParts = parts.map((p) => ({ category: p.category, amount: parseAmount(p.amount) || 0 }));

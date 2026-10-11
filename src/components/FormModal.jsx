@@ -10,7 +10,7 @@ export function CategoryPicker({ value, onChange, categories }) {
   const suggestions = categories.filter((c) => {
     if (c.name === "Uncategorized") return false;
     if (!value) return true;
-    return c.name.toLowerCase().includes(value.toLowerCase());
+    return catName(c.name).toLowerCase().includes(value.toLowerCase());
   });
   return (
     <div style={{ position: "relative" }}>
@@ -27,7 +27,7 @@ export function CategoryPicker({ value, onChange, categories }) {
         <div style={s.suggestBox}>
           {suggestions.map((c) => (
             <div key={c.name} style={s.suggestItem}
-              onMouseDown={(e) => { e.preventDefault(); onChange(c.name); setOpen(false); }}>
+              onMouseDown={(e) => { e.preventDefault(); onChange(catName(c.name)); setOpen(false); }}>
               <span style={{ ...s.catDot, background: `${c.color}25` }}>{c.icon}</span>
               <span>{catName(c.name)}</span>
             </div>
@@ -42,7 +42,9 @@ export function FormModal({ title, fields, onClose, onSave }) {
   const { theme, s } = useThemed();
   const [vals, setVals] = useState(() => {
     const init = {};
-    fields.forEach((f) => { init[f.key] = f.type === "checkbox" ? !!f.defaultValue : (f.defaultValue || ""); });
+    fields.forEach((f) => {
+      init[f.key] = f.type === "checkbox" ? !!f.defaultValue : f.type === "category" ? catName(f.defaultValue || "") : (f.defaultValue || "");
+    });
     return init;
   });
   return (

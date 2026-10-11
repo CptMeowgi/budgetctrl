@@ -1,5 +1,6 @@
 // Small pieces of wording shared across screens.
 import { getLanguage, t, tk, tn } from "./i18n.js";
+import { DEFAULT_CREDIT_CATEGORIES, STARTER_CATEGORIES } from "./lib/setup.js";
 
 // "just now", "5 minutes ago", "3 hours ago", "2 days ago".
 export function ago(then, now) {
@@ -11,11 +12,23 @@ export function ago(then, now) {
   return tn(Math.round(hours / 24), "{n} day ago", "{n} days ago");
 }
 
-// The built-in categories are stored under their English names. Show those in
-// the reader's language; a category someone named themselves stays as typed.
-const BUILT_IN_CATEGORIES = new Set([tk("Uncategorized"), tk("Other"), tk("Base income")]);
+// The categories Budget Ctrl creates - the fallbacks, the starter set on the
+// welcome screens, the default money-in sources - are stored under their
+// English names and shown in the reader's language, so changing language
+// renames them too. A category someone named themselves stays as typed.
+const BUILT_IN_CATEGORIES = new Set([tk("Uncategorized"), tk("Other"), tk("Base income"),
+  ...STARTER_CATEGORIES.map((c) => c.name), ...DEFAULT_CREDIT_CATEGORIES.map((c) => c.name)]);
 export function catName(name) {
   return BUILT_IN_CATEGORIES.has(name) ? t(name) : name;
+}
+
+// What someone typed or picked, as the name its category is stored under:
+// "zakupy spożywcze" in Polish is the built-in "Groceries".
+export function storedCatName(typed, categories) {
+  const v = (typed || "").trim().toLowerCase();
+  if (!v) return typed;
+  const hit = (categories || []).find((c) => catName(c.name).toLowerCase() === v);
+  return hit ? hit.name : typed;
 }
 
 // When a bill is due, relative to today.

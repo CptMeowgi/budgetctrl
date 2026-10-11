@@ -203,10 +203,10 @@ Budget Ctrl now speaks German, Spanish, Polish and Simplified Chinese as well
 as English. Every screen, dialog, reminder and message is translated, with each
 language's own plurals (1 cel, 2 cele, 5 celów) and dates (11. Oktober,
 11 de octubre, 10月11日). It follows your Windows language, or choose one under
-**Settings → Language** or on the first welcome screen. A budget set up in
-another language starts with its category names in that language; categories
-you already have keep the names you gave them, and can be renamed in
-**Settings → Categories**.
+**Settings → Language** or on the first welcome screen. The categories Budget
+Ctrl creates - the starter set and the default money-in sources - change
+language with the app, and typing one's name in your language files under it
+rather than making a copy. Categories you name yourself stay as you typed them.
 
 ### A tidier layout
 - **The sidebar is just navigation now.** This month's income is set on the

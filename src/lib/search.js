@@ -46,8 +46,9 @@ export function allEntries(data) {
 
 // query: { text, kinds, category, from, to, min, max } - every part optional.
 // Text words must all match, each in the name, category or note - or, for a
-// number, the amount itself.
-export function matches(item, query) {
+// number, the amount itself. `label` gives a category's name as shown, so a
+// built-in category is found in the reader's language as well as by its key.
+export function matches(item, query, label = (c) => c) {
   const q = query || {};
   if (q.kinds && q.kinds.length && !q.kinds.includes(item.kind)) return false;
   if (q.category && !(item.categories || [item.category || ""]).includes(q.category)) return false;
@@ -57,7 +58,8 @@ export function matches(item, query) {
   if (q.max != null && q.max !== "" && item.amount > Number(q.max)) return false;
   const words = fold(q.text).split(/\s+/).filter(Boolean);
   if (!words.length) return true;
-  const hay = fold([item.entry.name, ...(item.categories || [item.category]), item.entry.note].filter(Boolean).join(" "));
+  const cats = (item.categories || [item.category]).filter(Boolean);
+  const hay = fold([item.entry.name, ...cats, ...cats.map(label), item.entry.note].filter(Boolean).join(" "));
   return words.every((w) => {
     if (hay.includes(w)) return true;
     const n = asAmount(w);
@@ -65,9 +67,9 @@ export function matches(item, query) {
   });
 }
 
-export function search(data, query) {
+export function search(data, query, label) {
   const results = allEntries(data)
-    .filter((it) => matches(it, query))
+    .filter((it) => matches(it, query, label))
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : (b.amount - a.amount)));
   let spent = 0;
   let received = 0;

@@ -21,12 +21,22 @@ export const STARTER_CATEGORIES = [
   { name: "Education", icon: "🎓", color: "#64748b", on: false },
 ];
 
+// The money-in sources every budget starts with. "Other" is also the fallback
+// for a credit with no source, so it is never renamed or removed.
+export const DEFAULT_CREDIT_CATEGORIES = [
+  { name: "Refund", color: "#10b981", icon: "↩" },
+  { name: "Gift",   color: "#ec4899", icon: "🎁" },
+  { name: "Bonus",  color: "#f59e0b", icon: "⭐" },
+  { name: "Salary", color: "#0066cc", icon: "💼" },
+  { name: "Other",  color: "#9ca3af", icon: "·" },
+];
+
 // Apply the answers. Only ever for a brand-new budget: it replaces the empty
 // months, because the current period depends on the payday just chosen - with
 // a payday of the 25th, 11 October belongs to the period that began on 25
 // September.
 export function applySetup(data, answers, today) {
-  const { currency, locale, cutoffDay, income, setAside, categories, creditNames } = answers || {};
+  const { currency, locale, cutoffDay, income, setAside, categories } = answers || {};
   const cd = Math.max(1, Math.min(28, Math.floor(Number(cutoffDay)) || 1));
   const cur = periodKeyFor(today, cd);
   const fallback = (data.categories || []).find((c) => c.name === "Uncategorized") || { name: "Uncategorized", color: "#9ca3af", icon: "·" };
@@ -37,11 +47,6 @@ export function applySetup(data, answers, today) {
     cutoffDay: cd,
     months: { [cur]: { income: Math.max(0, Number(income) || 0), expenses: [], recurring: [], upcoming: [], credits: [] } },
     categories: [fallback, ...(categories || []).map(({ name, icon, color }) => ({ name, icon, color }))],
-    // The starter money-in categories, in the language the budget is set up
-    // in. "Other" keeps its name: it is the fallback the code looks up.
-    ...(creditNames && data.creditCategories ? {
-      creditCategories: data.creditCategories.map((c) => (c.name !== "Other" && creditNames[c.name] ? { ...c, name: creditNames[c.name] } : c)),
-    } : {}),
     savingsGoal: { monthly: Math.max(0, Math.round(Number(setAside) || 0)) },
     setupDone: true,
   };
