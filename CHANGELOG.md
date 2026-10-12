@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- The app's icon - on the desktop, the taskbar, the tray and in Linux app
+  menus - is now the Budget Ctrl mark instead of a placeholder
+
 ## 0.5.1
 
 On Windows, nothing changes in this release. It brings Budget Ctrl to Linux.

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- The Budget Ctrl mark, as in the sidebar (BrandMark in src/components/Icon.jsx):
+       three rising bars on a violet-to-green tile. Every app icon is generated
+       from this file: npx tauri icon src-tauri/app-icon.svg -->
+  <defs>
+    <!-- CSS linear-gradient(145deg, #7b7ee9, #4fc397) on a square -->
+    <linearGradient id="tile" x1="0.1006" y1="-0.0705" x2="0.8994" y2="1.0705">
+      <stop offset="0" stop-color="#7b7ee9"/>
+      <stop offset="1" stop-color="#4fc397"/>
+    </linearGradient>
+  </defs>
+  <rect x="32" y="32" width="960" height="960" rx="264" fill="url(#tile)"/>
+  <g fill="#f4f7f5">
+    <rect x="209.8" y="565.3" width="130.4" height="248.9" rx="65.2"/>
+    <rect x="446.9" y="352.0" width="130.4" height="462.2" rx="65.2"/>
+    <rect x="684.0" y="458.6" width="130.4" height="355.6" rx="65.2"/>
+  </g>
+</svg>
