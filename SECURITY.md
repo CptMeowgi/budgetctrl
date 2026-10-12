@@ -76,7 +76,8 @@ in the release notes unless you'd rather not be.
   encryption to protect the file itself.
 - **The Windows installer isn't code-signed yet**, so Windows SmartScreen may
   warn you when you run it. Only download Budget Ctrl from this repository's
-  [Releases](../../releases) page.
+  [Releases](../../releases) page. Signing is being set up; see the
+  [code signing policy](README.md#code-signing-policy).
 
 ## Verifying a download
 

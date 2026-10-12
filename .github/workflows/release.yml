@@ -70,14 +70,22 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       # Reused if it already exists, so a failed run can simply be re-run.
+      # The release page links the code signing policy, as SignPath Foundation
+      # asks of download pages; the notes the app shows don't need it.
       - name: Open the draft release
         id: release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if ! gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            {
+              cat notes.md
+              echo
+              echo "---"
+              echo "[Code signing policy]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY#code-signing-policy)"
+            } > release-page.md
             gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
-              --title "Budget Ctrl $GITHUB_REF_NAME" --notes-file notes.md
+              --title "Budget Ctrl $GITHUB_REF_NAME" --notes-file release-page.md
           fi
           id=$(gh api "repos/$GITHUB_REPOSITORY/releases" \
             --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\") | .id" | head -n 1)

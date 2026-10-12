@@ -4,8 +4,9 @@ A personal budgeting app for Windows and Linux. It lives in the system tray,
 follows your actual payday rather than the calendar month, and tells you about
 bills before they land.
 
-Built with React and Tauri. Everything stays on your machine — there is no
-account, no server, and nothing leaves the device.
+Built with React and Tauri. Your budget stays on your machine — there is no
+account and no server, and the only thing the app ever connects to is GitHub,
+to check for updates.
 
 ![The Dashboard: money left this month with the forecast to payday, this month's spending, recent transactions and category budgets](docs/screenshots/dashboard-dark.png)
 
@@ -264,6 +265,50 @@ undoes either.
 - Changing the cutoff day re-buckets entries by date and discards the markers
   on periods you'd previously corrected. It asks first, and the figures
   themselves are untouched.
+
+---
+
+## Code signing policy
+
+Windows releases are being set up for code signing through the SignPath
+Foundation, so that Windows knows who published the installer. Until that is
+in place, the Windows installer is unsigned, and SmartScreen may show "Windows
+protected your PC" — click **More info → Run anyway**.
+
+Free code signing provided by [SignPath.io](https://signpath.io), certificate
+by [SignPath Foundation](https://signpath.org).
+
+**What gets signed.** Only the Windows installer and the Budget Ctrl program
+inside it, both built from the source code in this repository. Budget Ctrl is
+MIT licensed and contains no proprietary components; the libraries it is built
+from are open source too. Nothing from any other project is signed.
+
+**How releases are built.** By the [Release workflow](.github/workflows/release.yml)
+on GitHub-hosted runners, from a tagged commit, after the full test suite
+passes. Nothing is built or signed on a personal computer. Every signing
+request is approved by hand, and a release only becomes public, and reaches the
+in-app updater, when the maintainer publishes it after checking its files.
+
+**Team roles.**
+
+| Role | Who |
+|---|---|
+| Committer | [CptMeowgi](https://github.com/CptMeowgi) |
+| Reviewer | [CptMeowgi](https://github.com/CptMeowgi) |
+| Approver | [CptMeowgi](https://github.com/CptMeowgi) |
+
+Changes from anyone else are reviewed by a committer before they are merged.
+Everyone with commit or signing access must use multi-factor authentication.
+
+**Privacy.** Budget Ctrl sends none of your data anywhere. The only connection
+it makes is to GitHub, to check for updates — once a day, which you can turn
+off in **Settings → Updates** — and to download an update when you choose to
+install one. Those requests are covered by
+[GitHub's privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
+[SECURITY.md](SECURITY.md#how-budget-ctrl-handles-your-data) has the details.
+
+If you think a signed file is wrong or harmful, please report it as described
+in [SECURITY.md](SECURITY.md).
 
 ---
 
