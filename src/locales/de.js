@@ -4,6 +4,11 @@
 // any string the app translates is missing here.
 export default {
   // App
+  "Feedback": "Feedback",
+  "Opens GitHub in your browser, with your app version filled in. You'll need a GitHub account. Nothing from your budget is sent.": "Öffnet GitHub im Browser, mit bereits eingetragener App-Version. Du brauchst ein GitHub-Konto. Nichts aus deinem Budget wird gesendet.",
+  "Report a problem": "Problem melden",
+  "Suggest an idea": "Idee vorschlagen",
+  "Couldn't open your browser. The address is: {url}": "Der Browser konnte nicht geöffnet werden. Die Adresse ist: {url}",
   "About": "Über",
   "Open-source licences": "Open-Source-Lizenzen",
   "The open-source software Budget Ctrl is built with, and its licences.": "Die Open-Source-Software, auf der Budget Ctrl aufbaut, und ihre Lizenzen.",

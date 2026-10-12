@@ -5,6 +5,9 @@
 - Settings has a new About section listing the open-source software Budget
   Ctrl is built with, and each package's licence. Their licences ask for
   this, and until now the app didn't include it.
+- Also under About: **Report a problem** and **Suggest an idea** open the
+  matching form on GitHub with your app version filled in. Nothing from your
+  budget is sent.
 
 ## 0.5.2
 

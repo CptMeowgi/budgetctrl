@@ -29,6 +29,14 @@
     "fs:allow-read-dir",
     "fs:allow-remove",
     {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        {
+          "url": "https://github.com/CptMeowgi/budgetctrl/*"
+        }
+      ]
+    },
+    {
       "identifier": "fs:scope",
       "allow": [
         {

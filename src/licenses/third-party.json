@@ -91,6 +91,17 @@
   },
   {
    "source": "npm",
+   "name": "@tauri-apps/plugin-opener",
+   "version": "2.7.1",
+   "license": "MIT OR Apache-2.0",
+   "url": "https://www.npmjs.com/package/@tauri-apps/plugin-opener/v/2.7.1",
+   "repository": "https://github.com/tauri-apps/plugins-workspace",
+   "texts": [
+    6
+   ]
+  },
+  {
+   "source": "npm",
    "name": "@tauri-apps/plugin-process",
    "version": "2.4.0",
    "license": "MIT OR Apache-2.0",
@@ -2708,6 +2719,28 @@
   },
   {
    "source": "crates.io",
+   "name": "is-docker",
+   "version": "0.2.0",
+   "license": "MIT",
+   "url": "https://crates.io/crates/is-docker/0.2.0",
+   "repository": "https://github.com/TheLarkInn/is-docker",
+   "texts": [
+    130
+   ]
+  },
+  {
+   "source": "crates.io",
+   "name": "is-wsl",
+   "version": "0.4.0",
+   "license": "MIT",
+   "url": "https://crates.io/crates/is-wsl/0.4.0",
+   "repository": "https://github.com/TheLarkInn/is-wsl",
+   "texts": [
+    130
+   ]
+  },
+  {
+   "source": "crates.io",
    "name": "itoa",
    "version": "1.0.18",
    "license": "MIT OR Apache-2.0",
@@ -2725,7 +2758,7 @@
    "url": "https://crates.io/crates/javascriptcore-rs/1.1.2",
    "repository": "https://github.com/tauri-apps/javascriptcore-rs",
    "texts": [
-    130
+    131
    ]
   },
   {
@@ -2736,7 +2769,7 @@
    "url": "https://crates.io/crates/javascriptcore-rs-sys/1.1.1",
    "repository": "https://github.com/tauri-apps/javascriptcore-rs",
    "texts": [
-    131
+    132
    ]
   },
   {
@@ -2747,7 +2780,7 @@
    "url": "https://crates.io/crates/jni/0.21.1",
    "repository": "https://github.com/jni-rs/jni-rs",
    "texts": [
-    132
+    133
    ]
   },
   {
@@ -2758,7 +2791,7 @@
    "url": "https://crates.io/crates/jni-sys/0.3.1",
    "repository": "https://github.com/jni-rs/jni-sys",
    "texts": [
-    133
+    134
    ]
   },
   {
@@ -2769,7 +2802,7 @@
    "url": "https://crates.io/crates/jni-sys/0.4.1",
    "repository": "https://github.com/jni-rs/jni-sys",
    "texts": [
-    133
+    134
    ]
   },
   {
@@ -2780,7 +2813,7 @@
    "url": "https://crates.io/crates/jni-sys-macros/0.4.1",
    "repository": "https://github.com/jni-rs/jni-sys",
    "texts": [
-    134
+    135
    ]
   },
   {
@@ -2802,7 +2835,7 @@
    "url": "https://crates.io/crates/json-patch/4.2.0",
    "repository": "https://github.com/idubrov/json-patch",
    "texts": [
-    135
+    136
    ]
   },
   {
@@ -2813,7 +2846,7 @@
    "url": "https://crates.io/crates/jsonptr/0.7.1",
    "repository": "https://github.com/chanced/jsonptr",
    "texts": [
-    136
+    137
    ]
   },
   {
@@ -2824,7 +2857,7 @@
    "url": "https://crates.io/crates/keyboard-types/0.8.3",
    "repository": "https://github.com/rust-windowing/keyboard-types",
    "texts": [
-    137
+    138
    ]
   },
   {
@@ -2845,7 +2878,7 @@
    "license": "Apache-2.0 OR MIT",
    "url": "https://crates.io/crates/libappindicator/0.9.0",
    "texts": [
-    138
+    139
    ]
   },
   {
@@ -2855,7 +2888,7 @@
    "license": "Apache-2.0 OR MIT",
    "url": "https://crates.io/crates/libappindicator-sys/0.9.0",
    "texts": [
-    139
+    140
    ]
   },
   {
@@ -2866,7 +2899,7 @@
    "url": "https://crates.io/crates/libc/0.2.184",
    "repository": "https://github.com/rust-lang/libc",
    "texts": [
-    140
+    141
    ]
   },
   {
@@ -2888,7 +2921,7 @@
    "url": "https://crates.io/crates/libloading/0.7.4",
    "repository": "https://github.com/nagisa/rust_libloading/",
    "texts": [
-    141
+    142
    ]
   },
   {
@@ -2899,7 +2932,7 @@
    "url": "https://crates.io/crates/libredox/0.1.15",
    "repository": "https://gitlab.redox-os.org/redox-os/libredox",
    "texts": [
-    142
+    143
    ]
   },
   {
@@ -2911,7 +2944,7 @@
    "repository": "https://github.com/sunfishcode/linux-raw-sys",
    "texts": [
     27,
-    143
+    144
    ]
   },
   {
@@ -2933,7 +2966,7 @@
    "url": "https://crates.io/crates/lock_api/0.4.14",
    "repository": "https://github.com/Amanieu/parking_lot",
    "texts": [
-    144
+    145
    ]
   },
   {
@@ -2955,7 +2988,7 @@
    "url": "https://crates.io/crates/mac-notification-sys/0.6.15",
    "repository": "https://github.com/h4llow3En/mac-notification-sys",
    "texts": [
-    145
+    146
    ]
   },
   {
@@ -2989,7 +3022,7 @@
    "url": "https://crates.io/crates/memoffset/0.9.1",
    "repository": "https://github.com/Gilnaa/memoffset",
    "texts": [
-    146
+    147
    ]
   },
   {
@@ -3000,7 +3033,7 @@
    "url": "https://crates.io/crates/mime/0.3.17",
    "repository": "https://github.com/hyperium/mime",
    "texts": [
-    147
+    148
    ]
   },
   {
@@ -3011,7 +3044,7 @@
    "url": "https://crates.io/crates/minisign-verify/0.2.5",
    "repository": "https://github.com/jedisct1/rust-minisign-verify",
    "texts": [
-    148
+    149
    ]
   },
   {
@@ -3022,7 +3055,7 @@
    "url": "https://crates.io/crates/miniz_oxide/0.8.9",
    "repository": "https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide",
    "texts": [
-    149
+    150
    ]
   },
   {
@@ -3033,7 +3066,7 @@
    "url": "https://crates.io/crates/mio/1.2.0",
    "repository": "https://github.com/tokio-rs/mio",
    "texts": [
-    150
+    151
    ]
   },
   {
@@ -3044,8 +3077,8 @@
    "url": "https://crates.io/crates/muda/0.20.0",
    "repository": "https://github.com/tauri-apps/muda",
    "texts": [
-    151,
-    152
+    152,
+    153
    ]
   },
   {
@@ -3056,7 +3089,7 @@
    "url": "https://crates.io/crates/ndk/0.9.0",
    "repository": "https://github.com/rust-mobile/ndk",
    "texts": [
-    153
+    154
    ]
   },
   {
@@ -3067,7 +3100,7 @@
    "url": "https://crates.io/crates/ndk-context/0.1.1",
    "repository": "https://github.com/rust-windowing/android-ndk-rs",
    "texts": [
-    154
+    155
    ]
   },
   {
@@ -3078,7 +3111,7 @@
    "url": "https://crates.io/crates/ndk-sys/0.6.0+11769913",
    "repository": "https://github.com/rust-mobile/ndk",
    "texts": [
-    154
+    155
    ]
   },
   {
@@ -3089,7 +3122,7 @@
    "url": "https://crates.io/crates/new_debug_unreachable/1.0.6",
    "repository": "https://github.com/mbrubeck/rust-debug-unreachable",
    "texts": [
-    155
+    156
    ]
   },
   {
@@ -3100,7 +3133,7 @@
    "url": "https://crates.io/crates/notify-rust/4.18.0",
    "repository": "https://github.com/hoodie/notify-rust",
    "texts": [
-    156
+    157
    ]
   },
   {
@@ -3133,7 +3166,7 @@
    "url": "https://crates.io/crates/num_threads/0.1.7",
    "repository": "https://github.com/jhpratt/num_threads",
    "texts": [
-    157
+    158
    ]
   },
   {
@@ -3144,7 +3177,7 @@
    "url": "https://crates.io/crates/num-conv/0.2.1",
    "repository": "https://github.com/jhpratt/num-conv",
    "texts": [
-    158
+    159
    ]
   },
   {
@@ -3177,7 +3210,7 @@
    "url": "https://crates.io/crates/objc2-app-kit/0.3.2",
    "repository": "https://github.com/madsmtm/objc2",
    "texts": [
-    159
+    160
    ]
   },
   {
@@ -3188,7 +3221,7 @@
    "url": "https://crates.io/crates/objc2-cloud-kit/0.3.2",
    "repository": "https://github.com/madsmtm/objc2",
    "texts": [
-    160
+    161
    ]
   },
   {
@@ -3199,7 +3232,7 @@
    "url": "https://crates.io/crates/objc2-core-data/0.3.2",
    "repository": "https://github.com/madsmtm/objc2",
    "texts": [
-    161
+    162
    ]
   },
   {
@@ -3210,7 +3243,7 @@
    "url": "https://crates.io/crates/objc2-core-foundation/0.3.2",
    "repository": "https://github.com/madsmtm/objc2",
    "texts": [
-    162
+    163
    ]
   },
   {
@@ -3221,7 +3254,7 @@
    "url": "https://crates.io/crates/objc2-core-graphics/0.3.2",
    "repository": "https://github.com/madsmtm/objc2",
    "texts": [
-    163
+    164
    ]
   },
   {
@@ -3232,7 +3265,7 @@
    "url": "https://crates.io/crates/objc2-core-image/0.3.2",
    "repository": "https://github.com/madsmtm/objc2",
    "texts": [
-    164
+    165
    ]
   },
   {
@@ -3243,7 +3276,7 @@
    "url": "https://crates.io/crates/objc2-core-location/0.3.2",
    "repository": "https://github.com/madsmtm/objc2",
    "texts": [
-    165
+    166
    ]
   },
   {
@@ -3254,7 +3287,7 @@
    "url": "https://crates.io/crates/objc2-core-text/0.3.2",
    "repository": "https://github.com/madsmtm/objc2",
    "texts": [
-    166
+    167
    ]
   },
   {
@@ -3287,7 +3320,7 @@
    "url": "https://crates.io/crates/objc2-foundation/0.3.2",
    "repository": "https://github.com/madsmtm/objc2",
    "texts": [
-    167
+    168
    ]
   },
   {
@@ -3298,7 +3331,7 @@
    "url": "https://crates.io/crates/objc2-io-surface/0.3.2",
    "repository": "https://github.com/madsmtm/objc2",
    "texts": [
-    168
+    169
    ]
   },
   {
@@ -3309,7 +3342,7 @@
    "url": "https://crates.io/crates/objc2-osa-kit/0.3.2",
    "repository": "https://github.com/madsmtm/objc2",
    "texts": [
-    169
+    170
    ]
   },
   {
@@ -3320,7 +3353,7 @@
    "url": "https://crates.io/crates/objc2-quartz-core/0.3.2",
    "repository": "https://github.com/madsmtm/objc2",
    "texts": [
-    170
+    171
    ]
   },
   {
@@ -3331,7 +3364,7 @@
    "url": "https://crates.io/crates/objc2-ui-kit/0.3.2",
    "repository": "https://github.com/madsmtm/objc2",
    "texts": [
-    171
+    172
    ]
   },
   {
@@ -3342,7 +3375,7 @@
    "url": "https://crates.io/crates/objc2-user-notifications/0.3.2",
    "repository": "https://github.com/madsmtm/objc2",
    "texts": [
-    172
+    173
    ]
   },
   {
@@ -3353,7 +3386,7 @@
    "url": "https://crates.io/crates/objc2-web-kit/0.3.2",
    "repository": "https://github.com/madsmtm/objc2",
    "texts": [
-    173
+    174
    ]
   },
   {
@@ -3365,6 +3398,17 @@
    "repository": "https://github.com/matklad/once_cell",
    "texts": [
     27
+   ]
+  },
+  {
+   "source": "crates.io",
+   "name": "open",
+   "version": "5.4.4",
+   "license": "MIT",
+   "url": "https://crates.io/crates/open/5.4.4",
+   "repository": "https://github.com/Byron/open-rs",
+   "texts": [
+    175
    ]
   },
   {
@@ -3386,7 +3430,7 @@
    "url": "https://crates.io/crates/option-ext/0.2.0",
    "repository": "https://github.com/soc/option-ext",
    "texts": [
-    174
+    176
    ]
   },
   {
@@ -3397,7 +3441,7 @@
    "url": "https://crates.io/crates/ordered-multimap/0.7.3",
    "repository": "https://github.com/sgodwincs/ordered-multimap-rs",
    "texts": [
-    175
+    177
    ]
   },
   {
@@ -3419,7 +3463,7 @@
    "url": "https://crates.io/crates/osakit/0.3.1",
    "repository": "https://github.com/mdevils/rust-osakit",
    "texts": [
-    176
+    178
    ]
   },
   {
@@ -3464,7 +3508,7 @@
    "url": "https://crates.io/crates/parking_lot/0.12.5",
    "repository": "https://github.com/Amanieu/parking_lot",
    "texts": [
-    144
+    145
    ]
   },
   {
@@ -3475,7 +3519,7 @@
    "url": "https://crates.io/crates/parking_lot_core/0.9.12",
    "repository": "https://github.com/Amanieu/parking_lot",
    "texts": [
-    144
+    145
    ]
   },
   {
@@ -3497,7 +3541,7 @@
    "url": "https://crates.io/crates/phf/0.13.1",
    "repository": "https://github.com/rust-phf/rust-phf",
    "texts": [
-    177
+    179
    ]
   },
   {
@@ -3508,7 +3552,7 @@
    "url": "https://crates.io/crates/phf_codegen/0.13.1",
    "repository": "https://github.com/rust-phf/rust-phf",
    "texts": [
-    177
+    179
    ]
   },
   {
@@ -3519,7 +3563,7 @@
    "url": "https://crates.io/crates/phf_generator/0.13.1",
    "repository": "https://github.com/rust-phf/rust-phf",
    "texts": [
-    177
+    179
    ]
   },
   {
@@ -3530,7 +3574,7 @@
    "url": "https://crates.io/crates/phf_macros/0.13.1",
    "repository": "https://github.com/rust-phf/rust-phf",
    "texts": [
-    177
+    179
    ]
   },
   {
@@ -3541,7 +3585,7 @@
    "url": "https://crates.io/crates/phf_shared/0.13.1",
    "repository": "https://github.com/rust-phf/rust-phf",
    "texts": [
-    177
+    179
    ]
   },
   {
@@ -3585,7 +3629,7 @@
    "url": "https://crates.io/crates/plist/1.8.0",
    "repository": "https://github.com/ebarnard/rust-plist/",
    "texts": [
-    178
+    180
    ]
   },
   {
@@ -3596,7 +3640,7 @@
    "url": "https://crates.io/crates/png/0.17.16",
    "repository": "https://github.com/image-rs/image-png",
    "texts": [
-    179
+    181
    ]
   },
   {
@@ -3607,7 +3651,7 @@
    "url": "https://crates.io/crates/png/0.18.1",
    "repository": "https://github.com/image-rs/image-png",
    "texts": [
-    179
+    181
    ]
   },
   {
@@ -3640,7 +3684,7 @@
    "url": "https://crates.io/crates/powerfmt/0.2.0",
    "repository": "https://github.com/jhpratt/powerfmt",
    "texts": [
-    180
+    182
    ]
   },
   {
@@ -3651,7 +3695,7 @@
    "url": "https://crates.io/crates/ppv-lite86/0.2.21",
    "repository": "https://github.com/cryptocorrosion/cryptocorrosion",
    "texts": [
-    181
+    183
    ]
   },
   {
@@ -3662,7 +3706,7 @@
    "url": "https://crates.io/crates/precomputed-hash/0.1.1",
    "repository": "https://github.com/emilio/precomputed-hash",
    "texts": [
-    182
+    184
    ]
   },
   {
@@ -3717,7 +3761,7 @@
    "url": "https://crates.io/crates/proc-macro-error/1.0.4",
    "repository": "https://gitlab.com/CreepySkeleton/proc-macro-error",
    "texts": [
-    183
+    185
    ]
   },
   {
@@ -3728,7 +3772,7 @@
    "url": "https://crates.io/crates/proc-macro-error-attr/1.0.4",
    "repository": "https://gitlab.com/CreepySkeleton/proc-macro-error",
    "texts": [
-    183
+    185
    ]
   },
   {
@@ -3750,7 +3794,7 @@
    "url": "https://crates.io/crates/ptr_meta/0.1.4",
    "repository": "https://github.com/djkoloski/ptr_meta",
    "texts": [
-    184
+    186
    ]
   },
   {
@@ -3761,7 +3805,7 @@
    "url": "https://crates.io/crates/ptr_meta_derive/0.1.4",
    "repository": "https://github.com/djkoloski/ptr_meta",
    "texts": [
-    184
+    186
    ]
   },
   {
@@ -3772,7 +3816,7 @@
    "url": "https://crates.io/crates/quick-xml/0.38.4",
    "repository": "https://github.com/tafia/quick-xml",
    "texts": [
-    185
+    187
    ]
   },
   {
@@ -3794,7 +3838,7 @@
    "url": "https://crates.io/crates/r-efi/5.3.0",
    "repository": "https://github.com/r-efi/r-efi",
    "texts": [
-    186
+    188
    ]
   },
   {
@@ -3805,7 +3849,7 @@
    "url": "https://crates.io/crates/r-efi/6.0.0",
    "repository": "https://github.com/r-efi/r-efi",
    "texts": [
-    186
+    188
    ]
   },
   {
@@ -3816,7 +3860,7 @@
    "url": "https://crates.io/crates/radium/0.7.0",
    "repository": "https://github.com/bitvecto-rs/radium",
    "texts": [
-    187
+    189
    ]
   },
   {
@@ -3827,8 +3871,8 @@
    "url": "https://crates.io/crates/rand/0.8.5",
    "repository": "https://github.com/rust-random/rand",
    "texts": [
-    188,
-    189
+    190,
+    191
    ]
   },
   {
@@ -3839,8 +3883,8 @@
    "url": "https://crates.io/crates/rand/0.9.5",
    "repository": "https://github.com/rust-random/rand",
    "texts": [
-    188,
-    189
+    190,
+    191
    ]
   },
   {
@@ -3851,8 +3895,8 @@
    "url": "https://crates.io/crates/rand_chacha/0.3.1",
    "repository": "https://github.com/rust-random/rand",
    "texts": [
-    188,
-    189
+    190,
+    191
    ]
   },
   {
@@ -3863,8 +3907,8 @@
    "url": "https://crates.io/crates/rand_chacha/0.9.0",
    "repository": "https://github.com/rust-random/rand",
    "texts": [
-    188,
-    189
+    190,
+    191
    ]
   },
   {
@@ -3875,8 +3919,8 @@
    "url": "https://crates.io/crates/rand_core/0.6.4",
    "repository": "https://github.com/rust-random/rand",
    "texts": [
-    188,
-    189
+    190,
+    191
    ]
   },
   {
@@ -3887,8 +3931,8 @@
    "url": "https://crates.io/crates/rand_core/0.9.5",
    "repository": "https://github.com/rust-random/rand",
    "texts": [
-    188,
-    189
+    190,
+    191
    ]
   },
   {
@@ -3899,7 +3943,7 @@
    "url": "https://crates.io/crates/raw-window-handle/0.6.2",
    "repository": "https://github.com/rust-windowing/raw-window-handle",
    "texts": [
-    190
+    192
    ]
   },
   {
@@ -3910,7 +3954,7 @@
    "url": "https://crates.io/crates/redox_syscall/0.5.18",
    "repository": "https://gitlab.redox-os.org/redox-os/syscall",
    "texts": [
-    191
+    193
    ]
   },
   {
@@ -3921,7 +3965,7 @@
    "url": "https://crates.io/crates/redox_users/0.4.6",
    "repository": "https://gitlab.redox-os.org/redox-os/users",
    "texts": [
-    192
+    194
    ]
   },
   {
@@ -3932,7 +3976,7 @@
    "url": "https://crates.io/crates/redox_users/0.5.2",
    "repository": "https://gitlab.redox-os.org/redox-os/users",
    "texts": [
-    192
+    194
    ]
   },
   {
@@ -3998,7 +4042,7 @@
    "url": "https://crates.io/crates/rend/0.4.2",
    "repository": "https://github.com/djkoloski/rend",
    "texts": [
-    184
+    186
    ]
   },
   {
@@ -4009,7 +4053,7 @@
    "url": "https://crates.io/crates/reqwest/0.13.2",
    "repository": "https://github.com/seanmonstar/reqwest",
    "texts": [
-    193
+    195
    ]
   },
   {
@@ -4020,9 +4064,9 @@
    "url": "https://crates.io/crates/ring/0.17.14",
    "repository": "https://github.com/briansmith/ring",
    "texts": [
-    194,
-    195,
-    196
+    196,
+    197,
+    198
    ]
   },
   {
@@ -4033,7 +4077,7 @@
    "url": "https://crates.io/crates/rkyv/0.7.46",
    "repository": "https://github.com/rkyv/rkyv",
    "texts": [
-    184
+    186
    ]
   },
   {
@@ -4044,7 +4088,7 @@
    "url": "https://crates.io/crates/rkyv_derive/0.7.46",
    "repository": "https://github.com/rkyv/rkyv",
    "texts": [
-    184
+    186
    ]
   },
   {
@@ -4055,7 +4099,7 @@
    "url": "https://crates.io/crates/rust_decimal/1.41.0",
    "repository": "https://github.com/paupino/rust-decimal",
    "texts": [
-    197
+    199
    ]
   },
   {
@@ -4066,7 +4110,7 @@
    "url": "https://crates.io/crates/rust-ini/0.21.3",
    "repository": "https://github.com/zonyitoo/rust-ini",
    "texts": [
-    198
+    200
    ]
   },
   {
@@ -4077,7 +4121,7 @@
    "url": "https://crates.io/crates/rustc_version/0.4.1",
    "repository": "https://github.com/djc/rustc-version-rs",
    "texts": [
-    144
+    145
    ]
   },
   {
@@ -4100,7 +4144,7 @@
    "repository": "https://github.com/bytecodealliance/rustix",
    "texts": [
     27,
-    199
+    201
    ]
   },
   {
@@ -4124,7 +4168,7 @@
    "repository": "https://github.com/rustls/rustls-native-certs",
    "texts": [
     118,
-    200,
+    202,
     119
    ]
   },
@@ -4136,7 +4180,7 @@
    "url": "https://crates.io/crates/rustls-pki-types/1.15.1",
    "repository": "https://github.com/rustls/pki-types",
    "texts": [
-    201
+    203
    ]
   },
   {
@@ -4147,7 +4191,7 @@
    "url": "https://crates.io/crates/rustls-platform-verifier/0.6.2",
    "repository": "https://github.com/rustls/rustls-platform-verifier",
    "texts": [
-    202
+    204
    ]
   },
   {
@@ -4158,7 +4202,7 @@
    "url": "https://crates.io/crates/rustls-platform-verifier-android/0.1.1",
    "repository": "https://github.com/rustls/rustls-platform-verifier",
    "texts": [
-    203
+    205
    ]
   },
   {
@@ -4169,7 +4213,7 @@
    "url": "https://crates.io/crates/rustls-webpki/0.103.15",
    "repository": "https://github.com/rustls/webpki",
    "texts": [
-    204
+    206
    ]
   },
   {
@@ -4191,7 +4235,7 @@
    "url": "https://crates.io/crates/same-file/1.0.6",
    "repository": "https://github.com/BurntSushi/same-file",
    "texts": [
-    205,
+    207,
     31
    ]
   },
@@ -4203,7 +4247,7 @@
    "url": "https://crates.io/crates/schannel/0.1.29",
    "repository": "https://github.com/steffengy/schannel-rs",
    "texts": [
-    206
+    208
    ]
   },
   {
@@ -4214,7 +4258,7 @@
    "url": "https://crates.io/crates/schemars/0.8.22",
    "repository": "https://github.com/GREsau/schemars",
    "texts": [
-    207
+    209
    ]
   },
   {
@@ -4225,7 +4269,7 @@
    "url": "https://crates.io/crates/schemars/0.9.0",
    "repository": "https://github.com/GREsau/schemars",
    "texts": [
-    207
+    209
    ]
   },
   {
@@ -4236,7 +4280,7 @@
    "url": "https://crates.io/crates/schemars/1.2.1",
    "repository": "https://github.com/GREsau/schemars",
    "texts": [
-    207
+    209
    ]
   },
   {
@@ -4247,7 +4291,7 @@
    "url": "https://crates.io/crates/schemars_derive/0.8.22",
    "repository": "https://github.com/GREsau/schemars",
    "texts": [
-    207
+    209
    ]
   },
   {
@@ -4258,7 +4302,7 @@
    "url": "https://crates.io/crates/scopeguard/1.2.0",
    "repository": "https://github.com/bluss/scopeguard",
    "texts": [
-    208
+    210
    ]
   },
   {
@@ -4269,7 +4313,7 @@
    "url": "https://crates.io/crates/seahash/4.1.0",
    "repository": "https://gitlab.redox-os.org/redox-os/seahash",
    "texts": [
-    209
+    211
    ]
   },
   {
@@ -4280,7 +4324,7 @@
    "url": "https://crates.io/crates/security-framework/3.7.0",
    "repository": "https://github.com/kornelski/rust-security-framework",
    "texts": [
-    210
+    212
    ]
   },
   {
@@ -4291,7 +4335,7 @@
    "url": "https://crates.io/crates/security-framework-sys/2.17.0",
    "repository": "https://github.com/kornelski/rust-security-framework",
    "texts": [
-    210
+    212
    ]
   },
   {
@@ -4412,7 +4456,7 @@
    "url": "https://crates.io/crates/serde_with/3.18.0",
    "repository": "https://github.com/jonasbb/serde_with/",
    "texts": [
-    211
+    213
    ]
   },
   {
@@ -4423,7 +4467,7 @@
    "url": "https://crates.io/crates/serde_with_macros/3.18.0",
    "repository": "https://github.com/jonasbb/serde_with/",
    "texts": [
-    211
+    213
    ]
   },
   {
@@ -4445,7 +4489,7 @@
    "url": "https://crates.io/crates/serialize-to-javascript/0.1.2",
    "repository": "https://github.com/chippers/serialize-to-javascript",
    "texts": [
-    212
+    214
    ]
   },
   {
@@ -4456,7 +4500,7 @@
    "url": "https://crates.io/crates/serialize-to-javascript-impl/0.1.2",
    "repository": "https://github.com/chippers/serialize-to-javascript",
    "texts": [
-    212
+    214
    ]
   },
   {
@@ -4478,7 +4522,7 @@
    "url": "https://crates.io/crates/sha2/0.10.9",
    "repository": "https://github.com/RustCrypto/hashes",
    "texts": [
-    213
+    215
    ]
   },
   {
@@ -4489,7 +4533,7 @@
    "url": "https://crates.io/crates/shlex/1.3.0",
    "repository": "https://github.com/comex/rust-shlex",
    "texts": [
-    214
+    216
    ]
   },
   {
@@ -4500,7 +4544,7 @@
    "url": "https://crates.io/crates/signal-hook-registry/1.4.8",
    "repository": "https://github.com/vorner/signal-hook",
    "texts": [
-    215
+    217
    ]
   },
   {
@@ -4511,7 +4555,7 @@
    "url": "https://crates.io/crates/simd-adler32/0.3.9",
    "repository": "https://github.com/mcountryman/simd-adler32",
    "texts": [
-    216
+    218
    ]
   },
   {
@@ -4533,7 +4577,7 @@
    "url": "https://crates.io/crates/siphasher/1.0.2",
    "repository": "https://github.com/jedisct1/rust-siphash",
    "texts": [
-    217
+    219
    ]
   },
   {
@@ -4544,7 +4588,7 @@
    "url": "https://crates.io/crates/slab/0.4.12",
    "repository": "https://github.com/tokio-rs/slab",
    "texts": [
-    218
+    220
    ]
   },
   {
@@ -4555,7 +4599,7 @@
    "url": "https://crates.io/crates/smallvec/1.15.1",
    "repository": "https://github.com/servo/rust-smallvec",
    "texts": [
-    219
+    221
    ]
   },
   {
@@ -4577,7 +4621,7 @@
    "url": "https://crates.io/crates/softbuffer/0.4.8",
    "repository": "https://github.com/rust-windowing/softbuffer",
    "texts": [
-    220
+    222
    ]
   },
   {
@@ -4588,7 +4632,7 @@
    "url": "https://crates.io/crates/soup3/0.5.0",
    "repository": "https://gitlab.gnome.org/World/Rust/soup3-rs",
    "texts": [
-    131
+    132
    ]
   },
   {
@@ -4599,7 +4643,7 @@
    "url": "https://crates.io/crates/soup3-sys/0.5.0",
    "repository": "https://gitlab.gnome.org/World/Rust/soup3-rs",
    "texts": [
-    131
+    132
    ]
   },
   {
@@ -4610,7 +4654,7 @@
    "url": "https://crates.io/crates/stable_deref_trait/1.2.1",
    "repository": "https://github.com/storyyeller/stable_deref_trait",
    "texts": [
-    221
+    223
    ]
   },
   {
@@ -4643,7 +4687,7 @@
    "url": "https://crates.io/crates/strsim/0.11.1",
    "repository": "https://github.com/rapidfuzz/strsim-rs",
    "texts": [
-    222
+    224
    ]
   },
   {
@@ -4654,7 +4698,7 @@
    "url": "https://crates.io/crates/subtle/2.6.1",
    "repository": "https://github.com/dalek-cryptography/subtle",
    "texts": [
-    223
+    225
    ]
   },
   {
@@ -4665,7 +4709,7 @@
    "url": "https://crates.io/crates/swift-rs/1.0.8",
    "repository": "https://github.com/Brendonovich/swift-rs",
    "texts": [
-    224
+    226
    ]
   },
   {
@@ -4709,7 +4753,7 @@
    "url": "https://crates.io/crates/sync_wrapper/1.0.2",
    "repository": "https://github.com/Actyx/sync_wrapper",
    "texts": [
-    225
+    227
    ]
   },
   {
@@ -4720,7 +4764,7 @@
    "url": "https://crates.io/crates/synstructure/0.13.2",
    "repository": "https://github.com/mystor/synstructure",
    "texts": [
-    226
+    228
    ]
   },
   {
@@ -4731,7 +4775,7 @@
    "url": "https://crates.io/crates/system-configuration/0.7.0",
    "repository": "https://github.com/mullvad/system-configuration-rs",
    "texts": [
-    227
+    229
    ]
   },
   {
@@ -4742,7 +4786,7 @@
    "url": "https://crates.io/crates/system-configuration-sys/0.6.0",
    "repository": "https://github.com/mullvad/system-configuration-rs",
    "texts": [
-    227
+    229
    ]
   },
   {
@@ -4765,7 +4809,7 @@
    "repository": "https://github.com/tauri-apps/tao",
    "texts": [
     86,
-    228
+    230
    ]
   },
   {
@@ -4776,8 +4820,8 @@
    "url": "https://crates.io/crates/tao-macros/0.1.4",
    "repository": "https://github.com/tauri-apps/tao",
    "texts": [
-    229,
-    230
+    231,
+    232
    ]
   },
   {
@@ -4788,7 +4832,7 @@
    "url": "https://crates.io/crates/tap/1.0.1",
    "repository": "https://github.com/myrrlyn/tap",
    "texts": [
-    231
+    233
    ]
   },
   {
@@ -4799,7 +4843,7 @@
    "url": "https://crates.io/crates/tar/0.4.46",
    "repository": "https://github.com/composefs/tar-rs",
    "texts": [
-    232
+    234
    ]
   },
   {
@@ -4810,7 +4854,7 @@
    "url": "https://crates.io/crates/target-lexicon/0.12.16",
    "repository": "https://github.com/bytecodealliance/target-lexicon",
    "texts": [
-    233
+    235
    ]
   },
   {
@@ -4865,7 +4909,7 @@
    "url": "https://crates.io/crates/tauri-plugin/2.7.1",
    "repository": "https://github.com/tauri-apps/tauri",
    "texts": [
-    234
+    236
    ]
   },
   {
@@ -4930,6 +4974,18 @@
   },
   {
    "source": "crates.io",
+   "name": "tauri-plugin-opener",
+   "version": "2.7.1",
+   "license": "Apache-2.0 OR MIT",
+   "url": "https://crates.io/crates/tauri-plugin-opener/2.7.1",
+   "repository": "https://github.com/tauri-apps/plugins-workspace",
+   "texts": [
+    4,
+    6
+   ]
+  },
+  {
+   "source": "crates.io",
    "name": "tauri-plugin-process",
    "version": "2.4.0",
    "license": "Apache-2.0 OR MIT",
@@ -4948,7 +5004,7 @@
    "url": "https://crates.io/crates/tauri-plugin-single-instance/2.5.3",
    "repository": "https://github.com/tauri-apps/plugins-workspace",
    "texts": [
-    235,
+    237,
     6
    ]
   },
@@ -5005,7 +5061,7 @@
    "url": "https://crates.io/crates/tauri-winres/0.3.5",
    "repository": "https://github.com/tauri-apps/winres",
    "texts": [
-    236
+    238
    ]
   },
   {
@@ -5017,7 +5073,7 @@
    "repository": "https://github.com/tauri-apps/winrt-notification",
    "texts": [
     4,
-    237
+    239
    ]
   },
   {
@@ -5028,7 +5084,7 @@
    "url": "https://crates.io/crates/tempfile/3.27.0",
    "repository": "https://github.com/Stebalien/tempfile",
    "texts": [
-    238
+    240
    ]
   },
   {
@@ -5039,7 +5095,7 @@
    "url": "https://crates.io/crates/tendril/0.5.0",
    "repository": "https://github.com/servo/html5ever",
    "texts": [
-    239
+    241
    ]
   },
   {
@@ -5094,7 +5150,7 @@
    "url": "https://crates.io/crates/time/0.3.47",
    "repository": "https://github.com/time-rs/time",
    "texts": [
-    240
+    242
    ]
   },
   {
@@ -5105,7 +5161,7 @@
    "url": "https://crates.io/crates/time-core/0.1.8",
    "repository": "https://github.com/time-rs/time",
    "texts": [
-    240
+    242
    ]
   },
   {
@@ -5116,7 +5172,7 @@
    "url": "https://crates.io/crates/time-macros/0.2.27",
    "repository": "https://github.com/time-rs/time",
    "texts": [
-    240
+    242
    ]
   },
   {
@@ -5159,7 +5215,7 @@
    "url": "https://crates.io/crates/tinyvec_macros/0.1.1",
    "repository": "https://github.com/Soveu/tinyvec_macros",
    "texts": [
-    241
+    243
    ]
   },
   {
@@ -5170,7 +5226,7 @@
    "url": "https://crates.io/crates/tokio/1.51.1",
    "repository": "https://github.com/tokio-rs/tokio",
    "texts": [
-    242
+    244
    ]
   },
   {
@@ -5181,7 +5237,7 @@
    "url": "https://crates.io/crates/tokio-rustls/0.26.6",
    "repository": "https://github.com/rustls/tokio-rustls",
    "texts": [
-    243
+    245
    ]
   },
   {
@@ -5192,7 +5248,7 @@
    "url": "https://crates.io/crates/tokio-util/0.7.18",
    "repository": "https://github.com/tokio-rs/tokio",
    "texts": [
-    242
+    244
    ]
   },
   {
@@ -5324,7 +5380,7 @@
    "url": "https://crates.io/crates/tower/0.5.3",
    "repository": "https://github.com/tower-rs/tower",
    "texts": [
-    244
+    246
    ]
   },
   {
@@ -5335,7 +5391,7 @@
    "url": "https://crates.io/crates/tower-http/0.6.8",
    "repository": "https://github.com/tower-rs/tower-http",
    "texts": [
-    245
+    247
    ]
   },
   {
@@ -5346,7 +5402,7 @@
    "url": "https://crates.io/crates/tower-layer/0.3.3",
    "repository": "https://github.com/tower-rs/tower",
    "texts": [
-    244
+    246
    ]
   },
   {
@@ -5357,7 +5413,7 @@
    "url": "https://crates.io/crates/tower-service/0.3.3",
    "repository": "https://github.com/tower-rs/tower",
    "texts": [
-    244
+    246
    ]
   },
   {
@@ -5368,7 +5424,7 @@
    "url": "https://crates.io/crates/tracing/0.1.44",
    "repository": "https://github.com/tokio-rs/tracing",
    "texts": [
-    246
+    248
    ]
   },
   {
@@ -5379,7 +5435,7 @@
    "url": "https://crates.io/crates/tracing-attributes/0.1.31",
    "repository": "https://github.com/tokio-rs/tracing",
    "texts": [
-    246
+    248
    ]
   },
   {
@@ -5390,7 +5446,7 @@
    "url": "https://crates.io/crates/tracing-core/0.1.36",
    "repository": "https://github.com/tokio-rs/tracing",
    "texts": [
-    246
+    248
    ]
   },
   {
@@ -5401,8 +5457,8 @@
    "url": "https://crates.io/crates/tray-icon/0.25.1",
    "repository": "https://github.com/tauri-apps/tray-icon",
    "texts": [
-    151,
-    247
+    152,
+    249
    ]
   },
   {
@@ -5413,7 +5469,7 @@
    "url": "https://crates.io/crates/try-lock/0.2.5",
    "repository": "https://github.com/seanmonstar/try-lock",
    "texts": [
-    248
+    250
    ]
   },
   {
@@ -5435,8 +5491,8 @@
    "url": "https://crates.io/crates/typenum/1.19.0",
    "repository": "https://github.com/paholg/typenum",
    "texts": [
-    249,
-    250
+    251,
+    252
    ]
   },
   {
@@ -5447,7 +5503,7 @@
    "url": "https://crates.io/crates/uds_windows/1.2.1",
    "repository": "https://github.com/haraldh/rust_uds_windows",
    "texts": [
-    251
+    253
    ]
   },
   {
@@ -5459,7 +5515,7 @@
    "repository": "https://github.com/dtolnay/unicode-ident",
    "texts": [
     27,
-    252
+    254
    ]
   },
   {
@@ -5494,7 +5550,7 @@
    "url": "https://crates.io/crates/untrusted/0.9.0",
    "repository": "https://github.com/briansmith/untrusted",
    "texts": [
-    253
+    255
    ]
   },
   {
@@ -5516,7 +5572,7 @@
    "url": "https://crates.io/crates/urlpattern/0.6.0",
    "repository": "https://github.com/denoland/rust-urlpattern",
    "texts": [
-    254
+    256
    ]
   },
   {
@@ -5538,8 +5594,8 @@
    "url": "https://crates.io/crates/utf8_iter/1.0.4",
    "repository": "https://github.com/hsivonen/utf8_iter",
    "texts": [
-    255,
-    256
+    257,
+    258
    ]
   },
   {
@@ -5550,7 +5606,7 @@
    "url": "https://crates.io/crates/utf8-width/0.1.8",
    "repository": "https://github.com/magiclen/utf8-width",
    "texts": [
-    257
+    259
    ]
   },
   {
@@ -5561,7 +5617,7 @@
    "url": "https://crates.io/crates/uuid/1.23.0",
    "repository": "https://github.com/uuid-rs/uuid",
    "texts": [
-    258
+    260
    ]
   },
   {
@@ -5572,7 +5628,7 @@
    "url": "https://crates.io/crates/value-bag/1.12.0",
    "repository": "https://github.com/sval-rs/value-bag",
    "texts": [
-    259
+    261
    ]
   },
   {
@@ -5583,7 +5639,7 @@
    "url": "https://crates.io/crates/version_check/0.9.5",
    "repository": "https://github.com/SergioBenitez/version_check",
    "texts": [
-    260
+    262
    ]
   },
   {
@@ -5594,7 +5650,7 @@
    "url": "https://crates.io/crates/version-compare/0.2.1",
    "repository": "https://gitlab.com/timvisee/version-compare",
    "texts": [
-    261
+    263
    ]
   },
   {
@@ -5605,7 +5661,7 @@
    "url": "https://crates.io/crates/vswhom/0.1.0",
    "repository": "https://github.com/nabijaczleweli/vswhom.rs",
    "texts": [
-    262
+    264
    ]
   },
   {
@@ -5616,7 +5672,7 @@
    "url": "https://crates.io/crates/vswhom-sys/0.1.3",
    "repository": "https://github.com/nabijaczleweli/vswhom-sys.rs",
    "texts": [
-    262
+    264
    ]
   },
   {
@@ -5639,7 +5695,7 @@
    "url": "https://crates.io/crates/want/0.3.1",
    "repository": "https://github.com/seanmonstar/want",
    "texts": [
-    263
+    265
    ]
   },
   {
@@ -5661,7 +5717,7 @@
    "url": "https://crates.io/crates/wasip2/1.0.2+wasi-0.2.9",
    "repository": "https://github.com/bytecodealliance/wasi-rs",
    "texts": [
-    264
+    266
    ]
   },
   {
@@ -5672,7 +5728,7 @@
    "url": "https://crates.io/crates/wasip3/0.4.0+wasi-0.3.0-rc-2026-01-06",
    "repository": "https://github.com/bytecodealliance/wasi-rs",
    "texts": [
-    265
+    267
    ]
   },
   {
@@ -5738,7 +5794,7 @@
    "url": "https://crates.io/crates/wasm-encoder/0.244.0",
    "repository": "https://github.com/bytecodealliance/wasm-tools/tree/main/crates/wasm-encoder",
    "texts": [
-    266
+    268
    ]
   },
   {
@@ -5749,7 +5805,7 @@
    "url": "https://crates.io/crates/wasm-metadata/0.244.0",
    "repository": "https://github.com/bytecodealliance/wasm-tools/tree/main/crates/wasm-metadata",
    "texts": [
-    267
+    269
    ]
   },
   {
@@ -5771,7 +5827,7 @@
    "url": "https://crates.io/crates/wasmparser/0.244.0",
    "repository": "https://github.com/bytecodealliance/wasm-tools/tree/main/crates/wasmparser",
    "texts": [
-    268
+    270
    ]
   },
   {
@@ -5804,7 +5860,7 @@
    "url": "https://crates.io/crates/web-time/1.1.0",
    "repository": "https://github.com/daxpedda/web-time",
    "texts": [
-    269
+    271
    ]
   },
   {
@@ -5815,7 +5871,7 @@
    "url": "https://crates.io/crates/webkit2gtk/2.0.2",
    "repository": "https://github.com/tauri-apps/webkit2gtk-rs",
    "texts": [
-    270
+    272
    ]
   },
   {
@@ -5826,7 +5882,7 @@
    "url": "https://crates.io/crates/webkit2gtk-sys/2.0.2",
    "repository": "https://github.com/tauri-apps/webkit2gtk-rs",
    "texts": [
-    271
+    273
    ]
   },
   {
@@ -5837,7 +5893,7 @@
    "url": "https://crates.io/crates/webpki-root-certs/1.0.9",
    "repository": "https://github.com/rustls/webpki-roots",
    "texts": [
-    272
+    274
    ]
   },
   {
@@ -5848,7 +5904,7 @@
    "url": "https://crates.io/crates/webview2-com/0.39.1",
    "repository": "https://github.com/wravery/webview2-rs",
    "texts": [
-    273
+    275
    ]
   },
   {
@@ -5859,7 +5915,7 @@
    "url": "https://crates.io/crates/webview2-com-macros/0.8.1",
    "repository": "https://github.com/wravery/webview2-rs",
    "texts": [
-    274
+    276
    ]
   },
   {
@@ -5870,7 +5926,7 @@
    "url": "https://crates.io/crates/webview2-com-sys/0.39.1",
    "repository": "https://github.com/wravery/webview2-rs",
    "texts": [
-    275
+    277
    ]
   },
   {
@@ -5881,7 +5937,7 @@
    "url": "https://crates.io/crates/winapi/0.3.9",
    "repository": "https://github.com/retep998/winapi-rs",
    "texts": [
-    276
+    278
    ]
   },
   {
@@ -5892,7 +5948,7 @@
    "url": "https://crates.io/crates/winapi-i686-pc-windows-gnu/0.4.0",
    "repository": "https://github.com/retep998/winapi-rs",
    "texts": [
-    277
+    279
    ]
   },
   {
@@ -5903,7 +5959,7 @@
    "url": "https://crates.io/crates/winapi-util/0.1.11",
    "repository": "https://github.com/BurntSushi/winapi-util",
    "texts": [
-    205,
+    207,
     31
    ]
   },
@@ -5915,7 +5971,7 @@
    "url": "https://crates.io/crates/winapi-x86_64-pc-windows-gnu/0.4.0",
    "repository": "https://github.com/retep998/winapi-rs",
    "texts": [
-    277
+    279
    ]
   },
   {
@@ -5926,8 +5982,8 @@
    "url": "https://crates.io/crates/window-vibrancy/0.8.1",
    "repository": "https://github.com/tauri-apps/tauri-plugin-vibrancy",
    "texts": [
-    278,
-    279
+    280,
+    281
    ]
   },
   {
@@ -6444,7 +6500,7 @@
    "url": "https://crates.io/crates/winreg/0.10.1",
    "repository": "https://github.com/gentoo90/winreg-rs",
    "texts": [
-    280
+    282
    ]
   },
   {
@@ -6455,7 +6511,7 @@
    "url": "https://crates.io/crates/winreg/0.55.0",
    "repository": "https://github.com/gentoo90/winreg-rs",
    "texts": [
-    280
+    282
    ]
   },
   {
@@ -6510,7 +6566,7 @@
    "url": "https://crates.io/crates/wit-component/0.244.0",
    "repository": "https://github.com/bytecodealliance/wasm-tools/tree/main/crates/wit-component",
    "texts": [
-    281
+    283
    ]
   },
   {
@@ -6521,7 +6577,7 @@
    "url": "https://crates.io/crates/wit-parser/0.244.0",
    "repository": "https://github.com/bytecodealliance/wasm-tools/tree/main/crates/wit-parser",
    "texts": [
-    282
+    284
    ]
   },
   {
@@ -6543,8 +6599,8 @@
    "url": "https://crates.io/crates/wry/0.57.0",
    "repository": "https://github.com/tauri-apps/wry",
    "texts": [
-    283,
-    284
+    285,
+    286
    ]
   },
   {
@@ -6588,7 +6644,7 @@
    "url": "https://crates.io/crates/xattr/1.6.1",
    "repository": "https://github.com/Stebalien/xattr",
    "texts": [
-    238
+    240
    ]
   },
   {
@@ -6621,7 +6677,7 @@
    "url": "https://crates.io/crates/zbus/5.19.0",
    "repository": "https://github.com/z-galaxy/zbus/",
    "texts": [
-    285
+    287
    ]
   },
   {
@@ -6632,7 +6688,7 @@
    "url": "https://crates.io/crates/zbus_macros/5.19.0",
    "repository": "https://github.com/z-galaxy/zbus/",
    "texts": [
-    285
+    287
    ]
   },
   {
@@ -6643,7 +6699,7 @@
    "url": "https://crates.io/crates/zbus_names/4.3.4",
    "repository": "https://github.com/z-galaxy/zbus/",
    "texts": [
-    285
+    287
    ]
   },
   {
@@ -6654,7 +6710,7 @@
    "url": "https://crates.io/crates/zcheapstr/1.1.0",
    "repository": "https://github.com/z-galaxy/zcheapstr/",
    "texts": [
-    286
+    288
    ]
   },
   {
@@ -6665,7 +6721,7 @@
    "url": "https://crates.io/crates/zerocopy/0.8.48",
    "repository": "https://github.com/google/zerocopy",
    "texts": [
-    287
+    289
    ]
   },
   {
@@ -6676,7 +6732,7 @@
    "url": "https://crates.io/crates/zerocopy-derive/0.8.48",
    "repository": "https://github.com/google/zerocopy",
    "texts": [
-    287
+    289
    ]
   },
   {
@@ -6709,7 +6765,7 @@
    "url": "https://crates.io/crates/zeroize/1.9.1",
    "repository": "https://github.com/RustCrypto/utils",
    "texts": [
-    288
+    290
    ]
   },
   {
@@ -6753,7 +6809,7 @@
    "url": "https://crates.io/crates/zip/4.6.1",
    "repository": "https://github.com/zip-rs/zip2",
    "texts": [
-    289
+    291
    ]
   },
   {
@@ -6775,7 +6831,7 @@
    "url": "https://crates.io/crates/zvariant/5.15.0",
    "repository": "https://github.com/z-galaxy/zbus/",
    "texts": [
-    285
+    287
    ]
   },
   {
@@ -6786,7 +6842,7 @@
    "url": "https://crates.io/crates/zvariant_derive/5.15.0",
    "repository": "https://github.com/z-galaxy/zbus/",
    "texts": [
-    285
+    287
    ]
   },
   {
@@ -6807,7 +6863,7 @@
    "license": "MIT OR Apache-2.0",
    "url": "https://github.com/rust-lang/rust",
    "texts": [
-    290
+    292
    ]
   }
  ],
@@ -6942,6 +6998,7 @@
   "MIT License\n\nCopyright (c) 2019 Bojan\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
   "Copyright 2017 Juniper Networks, Inc.\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.",
   "Copyright 2019-2024 YOSHIOKA Takuma\n\nPermission is hereby granted, free of charge, to any\nperson obtaining a copy of this software and associated\ndocumentation files (the \"Software\"), to deal in the\nSoftware without restriction, including without\nlimitation the rights to use, copy, modify, merge,\npublish, distribute, sublicense, and/or sell copies of\nthe Software, and to permit persons to whom the Software\nis furnished to do so, subject to the following\nconditions:\n\nThe above copyright notice and this permission notice\nshall be included in all copies or substantial portions\nof the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF\nANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED\nTO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A\nPARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT\nSHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY\nCLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION\nOF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR\nIN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER\nDEALINGS IN THE SOFTWARE.",
+  "MIT License\n\nCopyright (c) 2023 Sean Larkin\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
   "The MIT License (MIT)\n\nCopyright (c) 2013-2021, The Gtk-rs Project Developers.\nCopyright (c) 2021, Tauri Programme within The Commons Conservancy.\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
   "The MIT License (MIT)\n\nCopyright (c) 2013-2017, The Gtk-rs Project Developers.\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
   "The MIT License (MIT)\n\nCopyright (c) 2016 Prevoty, Inc. and jni-rs contributors\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
@@ -6986,6 +7043,7 @@
   "MIT License\n\nCopyright (c) the objc2-ui-kit authors\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
   "MIT License\n\nCopyright (c) the objc2-user-notifications authors\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
   "MIT License\n\nCopyright (c) the objc2-web-kit authors\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+  "The MIT License (MIT)\n=====================\n\nCopyright © `2015` `Sebastian Thiel`\n\nPermission is hereby granted, free of charge, to any person\nobtaining a copy of this software and associated documentation\nfiles (the “Software”), to deal in the Software without\nrestriction, including without limitation the rights to use,\ncopy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the\nSoftware is furnished to do so, subject to the following\nconditions:\n\nThe above copyright notice and this permission notice shall be\nincluded in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND,\nEXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES\nOF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND\nNONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT\nHOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,\nWHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING\nFROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR\nOTHER DEALINGS IN THE SOFTWARE.",
   "Mozilla Public License Version 2.0\n==================================\n\n1. Definitions\n--------------\n\n1.1. \"Contributor\"\n    means each individual or legal entity that creates, contributes to\n    the creation of, or owns Covered Software.\n\n1.2. \"Contributor Version\"\n    means the combination of the Contributions of others (if any) used\n    by a Contributor and that particular Contributor's Contribution.\n\n1.3. \"Contribution\"\n    means Covered Software of a particular Contributor.\n\n1.4. \"Covered Software\"\n    means Source Code Form to which the initial Contributor has attached\n    the notice in Exhibit A, the Executable Form of such Source Code\n    Form, and Modifications of such Source Code Form, in each case\n    including portions thereof.\n\n1.5. \"Incompatible With Secondary Licenses\"\n    means\n\n    (a) that the initial Contributor has attached the notice described\n        in Exhibit B to the Covered Software; or\n\n    (b) that the Covered Software was made available under the terms of\n        version 1.1 or earlier of the License, but not also under the\n        terms of a Secondary License.\n\n1.6. \"Executable Form\"\n    means any form of the work other than Source Code Form.\n\n1.7. \"Larger Work\"\n    means a work that combines Covered Software with other material, in\n    a separate file or files, that is not Covered Software.\n\n1.8. \"License\"\n    means this document.\n\n1.9. \"Licensable\"\n    means having the right to grant, to the maximum extent possible,\n    whether at the time of the initial grant or subsequently, any and\n    all of the rights conveyed by this License.\n\n1.10. \"Modifications\"\n    means any of the following:\n\n    (a) any file in Source Code Form that results from an addition to,\n        deletion from, or modification of the contents of Covered\n        Software; or\n\n    (b) any new file in Source Code Form that contains any Covered\n        Software.\n\n1.11. \"Patent Claims\" of a Contributor\n    means any patent claim(s), including without limitation, method,\n    process, and apparatus claims, in any patent Licensable by such\n    Contributor that would be infringed, but for the grant of the\n    License, by the making, using, selling, offering for sale, having\n    made, import, or transfer of either its Contributions or its\n    Contributor Version.\n\n1.12. \"Secondary License\"\n    means either the GNU General Public License, Version 2.0, the GNU\n    Lesser General Public License, Version 2.1, the GNU Affero General\n    Public License, Version 3.0, or any later versions of those\n    licenses.\n\n1.13. \"Source Code Form\"\n    means the form of the work preferred for making modifications.\n\n1.14. \"You\" (or \"Your\")\n    means an individual or a legal entity exercising rights under this\n    License. For legal entities, \"You\" includes any entity that\n    controls, is controlled by, or is under common control with You. For\n    purposes of this definition, \"control\" means (a) the power, direct\n    or indirect, to cause the direction or management of such entity,\n    whether by contract or otherwise, or (b) ownership of more than\n    fifty percent (50%) of the outstanding shares or beneficial\n    ownership of such entity.\n\n2. License Grants and Conditions\n--------------------------------\n\n2.1. Grants\n\nEach Contributor hereby grants You a world-wide, royalty-free,\nnon-exclusive license:\n\n(a) under intellectual property rights (other than patent or trademark)\n    Licensable by such Contributor to use, reproduce, make available,\n    modify, display, perform, distribute, and otherwise exploit its\n    Contributions, either on an unmodified basis, with Modifications, or\n    as part of a Larger Work; and\n\n(b) under Patent Claims of such Contributor to make, use, sell, offer\n    for sale, have made, import, and otherwise transfer either its\n    Contributions or its Contributor Version.\n\n2.2. Effective Date\n\nThe licenses granted in Section 2.1 with respect to any Contribution\nbecome effective for each Contribution on the date the Contributor first\ndistributes such Contribution.\n\n2.3. Limitations on Grant Scope\n\nThe licenses granted in this Section 2 are the only rights granted under\nthis License. No additional rights or licenses will be implied from the\ndistribution or licensing of Covered Software under this License.\nNotwithstanding Section 2.1(b) above, no patent license is granted by a\nContributor:\n\n(a) for any code that a Contributor has removed from Covered Software;\n    or\n\n(b) for infringements caused by: (i) Your and any other third party's\n    modifications of Covered Software, or (ii) the combination of its\n    Contributions with other software (except as part of its Contributor\n    Version); or\n\n(c) under Patent Claims infringed by Covered Software in the absence of\n    its Contributions.\n\nThis License does not grant any rights in the trademarks, service marks,\nor logos of any Contributor (except as may be necessary to comply with\nthe notice requirements in Section 3.4).\n\n2.4. Subsequent Licenses\n\nNo Contributor makes additional grants as a result of Your choice to\ndistribute the Covered Software under a subsequent version of this\nLicense (see Section 10.2) or under the terms of a Secondary License (if\npermitted under the terms of Section 3.3).\n\n2.5. Representation\n\nEach Contributor represents that the Contributor believes its\nContributions are its original creation(s) or it has sufficient rights\nto grant the rights to its Contributions conveyed by this License.\n\n2.6. Fair Use\n\nThis License is not intended to limit any rights You have under\napplicable copyright doctrines of fair use, fair dealing, or other\nequivalents.\n\n2.7. Conditions\n\nSections 3.1, 3.2, 3.3, and 3.4 are conditions of the licenses granted\nin Section 2.1.\n\n3. Responsibilities\n-------------------\n\n3.1. Distribution of Source Form\n\nAll distribution of Covered Software in Source Code Form, including any\nModifications that You create or to which You contribute, must be under\nthe terms of this License. You must inform recipients that the Source\nCode Form of the Covered Software is governed by the terms of this\nLicense, and how they can obtain a copy of this License. You may not\nattempt to alter or restrict the recipients' rights in the Source Code\nForm.\n\n3.2. Distribution of Executable Form\n\nIf You distribute Covered Software in Executable Form then:\n\n(a) such Covered Software must also be made available in Source Code\n    Form, as described in Section 3.1, and You must inform recipients of\n    the Executable Form how they can obtain a copy of such Source Code\n    Form by reasonable means in a timely manner, at a charge no more\n    than the cost of distribution to the recipient; and\n\n(b) You may distribute such Executable Form under the terms of this\n    License, or sublicense it under different terms, provided that the\n    license for the Executable Form does not attempt to limit or alter\n    the recipients' rights in the Source Code Form under this License.\n\n3.3. Distribution of a Larger Work\n\nYou may create and distribute a Larger Work under terms of Your choice,\nprovided that You also comply with the requirements of this License for\nthe Covered Software. If the Larger Work is a combination of Covered\nSoftware with a work governed by one or more Secondary Licenses, and the\nCovered Software is not Incompatible With Secondary Licenses, this\nLicense permits You to additionally distribute such Covered Software\nunder the terms of such Secondary License(s), so that the recipient of\nthe Larger Work may, at their option, further distribute the Covered\nSoftware under the terms of either this License or such Secondary\nLicense(s).\n\n3.4. Notices\n\nYou may not remove or alter the substance of any license notices\n(including copyright notices, patent notices, disclaimers of warranty,\nor limitations of liability) contained within the Source Code Form of\nthe Covered Software, except that You may alter any license notices to\nthe extent required to remedy known factual inaccuracies.\n\n3.5. Application of Additional Terms\n\nYou may choose to offer, and to charge a fee for, warranty, support,\nindemnity or liability obligations to one or more recipients of Covered\nSoftware. However, You may do so only on Your own behalf, and not on\nbehalf of any Contributor. You must make it absolutely clear that any\nsuch warranty, support, indemnity, or liability obligation is offered by\nYou alone, and You hereby agree to indemnify every Contributor for any\nliability incurred by such Contributor as a result of warranty, support,\nindemnity or liability terms You offer. You may include additional\ndisclaimers of warranty and limitations of liability specific to any\njurisdiction.\n\n4. Inability to Comply Due to Statute or Regulation\n---------------------------------------------------\n\nIf it is impossible for You to comply with any of the terms of this\nLicense with respect to some or all of the Covered Software due to\nstatute, judicial order, or regulation then You must: (a) comply with\nthe terms of this License to the maximum extent possible; and (b)\ndescribe the limitations and the code they affect. Such description must\nbe placed in a text file included with all distributions of the Covered\nSoftware under this License. Except to the extent prohibited by statute\nor regulation, such description must be sufficiently detailed for a\nrecipient of ordinary skill to be able to understand it.\n\n5. Termination\n--------------\n\n5.1. The rights granted under this License will terminate automatically\nif You fail to comply with any of its terms. However, if You become\ncompliant, then the rights granted under this License from a particular\nContributor are reinstated (a) provisionally, unless and until such\nContributor explicitly and finally terminates Your grants, and (b) on an\nongoing basis, if such Contributor fails to notify You of the\nnon-compliance by some reasonable means prior to 60 days after You have\ncome back into compliance. Moreover, Your grants from a particular\nContributor are reinstated on an ongoing basis if such Contributor\nnotifies You of the non-compliance by some reasonable means, this is the\nfirst time You have received notice of non-compliance with this License\nfrom such Contributor, and You become compliant prior to 30 days after\nYour receipt of the notice.\n\n5.2. If You initiate litigation against any entity by asserting a patent\ninfringement claim (excluding declaratory judgment actions,\ncounter-claims, and cross-claims) alleging that a Contributor Version\ndirectly or indirectly infringes any patent, then the rights granted to\nYou by any and all Contributors for the Covered Software under Section\n2.1 of this License shall terminate.\n\n5.3. In the event of termination under Sections 5.1 or 5.2 above, all\nend user license agreements (excluding distributors and resellers) which\nhave been validly granted by You or Your distributors under this License\nprior to termination shall survive termination.\n\n************************************************************************\n*                                                                      *\n*  6. Disclaimer of Warranty                                           *\n*  -------------------------                                           *\n*                                                                      *\n*  Covered Software is provided under this License on an \"as is\"       *\n*  basis, without warranty of any kind, either expressed, implied, or  *\n*  statutory, including, without limitation, warranties that the       *\n*  Covered Software is free of defects, merchantable, fit for a        *\n*  particular purpose or non-infringing. The entire risk as to the     *\n*  quality and performance of the Covered Software is with You.        *\n*  Should any Covered Software prove defective in any respect, You     *\n*  (not any Contributor) assume the cost of any necessary servicing,   *\n*  repair, or correction. This disclaimer of warranty constitutes an   *\n*  essential part of this License. No use of any Covered Software is   *\n*  authorized under this License except under this disclaimer.         *\n*                                                                      *\n************************************************************************\n\n************************************************************************\n*                                                                      *\n*  7. Limitation of Liability                                          *\n*  --------------------------                                          *\n*                                                                      *\n*  Under no circumstances and under no legal theory, whether tort      *\n*  (including negligence), contract, or otherwise, shall any           *\n*  Contributor, or anyone who distributes Covered Software as          *\n*  permitted above, be liable to You for any direct, indirect,         *\n*  special, incidental, or consequential damages of any character      *\n*  including, without limitation, damages for lost profits, loss of    *\n*  goodwill, work stoppage, computer failure or malfunction, or any    *\n*  and all other commercial damages or losses, even if such party      *\n*  shall have been informed of the possibility of such damages. This   *\n*  limitation of liability shall not apply to liability for death or   *\n*  personal injury resulting from such party's negligence to the       *\n*  extent applicable law prohibits such limitation. Some               *\n*  jurisdictions do not allow the exclusion or limitation of           *\n*  incidental or consequential damages, so this exclusion and          *\n*  limitation may not apply to You.                                    *\n*                                                                      *\n************************************************************************\n\n8. Litigation\n-------------\n\nAny litigation relating to this License may be brought only in the\ncourts of a jurisdiction where the defendant maintains its principal\nplace of business and such litigation shall be governed by laws of that\njurisdiction, without reference to its conflict-of-law provisions.\nNothing in this Section shall prevent a party's ability to bring\ncross-claims or counter-claims.\n\n9. Miscellaneous\n----------------\n\nThis License represents the complete agreement concerning the subject\nmatter hereof. If any provision of this License is held to be\nunenforceable, such provision shall be reformed only to the extent\nnecessary to make it enforceable. Any law or regulation which provides\nthat the language of a contract shall be construed against the drafter\nshall not be used to construe this License against a Contributor.\n\n10. Versions of the License\n---------------------------\n\n10.1. New Versions\n\nMozilla Foundation is the license steward. Except as provided in Section\n10.3, no one other than the license steward has the right to modify or\npublish new versions of this License. Each version will be given a\ndistinguishing version number.\n\n10.2. Effect of New Versions\n\nYou may distribute the Covered Software under the terms of the version\nof the License under which You originally received the Covered Software,\nor under the terms of any subsequent version published by the license\nsteward.\n\n10.3. Modified Versions\n\nIf you create software not governed by this License, and you want to\ncreate a new license for such software, you may create and use a\nmodified version of this License if you rename the license and remove\nany references to the name of the license steward (except to note that\nsuch modified license differs from this License).\n\n10.4. Distributing Source Code Form that is Incompatible With Secondary\nLicenses\n\nIf You choose to distribute Source Code Form that is Incompatible With\nSecondary Licenses under the terms of this version of the License, the\nnotice described in Exhibit B of this License must be attached.\n\nExhibit A - Source Code Form License Notice\n-------------------------------------------\n\n  This Source Code Form is subject to the terms of the Mozilla Public\n  License, v. 2.0. If a copy of the MPL was not distributed with this\n  file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nIf it is not possible or desirable to put the notice in a particular\nfile, then You may include the notice in a location (such as a LICENSE\nfile in a relevant directory) where a recipient would be likely to look\nfor such a notice.\n\nYou may add additional accurate notices of copyright ownership.\n\nExhibit B - \"Incompatible With Secondary Licenses\" Notice\n---------------------------------------------------------\n\n  This Source Code Form is \"Incompatible With Secondary Licenses\", as\n  defined by the Mozilla Public License, v. 2.0.",
   "MIT License\n\nCopyright (c) 2018 sgodwincs\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
   "Copyright (c) 2024 Marat Dulin\n\nPermission is hereby granted, free of charge, to any\nperson obtaining a copy of this software and associated\ndocumentation files (the \"Software\"), to deal in the\nSoftware without restriction, including without\nlimitation the rights to use, copy, modify, merge,\npublish, distribute, sublicense, and/or sell copies of\nthe Software, and to permit persons to whom the Software\nis furnished to do so, subject to the following\nconditions:\n\nThe above copyright notice and this permission notice\nshall be included in all copies or substantial portions\nof the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF\nANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED\nTO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A\nPARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT\nSHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY\nCLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION\nOF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR\nIN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER\nDEALINGS IN THE SOFTWARE.",

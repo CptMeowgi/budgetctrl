@@ -4,6 +4,11 @@
 // any string the app translates is missing here.
 export default {
   // App
+  "Feedback": "反馈",
+  "Opens GitHub in your browser, with your app version filled in. You'll need a GitHub account. Nothing from your budget is sent.": "在浏览器中打开 GitHub，并自动填好应用版本。需要 GitHub 账号。不会发送你预算中的任何内容。",
+  "Report a problem": "报告问题",
+  "Suggest an idea": "提出建议",
+  "Couldn't open your browser. The address is: {url}": "无法打开浏览器。地址是：{url}",
   "About": "关于",
   "Open-source licences": "开源许可证",
   "The open-source software Budget Ctrl is built with, and its licences.": "Budget Ctrl 所使用的开源软件及其许可证。",

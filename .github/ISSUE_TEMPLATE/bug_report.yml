@@ -1,0 +1,46 @@
+name: Something isn't working
+description: Report a bug, a wrong figure, or anything that looks broken
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this.
+
+        **Please don't attach your budget file or paste your real figures.** Describe what happened in words, with made-up amounts if they help.
+
+        Found a security problem? Please [report it privately](https://github.com/CptMeowgi/budgetctrl/security/advisories/new) instead of here.
+  - type: input
+    id: version
+    attributes:
+      label: Budget Ctrl version
+      description: Shown in Settings, under Updates.
+      placeholder: "0.5.2"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: System
+      description: Windows or Linux, and which version if you know it.
+      placeholder: "Windows 11, or Ubuntu 24.04"
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How can it be made to happen again?
+      placeholder: |
+        1. Open the Recurring tab
+        2. Add a bill due on the 31st
+        3. …
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect instead?

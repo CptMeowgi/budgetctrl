@@ -1,0 +1,20 @@
+name: Idea or request
+description: Suggest something Budget Ctrl should do, or do differently
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The situation or the problem, in your own words. This matters more than the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?
+  - type: input
+    id: version
+    attributes:
+      label: Budget Ctrl version, if you use it
+      placeholder: "0.5.2"

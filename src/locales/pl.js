@@ -4,6 +4,11 @@
 // i18n.test.js fails if any string the app translates is missing here.
 export default {
   // App
+  "Feedback": "Opinie",
+  "Opens GitHub in your browser, with your app version filled in. You'll need a GitHub account. Nothing from your budget is sent.": "Otwiera GitHub w przeglądarce z wpisaną wersją aplikacji. Potrzebne jest konto GitHub. Nic z Twojego budżetu nie jest wysyłane.",
+  "Report a problem": "Zgłoś problem",
+  "Suggest an idea": "Zaproponuj pomysł",
+  "Couldn't open your browser. The address is: {url}": "Nie udało się otworzyć przeglądarki. Adres: {url}",
   "About": "O aplikacji",
   "Open-source licences": "Licencje open source",
   "The open-source software Budget Ctrl is built with, and its licences.": "Oprogramowanie open source, z którego zbudowano Budget Ctrl, i jego licencje.",

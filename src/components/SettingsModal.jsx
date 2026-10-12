@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { currencyOptions, LOCALE_OPTIONS } from "../money.js";
-import { isTauri, isWindows } from "../platform.js";
+import { isLinux, isTauri, isWindows, openExternal } from "../platform.js";
+import { issueUrl } from "../lib/feedback.js";
 import { getStorageFault, listBackups } from "../storage.js";
 import { FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
 import { SettingRow, Switch } from "./controls.jsx";
@@ -20,6 +21,12 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
   const [backups, setBackups] = useState([]);
   const [dataPath, setDataPath] = useState("");
   const [licensesOpen, setLicensesOpen] = useState(false);
+  // The address to show when the browser couldn't be opened.
+  const [unopened, setUnopened] = useState(null);
+  const feedback = async (kind) => {
+    const url = issueUrl(kind, { version: updater?.version, os: isWindows ? "Windows" : isLinux ? "Linux" : "" });
+    setUnopened((await openExternal(url)) ? null : url);
+  };
 
   useEffect(() => {
     if (!isTauri) return;
@@ -289,6 +296,17 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
 
       <div style={divider} />
       <div style={group}>{t("About")}</div>
+      <SettingRow label={t("Feedback")} hint={t("Opens GitHub in your browser, with your app version filled in. You'll need a GitHub account. Nothing from your budget is sent.")}>
+        <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: SPACE.xs }}>
+          <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => feedback("problem")}>{t("Report a problem")}</button>
+          <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => feedback("idea")}>{t("Suggest an idea")}</button>
+        </span>
+      </SettingRow>
+      {unopened && (
+        <div style={{ fontSize: 11, color: theme.textMuted, userSelect: "text", wordBreak: "break-all", marginBottom: SPACE.sm }}>
+          {t("Couldn't open your browser. The address is: {url}", { url: unopened })}
+        </div>
+      )}
       <SettingRow label={t("Open-source licences")} hint={t("The open-source software Budget Ctrl is built with, and its licences.")}>
         <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => setLicensesOpen(true)}>{t("Show")}</button>
       </SettingRow>

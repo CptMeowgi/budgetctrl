@@ -221,9 +221,17 @@ function normalizeRepo(url) {
 // --------------------------------------------------------------- crates
 
 function cratePackages() {
-  const json = execFileSync("cargo", ["metadata", "--format-version", "1", "--locked", "--offline"], {
-    cwd: join(ROOT, "src-tauri"), encoding: "utf8", maxBuffer: 256 * 1024 * 1024,
-  });
+  let json;
+  try {
+    json = execFileSync("cargo", ["metadata", "--format-version", "1", "--locked", "--offline"], {
+      cwd: join(ROOT, "src-tauri"), encoding: "utf8", maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"],
+    });
+  } catch (err) {
+    // Usually a crate for another system that `cargo build` never downloaded.
+    console.error(String(err.stderr || err.message).trim());
+    console.error("\nRun `cargo fetch --locked` in src-tauri first, then try again.");
+    process.exit(1);
+  }
   const meta = JSON.parse(json);
   return meta.packages
     .filter((p) => p.source && p.source.startsWith("registry+"))

@@ -136,6 +136,9 @@ pub fn run() {
     .plugin(tauri_plugin_fs::init())
     // Restarts the app once an update has installed.
     .plugin(tauri_plugin_process::init())
+    // Opens this project's GitHub pages in the browser ("Report a problem").
+    // The capability limits it to those pages.
+    .plugin(tauri_plugin_opener::init())
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(
