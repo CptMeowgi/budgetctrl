@@ -1,0 +1,92 @@
+{
+  "months": {
+    "2026-08": {
+      "income": 9200,
+      "editedAt": "2026-09-30T08:15:00.000Z",
+      "expenses": [
+        { "id": "e1", "name": "Biedronka", "amount": 212.35, "date": "2026-08-27", "category": "Groceries", "note": "BIEDRONKA 4521 KRAKOW", "imported": true },
+        { "id": "e2", "name": "IKEA", "amount": 640, "date": "2026-09-03", "category": "Home", "splits": [{ "category": "Home", "amount": 480 }, { "category": "Gifts", "amount": 160 }] },
+        { "id": "e3", "name": "Orlen", "amount": 250, "date": "2026-09-14", "category": "Transport" }
+      ],
+      "recurring": [
+        { "id": "r1", "name": "Rent", "amount": 2600, "dayOfMonth": 1, "category": "Home", "templateId": "t1" },
+        { "id": "r2", "name": "Spotify", "amount": 23.99, "dayOfMonth": 28, "category": "Fun", "autoPay": true, "templateId": "t2" },
+        { "id": "r3", "name": "Car insurance", "amount": 1200, "dayOfMonth": 10, "category": "Transport", "templateId": "t3" }
+      ],
+      "upcoming": [
+        { "id": "u1", "name": "Dentist", "amount": 350, "dueDate": "2026-09-02", "category": "Health", "paid": true, "note": "Check-up" }
+      ],
+      "credits": [
+        { "id": "c1", "name": "Allowance", "amount": 300, "dayOfMonth": 26, "category": "Gift", "templateId": "ct1" },
+        { "id": "c2", "name": "Zwrot podatku", "amount": 418.5, "date": "2026-09-05", "category": "Refund" }
+      ]
+    },
+    "2026-09": {
+      "income": 9200,
+      "expenses": [
+        { "id": "e4", "name": "Lidl", "amount": 187.2, "date": "2026-09-28", "category": "Groceries" },
+        { "id": "e5", "name": "Kino", "amount": 64, "date": "2026-10-03", "category": "Fun" },
+        { "id": "e6", "name": "Apteka", "amount": 42.9, "date": "2026-10-08", "category": "Health", "note": "APTEKA DOZ 112", "imported": true }
+      ],
+      "recurring": [
+        { "id": "r4", "name": "Rent", "amount": 2600, "dayOfMonth": 1, "category": "Home", "templateId": "t1" },
+        { "id": "r5", "name": "Spotify", "amount": 23.99, "dayOfMonth": 28, "category": "Fun", "autoPay": true, "templateId": "t2" }
+      ],
+      "upcoming": [
+        { "id": "u2", "name": "Car service", "amount": 900, "dueDate": "2026-10-20", "category": "Transport", "paid": false },
+        { "id": "u3", "name": "Internet", "amount": 59.99, "dueDate": "2026-10-15", "category": "Bills", "paid": false, "autoPay": true }
+      ],
+      "credits": [
+        { "id": "c3", "name": "Allowance", "amount": 300, "dayOfMonth": 26, "category": "Gift", "templateId": "ct1" }
+      ]
+    }
+  },
+  "recurringTemplate": [
+    { "id": "t1", "name": "Rent", "amount": 2600, "dayOfMonth": 1, "category": "Home" },
+    { "id": "t2", "name": "Spotify", "amount": 23.99, "dayOfMonth": 28, "category": "Fun", "autoPay": true },
+    { "id": "t3", "name": "Car insurance", "amount": 1200, "dayOfMonth": 10, "category": "Transport", "every": 3, "anchor": "2026-08" }
+  ],
+  "cutoffDay": 25,
+  "categories": [
+    { "name": "Uncategorized", "color": "#9ca3af", "icon": "·" },
+    { "name": "Groceries", "color": "#10b981", "icon": "🍔", "cap": 1400, "capHistory": [{ "from": "2026-08", "cap": 1200 }, { "from": "2026-09", "cap": 1400 }] },
+    { "name": "Transport", "color": "#f59e0b", "icon": "🚗" },
+    { "name": "Home", "color": "#0066cc", "icon": "🏠" },
+    { "name": "Fun", "color": "#8b5cf6", "icon": "🎮", "cap": 300, "rollover": { "from": "2026-08" } },
+    { "name": "Health", "color": "#ec4899", "icon": "💊" },
+    { "name": "Gifts", "color": "#e11d48", "icon": "🎁", "cap": 200, "rollover": { "from": "2026-08" } },
+    { "name": "Bills", "color": "#64748b", "icon": "🧾" }
+  ],
+  "creditCategories": [
+    { "name": "Refund", "color": "#10b981", "icon": "↩" },
+    { "name": "Gift", "color": "#ec4899", "icon": "🎁" },
+    { "name": "Bonus", "color": "#f59e0b", "icon": "⭐" },
+    { "name": "Salary", "color": "#0066cc", "icon": "💼" },
+    { "name": "Other", "color": "#9ca3af", "icon": "·" }
+  ],
+  "creditTemplate": [
+    { "id": "ct1", "name": "Allowance", "amount": 300, "dayOfMonth": 26, "category": "Gift" }
+  ],
+  "reminders": { "enabled": true, "leadDays": 4 },
+  "savingsGoal": { "monthly": 500 },
+  "goals": [
+    { "id": "g1", "name": "Wakacje", "target": 8000, "targetDate": "2027-06", "source": "account", "accountId": "a2" },
+    { "id": "g2", "name": "Poduszka", "target": 20000, "startAmount": 3500, "source": "budget" }
+  ],
+  "currency": "PLN",
+  "locale": "pl-PL",
+  "accounts": [
+    { "id": "a1", "name": "mBank", "kind": "current", "balances": [{ "date": "2026-09-01", "amount": 5230.4 }, { "date": "2026-10-01", "amount": 4870.12, "note": "po czynszu" }] },
+    { "id": "a2", "name": "Oszczędności", "kind": "savings", "balances": [{ "date": "2026-10-01", "amount": 2400 }] },
+    { "id": "a3", "name": "Karta kredytowa", "kind": "card", "balances": [{ "date": "2026-10-05", "amount": 812.33 }] },
+    { "id": "a4", "name": "Kredyt na laptopa", "kind": "loan", "closed": true, "balances": [{ "date": "2026-08-01", "amount": 0 }] }
+  ],
+  "language": "pl",
+  "setupDone": true,
+  "importRules": [
+    { "id": "ir1", "match": "biedronka", "category": "Groceries", "rename": "Biedronka" },
+    { "id": "ir2", "match": "apteka", "category": "Health", "rename": "Apteka" }
+  ],
+  "dismissedRegular": ["orlen"],
+  "updates": { "auto": true }
+}

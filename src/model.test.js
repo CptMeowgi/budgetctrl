@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { hydrate, migrate } from "./model.js";
-import { capAt } from "./lib/envelopes.js";
+import { readFileSync } from "node:fs";
+import { capAt, envelope } from "./lib/envelopes.js";
+import { isOnCycle } from "./lib/schedule.js";
 import { periodIncome, periodSpending } from "./lib/totals.js";
 
 // A budget exactly as 0.4.2 saved it: the shape of that version's
@@ -129,5 +131,58 @@ describe("a budget missing parts of the current format", () => {
     expect(d.currency).toBe("EUR");
     expect(d.months["2026-10"].expenses.map((e) => e.name)).toEqual(["Bread"]);
     expect(d.recurringTemplate).toEqual([]);
+  });
+});
+
+// A budget exactly as 0.5.2 saved it to budget-ctrl.json, using what that
+// version could store: a payday cutoff, a split receipt, a bill every three
+// months, rollover budgets, a budget that changed, a period edited after it
+// closed, imported entries, import rules, accounts and goals. Before the data model changes (weekly and
+// fortnightly pay are next), this proves such a budget still opens intact
+// and shows the same figures. Add a file like it for every release that
+// changes what is saved.
+const SAVED_BY_0_5_2 = JSON.parse(readFileSync("src/fixtures/budget-0.5.2.json", "utf8"));
+
+describe("opening a budget saved by 0.5.2", () => {
+  beforeAll(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 9, 12, 12)); });
+  afterAll(() => vi.useRealTimers());
+
+  const open = () => hydrate(migrate(structuredClone(SAVED_BY_0_5_2)));
+  const today = () => new Date(2026, 9, 12, 12);
+
+  it("changes nothing at all", () => {
+    expect(open()).toEqual(SAVED_BY_0_5_2);
+  });
+
+  it("counts a finished period the same way, split receipt included", () => {
+    const d = open();
+    const spending = periodSpending(d.months["2026-08"], "2026-08", today(), d.cutoffDay);
+    expect(spending.total).toBeCloseTo(5276.34, 2);
+    expect(Object.fromEntries(spending.byCategory)).toEqual({
+      Groceries: 212.35, Home: 3080, Gifts: 160, Transport: 1450, Fun: 23.99, Health: 350,
+    });
+    expect(periodIncome(d.months["2026-08"], "2026-08", today(), d.cutoffDay).total).toBeCloseTo(9918.5, 2);
+  });
+
+  it("counts the running period only as far as today", () => {
+    const d = open();
+    // Rent (1 Oct) and Spotify (28 Sep) have landed; the bills due on the
+    // 15th and 20th have not.
+    expect(periodSpending(d.months["2026-09"], "2026-09", today(), d.cutoffDay).total).toBeCloseTo(2918.09, 2);
+  });
+
+  it("keeps what each rollover budget carried, and when a budget changed", () => {
+    const d = open();
+    const cat = (name) => d.categories.find((c) => c.name === name);
+    const fun = envelope(d, cat("Fun"), "2026-09", today(), 87.99);
+    expect(fun.carry).toBeCloseTo(276.01, 2);
+    expect(fun.left).toBeCloseTo(488.02, 2);
+    expect(envelope(d, cat("Gifts"), "2026-09", today(), 0).carry).toBeCloseTo(40, 2);
+    expect([capAt(cat("Groceries"), "2026-08"), capAt(cat("Groceries"), "2026-09")]).toEqual([1200, 1400]);
+  });
+
+  it("keeps the every-three-months bill on its schedule", () => {
+    const t3 = open().recurringTemplate.find((t) => t.id === "t3");
+    expect(["2026-08", "2026-09", "2026-10", "2026-11"].map((k) => isOnCycle(t3, k))).toEqual([true, false, false, true]);
   });
 });
