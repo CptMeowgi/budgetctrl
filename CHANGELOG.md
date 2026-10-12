@@ -8,6 +8,10 @@
 - Also under About: **Report a problem** and **Suggest an idea** open the
   matching form on GitHub with your app version filled in. Nothing from your
   budget is sent.
+- The app now runs under a strict Content Security Policy: it can load only
+  its own code, styles, fonts and images, and connect only to itself. If
+  something hostile ever got into a budget file or an imported statement, it
+  couldn't run code or send anything anywhere.
 
 ## 0.5.2
 
