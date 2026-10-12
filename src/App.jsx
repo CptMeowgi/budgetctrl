@@ -600,12 +600,19 @@ export default function App() {
         @media (prefers-reduced-motion: reduce) { .ambient { animation: none; } }
         ${isLinux ? ".ambient { animation: none; }" : ""}
 
-        /* Dashboard grid, after the design; stacks when the window is narrow. */
-        .dash-top { display: grid; grid-template-columns: minmax(0, 1.72fr) minmax(0, .86fr); gap: 18px; }
-        .dash-lower { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, .9fr); gap: 18px; margin-top: 18px; }
+        /* Dashboard rows, after the design. As the window narrows, the side
+           card is squeezed to the narrowest it reads well at, and only then
+           wraps below - by the space the cards have, not the window's width.
+           useReflowAnimation makes the move glide rather than jump. */
+        .dash-top, .dash-lower { position: relative; display: flex; flex-wrap: wrap; gap: 18px; }
+        .dash-lower { margin-top: 18px; }
+        .dash-top > *, .dash-lower > * { min-width: 0; box-sizing: border-box; }
+        .dash-top > :first-child { flex: 2 1 480px; }
+        .dash-top > :last-child { flex: 1 1 280px; }
+        .dash-lower > :first-child { flex: 3 1 380px; }
+        .dash-lower > :last-child { flex: 2 1 300px; }
         .dash-plan { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, .95fr) minmax(0, 1.5fr); gap: 28px; align-items: start; }
         @media (max-width: 1180px) {
-          .dash-top, .dash-lower { grid-template-columns: minmax(0, 1fr); }
           .dash-plan { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
           .dash-plan > :last-child { grid-column: 1 / -1; }
         }

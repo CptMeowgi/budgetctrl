@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { Area, AreaChart, ReferenceDot, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis } from "recharts";
 import { balanceHistory, periodDays, spendingByDay } from "../lib/forecast.js";
 import { periodLabel } from "../lib/periods.js";
@@ -13,6 +14,7 @@ import { CategoryBudgets } from "./CategoryBudgets.jsx";
 import { InfoHint } from "./controls.jsx";
 import { Icon } from "./Icon.jsx";
 import { fmtDate, t, tk, tn } from "../i18n.js";
+import { useReflowAnimation } from "../hooks/useReflowAnimation.js";
 
 const money = { fontFamily: FONT, fontVariantNumeric: "tabular-nums" };
 const shortDay = (iso) => fmtDate(iso, { day: "numeric", month: "short" });
@@ -137,9 +139,17 @@ function SpendingCard({ data, curKey, today, cutoffDay, spent, effectiveIncome, 
   const top = [...spentByCat.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 3)
     .map(([name, v]) => ({ name, v, color: (findCategory(data.categories || [], name) || UNCATEGORIZED).color }));
   const days = periodDays(curKey, cutoffDay);
+  // Each bubble is at least as wide as its amount needs, so a narrow card
+  // puts fewer in a row instead of letting the figures spill out, and one
+  // left alone on a row stretches across it.
+  const chipMin = Math.max(92, Math.ceil(Math.max(0, ...top.map((c) => fmt(c.v).length)) * 7.4) + 20);
+  const chipsRef = useRef(null);
+  useReflowAnimation(chipsRef);
 
   return (
-    <article style={{ ...s.card, background: theme.warmBg, borderRadius: 28, padding: "22px 24px", minHeight: 310, display: "flex", flexDirection: "column" }}>
+    // overflow: hidden keeps a bubble that is still gliding to its new row
+    // inside the card, sliding in from its edge.
+    <article style={{ ...s.card, background: theme.warmBg, borderRadius: 28, padding: "22px 24px", minHeight: 310, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <span style={s.cardLabel}>{t("Total Spent")}</span>
       <div style={{ marginTop: 7, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <strong style={{ ...money, fontSize: 24, lineHeight: 1.2, letterSpacing: "-1px" }}>{fmt(spent)}</strong>
@@ -178,14 +188,14 @@ function SpendingCard({ data, curKey, today, cutoffDay, spent, effectiveIncome, 
       </div>
 
       {top.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(${top.length}, minmax(0, 1fr))`, gap: 6, marginTop: 10 }}>
+        <div ref={chipsRef} style={{ position: "relative", display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
           {top.map((c) => (
-            <div key={c.name} style={{ minWidth: 0, padding: "7px 9px", border: `1px solid ${theme.border}`, borderRadius: 10, background: theme.bg }}>
+            <div key={c.name} style={{ flex: `1 1 ${chipMin}px`, minWidth: 0, boxSizing: "border-box", padding: "7px 9px", border: `1px solid ${theme.border}`, borderRadius: 10, background: theme.bg }}>
               <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: theme.textFaint, overflow: "hidden" }}>
                 <i style={{ width: 6, height: 6, borderRadius: "50%", background: c.color, flex: "none" }} />
                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{catName(c.name)}</span>
               </div>
-              <strong style={{ ...money, fontSize: 12, display: "block", marginTop: 2 }}>{fmt(c.v)}</strong>
+              <strong style={{ ...money, fontSize: 12, display: "block", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fmt(c.v)}</strong>
             </div>
           ))}
         </div>
@@ -244,6 +254,10 @@ export function Dashboard(props) {
     totalStillScheduled, spentByCat, isReceived, onSetTab, onEdit, patchCur, save, onManageCategories, onSetBudget, onStartFresh,
   } = props;
   const { theme, s } = useThemed();
+  const topRef = useRef(null);
+  const lowerRef = useRef(null);
+  useReflowAnimation(topRef);
+  useReflowAnimation(lowerRef);
 
   const goalsLine = goals.length > 0 ? {
     saved: fmt(goalsSaved),
@@ -273,14 +287,14 @@ export function Dashboard(props) {
         </div>
       )}
 
-      <section className="dash-top">
+      <section className="dash-top" ref={topRef}>
         <MoneyLeftCard data={data} curKey={curKey} today={today} cutoffDay={cutoffDay} fc={fc} remaining={remaining} sub={remainingSub}
           stillToPay={totalUpcoming} goalsLine={goalsLine} />
         <SpendingCard data={data} curKey={curKey} today={today} cutoffDay={cutoffDay} spent={totalActuallySpent}
           effectiveIncome={effectiveIncome} spentByCat={spentByCat} onReports={() => onSetTab("reports")} />
       </section>
 
-      <section className="dash-lower">
+      <section className="dash-lower" ref={lowerRef}>
         <RecentCard data={data} cur={cur} cutoffDay={cutoffDay} isReceived={isReceived}
           onOpen={(r) => onEdit({ type: r.kind, editId: r.e.id })} onViewAll={() => onSetTab("expenses")} />
         <article style={{ ...s.card, borderRadius: 28, minHeight: 300 }}>

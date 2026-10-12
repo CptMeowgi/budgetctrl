@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- The Dashboard handles a narrowing window gracefully. Total Spent is
+  squeezed down first and only moves below once it can't get any narrower,
+  and it glides there instead of jumping, like a bubble being pushed out.
+  The card it leaves grows into the space, and everything slides back when
+  the window widens. If you've asked your system to reduce motion, the cards
+  move without animating.
+- The category amounts under Total Spent always fit inside their bubbles. A
+  narrow card puts fewer in a row instead of letting the figures spill out.
+
 ## 0.6.0
 
 This release is about trust: a strict security policy, the licences of
