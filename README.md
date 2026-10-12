@@ -116,8 +116,20 @@ are marked, so a hand-adjusted figure never passes for a calculated one.
 
 ### Windows
 
-Download `Budget Ctrl_x.y.z_x64-setup.exe` from [Releases](../../releases) and
+Download `Budget.Ctrl_x.y.z_x64-setup.exe` from [Releases](../../releases) and
 run it. It installs for your Windows account only, so it needs no admin rights.
+
+**"Windows protected your PC"?** The installer isn't code-signed yet (see the
+[code signing policy](#code-signing-policy)), so Windows doesn't recognise its
+publisher and SmartScreen may stop it the first time you run it. Click **More
+info**, check the app name is `Budget.Ctrl_x.y.z_x64-setup.exe`, then click
+**Run anyway**. Edge may also warn that the file "isn't commonly downloaded" —
+open the download's **…** menu and choose **Keep**, then **Keep anyway**.
+
+You only see this when installing: updates from inside the app install without
+it. Only download Budget Ctrl from this repository's [Releases](../../releases)
+page, and see [SECURITY.md](SECURITY.md#verifying-a-download) to check that a
+download is genuine.
 
 ### Linux
 
