@@ -1,9 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.5.2
 
-- The app's icon - on the desktop, the taskbar, the tray and in Linux app
-  menus - is now the Budget Ctrl mark instead of a placeholder
+This release makes your budget harder to lose, fixes amounts typed with a
+decimal comma, and gives the app its proper icon.
 
 ### Your budget, safer
 - If your budget file is ever damaged, Budget Ctrl no longer opens an empty
@@ -30,6 +30,10 @@
 - The / shortcut jumps to the search box in every language, not only English.
 - A budget file missing some parts, such as one edited by hand, keeps its
   months when opened rather than losing them.
+
+### Icon
+- The app's icon - on the desktop, the taskbar, the tray and in Linux app
+  menus - is now the Budget Ctrl mark instead of a placeholder.
 
 ## 0.5.1
 
