@@ -146,6 +146,34 @@ describe("deleteCategory", () => {
   });
 });
 
+describe("import rules", () => {
+  const withRules = () => ({ ...fixture(), importRules: [
+    { id: "r1", match: "biedronka", category: "Food" },
+    { id: "r2", match: "netflix", category: "Fun" },
+    { id: "r3", match: "orlen", rename: "Fuel" },
+  ] });
+  const ruleCats = (d) => d.importRules.map((r) => r.category);
+
+  it("follow a renamed category", () => {
+    expect(ruleCats(renameCategory(withRules(), "spend", "Food", "Groceries"))).toEqual(["Groceries", "Fun", undefined]);
+  });
+
+  it("follow a merge into the category it was merged into", () => {
+    expect(ruleCats(renameCategory(withRules(), "spend", "Fun", "home"))).toEqual(["Food", "Home", undefined]);
+  });
+
+  it("follow a deleted category to where its entries went", () => {
+    expect(ruleCats(deleteCategory(withRules(), "spend", "Food"))).toEqual(["Uncategorized", "Fun", undefined]);
+    expect(ruleCats(deleteCategory(withRules(), "spend", "Fun", "Home"))).toEqual(["Food", "Home", undefined]);
+  });
+
+  it("are left alone when the other kind has a category of that name", () => {
+    const d = withRules();
+    d.creditCategories = [...(d.creditCategories || []), { name: "Food" }];
+    expect(ruleCats(renameCategory(d, "spend", "Food", "Groceries"))).toEqual(["Food", "Fun", undefined]);
+  });
+});
+
 describe("credit categories", () => {
   it("rename touches credits and the credit template, never spending entries", () => {
     const out = renameCategory(fixture(), "credit", "Gift", "Gifts");

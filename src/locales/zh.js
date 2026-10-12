@@ -4,6 +4,21 @@
 // any string the app translates is missing here.
 export default {
   // App
+  "Budget Ctrl couldn't open your budget": "Budget Ctrl 无法打开你的预算",
+  "Nothing has been changed or overwritten. Restore one of your backups, open a backup file, or start a new budget.": "没有任何内容被更改或覆盖。你可以恢复某个备份、打开备份文件，或新建一个预算。",
+  "The unreadable file was kept as {file}.": "无法读取的文件已保留为 {file}。",
+  "Your backups": "你的备份",
+  "No backups found.": "未找到备份。",
+  "Restore this backup": "恢复此备份",
+  "Start a new budget": "新建预算",
+  "Start a new, empty budget? The unreadable budget and your backups are kept.": "新建一个空白预算？无法读取的预算和你的备份都会保留。",
+  "Details: {error}": "详细信息：{error}",
+  "start of the day": "当天开始时",
+  "before starting again": "重新开始之前",
+  "before loading a backup file": "载入备份文件之前",
+  "before a statement import": "导入流水之前",
+  "before a restore": "恢复之前",
+  "before updating to {version}": "更新到 {version} 之前",
   "Start when you log in": "登录时启动",
   "Sends a reminder now, to check notifications reach you.": "立即发送一条提醒，检查通知能否送达。",
   "Bills due soon will appear like this.": "即将到期的账单会这样提醒你。",

@@ -4,6 +4,21 @@
 // any string the app translates is missing here.
 export default {
   // App
+  "Budget Ctrl couldn't open your budget": "Budget Ctrl kann dein Budget nicht öffnen",
+  "Nothing has been changed or overwritten. Restore one of your backups, open a backup file, or start a new budget.": "Nichts wurde geändert oder überschrieben. Stelle eine deiner Sicherungen wieder her, öffne eine Sicherungsdatei oder beginne ein neues Budget.",
+  "The unreadable file was kept as {file}.": "Die unlesbare Datei wurde als {file} aufbewahrt.",
+  "Your backups": "Deine Sicherungen",
+  "No backups found.": "Keine Sicherungen gefunden.",
+  "Restore this backup": "Diese Sicherung wiederherstellen",
+  "Start a new budget": "Neues Budget beginnen",
+  "Start a new, empty budget? The unreadable budget and your backups are kept.": "Ein neues, leeres Budget beginnen? Das unlesbare Budget und deine Sicherungen bleiben erhalten.",
+  "Details: {error}": "Details: {error}",
+  "start of the day": "Tagesbeginn",
+  "before starting again": "vor dem Neuanfang",
+  "before loading a backup file": "vor dem Laden einer Sicherungsdatei",
+  "before a statement import": "vor einem Kontoauszug-Import",
+  "before a restore": "vor einer Wiederherstellung",
+  "before updating to {version}": "vor dem Update auf {version}",
   "Start when you log in": "Beim Anmelden starten",
   "Sends a reminder now, to check notifications reach you.": "Sendet jetzt eine Erinnerung, um zu prüfen, ob Benachrichtigungen ankommen.",
   "Bills due soon will appear like this.": "Bald fällige Rechnungen erscheinen so.",

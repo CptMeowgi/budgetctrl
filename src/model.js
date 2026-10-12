@@ -229,7 +229,10 @@ export function rebucketData(data, newCutoff) {
 
 export function migrate(raw) {
   if (!raw || typeof raw !== "object") return defaultData();
-  if (raw.months && raw.recurringTemplate) return raw;
+  // A months table means the current format, whatever else is missing -
+  // hydrate() fills the gaps. Only the original flat format is rebuilt;
+  // rebuilding anything else would throw its months away.
+  if (raw.months && typeof raw.months === "object") return raw;
   const cur = currentMonthKey();
   const months = {};
   const oldExpenses = Array.isArray(raw.expenses) ? raw.expenses : [];

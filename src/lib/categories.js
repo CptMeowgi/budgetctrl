@@ -42,7 +42,8 @@ function kindOf(kind) {
 }
 
 // Rewrite the category on every entry and template item matching `from` -
-// including the parts of a split receipt.
+// including the parts of a split receipt - and on the import rules, which
+// would otherwise go on filing new imports under a name that is gone.
 function reassign(data, k, from, to) {
   const swap = (e) => {
     if (isSplit(e)) return renameInSplits(e, (c) => sameName(c, from), to);
@@ -56,11 +57,16 @@ function reassign(data, k, from, to) {
     }
     months[key] = next;
   }
-  return {
-    ...data,
-    months,
-    [k.template]: (data[k.template] || []).map(swap),
-  };
+  const out = { ...data, months, [k.template]: (data[k.template] || []).map(swap) };
+  // A rule names a category without saying which kind. When the other kind
+  // has a category of the same name too, the rule may mean that one, so it is
+  // left alone.
+  const other = k.list === "categories" ? "creditCategories" : "categories";
+  const ambiguous = (data[other] || []).some((c) => sameName(c.name, from));
+  if (Array.isArray(data.importRules) && !ambiguous) {
+    out.importRules = data.importRules.map((r) => (sameName(r.category, from) ? { ...r, category: to } : r));
+  }
+  return out;
 }
 
 export function isFallback(kind, name) {

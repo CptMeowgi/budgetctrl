@@ -1,5 +1,17 @@
 import { describe, it, expect } from "vitest";
-import { monthsBetween, addMonths, isOnCycle, nextOnCycle, frequencyLabel, everyFromLabel, FREQUENCIES } from "./schedule.js";
+import { monthsBetween, addMonths, isOnCycle, nextOnCycle, frequencyLabel, everyFromLabel, FREQUENCIES, dayOfMonthFrom } from "./schedule.js";
+
+describe("dayOfMonthFrom", () => {
+  it("keeps a typed day to a whole day of the month", () => {
+    expect(dayOfMonthFrom("15")).toBe(15);
+    expect(dayOfMonthFrom("45")).toBe(31);
+    expect(dayOfMonthFrom("2.6")).toBe(3);
+    expect(dayOfMonthFrom("0")).toBe(1);
+    expect(dayOfMonthFrom("-4")).toBe(1);
+    expect(dayOfMonthFrom("")).toBe(1);
+    expect(dayOfMonthFrom("soon")).toBe(1);
+  });
+});
 
 describe("month arithmetic on period keys", () => {
   it("counts months between keys, across years and backwards", () => {

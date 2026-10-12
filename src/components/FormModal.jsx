@@ -3,6 +3,7 @@ import { TYPE, useThemed } from "../theme.js";
 import { Modal } from "./Modal.jsx";
 import { t } from "../i18n.js";
 import { catName } from "../text.js";
+import { parseAmount } from "../lib/importer.js";
 
 export function CategoryPicker({ value, onChange, categories }) {
   const { s } = useThemed();
@@ -88,8 +89,8 @@ export function FormModal({ title, fields, onClose, onSave }) {
         ))}
       </div>
       {(() => {
-        const amountNum = parseFloat(String(vals.amount).replace(",", "."));
-        const valid = vals.name?.trim() && !isNaN(amountNum) && amountNum > 0;
+        const amountNum = parseAmount(vals.amount);
+        const valid = vals.name?.trim() && amountNum != null && amountNum > 0;
         return (
           <button
             style={{ ...s.saveBtn, opacity: valid ? 1 : 0.5, cursor: valid ? "pointer" : "not-allowed" }}

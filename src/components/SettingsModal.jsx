@@ -5,7 +5,7 @@ import { getStorageFault, listBackups } from "../storage.js";
 import { FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
 import { SettingRow, Switch } from "./controls.jsx";
 import { Modal } from "./Modal.jsx";
-import { ago, ordinal } from "../text.js";
+import { ago, backupLabel, ordinal } from "../text.js";
 import { LANGUAGES, t, tk, tn } from "../i18n.js";
 
 export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onChangeLocale, onRestore, onManageCategories, updater, onChangeUpdates, onInstallUpdate,
@@ -234,7 +234,7 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
                 style={{ ...s.input, width: 220 }}
               >
                 <option value="">{t("Restore from…")}</option>
-                {backups.map((b) => <option key={b} value={b}>{b.replace(/^budget-ctrl-|\.json$/g, "")}</option>)}
+                {backups.map((b) => <option key={b} value={b}>{backupLabel(b)}</option>)}
               </select>
             )}
           </SettingRow>

@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { t, tn, setLanguage, interpolate, fmtDate, LANGUAGES, PLURAL_FORMS, systemLanguage } from "./i18n.js";
-import { ago, catName, due, ordinal, shortDate, storedCatName } from "./text.js";
+import { ago, backupLabel, catName, due, ordinal, shortDate, storedCatName } from "./text.js";
 import de from "./locales/de.js";
 import es from "./locales/es.js";
 import pl from "./locales/pl.js";
@@ -133,6 +133,14 @@ describe("due and ordinal", () => {
     expect(shortDate("")).toBe("");
     setLanguage("de");
     expect(shortDate(`${year}-10-11`)).toBe("11. Okt.");
+  });
+
+  it("name backups so a person can tell them apart", () => {
+    expect(backupLabel("budget-ctrl-2026-10-11-1432-before-statement-import.json")).toBe("11 Oct 2026, 14:32 · before a statement import");
+    expect(backupLabel("budget-ctrl-2026-10-11-0905-before-update-0.5.2.json")).toBe("11 Oct 2026, 09:05 · before updating to 0.5.2");
+    expect(backupLabel("budget-ctrl-2026-10-11.json")).toBe("11 Oct 2026 · start of the day");
+    setLanguage("pl");
+    expect(backupLabel("budget-ctrl-2026-10-11-1432-daily.json")).toBe(`${fmtDate("2026-10-11", { day: "numeric", month: "short", year: "numeric" })}, 14:32 · ${pl["start of the day"]}`);
   });
 
   it("number days the local way", () => {

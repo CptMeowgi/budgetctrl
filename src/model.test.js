@@ -121,3 +121,13 @@ describe("opening a budget saved by 0.4.2", () => {
     expect(hydrate(migrate(structuredClone(once)))).toEqual(once);
   });
 });
+
+describe("a budget missing parts of the current format", () => {
+  it("keeps its months and settings, with the rest filled in", () => {
+    const partial = { currency: "EUR", months: { "2026-10": { expenses: [{ id: "x1", name: "Bread", amount: 4.5, category: "Food", date: "2026-10-05" }] } } };
+    const d = hydrate(migrate(partial));
+    expect(d.currency).toBe("EUR");
+    expect(d.months["2026-10"].expenses.map((e) => e.name)).toEqual(["Bread"]);
+    expect(d.recurringTemplate).toEqual([]);
+  });
+});

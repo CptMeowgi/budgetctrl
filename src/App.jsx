@@ -7,7 +7,7 @@ import { forecast } from "./lib/forecast.js";
 import { applySetup } from "./lib/setup.js";
 import { currentPeriodKey, isoDay, newEntryDate, periodLabel, setLabelLocale } from "./lib/periods.js";
 import { collectDueBills, OVERDUE_GRACE_DAYS, upcomingSettled } from "./lib/reminders.js";
-import { everyFromLabel, FREQUENCIES, frequencyLabel, isOnCycle } from "./lib/schedule.js";
+import { dayOfMonthFrom, everyFromLabel, FREQUENCIES, frequencyLabel, isOnCycle } from "./lib/schedule.js";
 import { creditReceived, periodIncome, periodSpending } from "./lib/totals.js";
 import { AccountModal, AccountsView } from "./components/AccountsView.jsx";
 import { CategoryManager } from "./components/CategoryManager.jsx";
@@ -36,7 +36,8 @@ import { countRebucketMoves, CREDIT_UNCATEGORIZED, defaultData, emptyMonth, ensu
 import { currencyCode, fmt, setMoneyFormat } from "./money.js";
 import { isLinux, isTauri } from "./platform.js";
 import { due, ordinal, shortDate } from "./text.js";
-import { readBackup, readLock, writeBackup, writeLock } from "./storage.js";
+import { readBackup, readLock, setAsideUnreadable, writeBackup, writeLock } from "./storage.js";
+import { RecoveryScreen } from "./components/RecoveryScreen.jsx";
 import { DARK_THEME, FOCUS_RING, FONT, LIGHT_THEME, makeStyles, RADIUS, SPACE, ThemeContext, TYPE } from "./theme.js";
 import { BrandMark, Icon } from "./components/Icon.jsx";
 import { Dashboard } from "./components/Dashboard.jsx";
@@ -119,6 +120,9 @@ export default function App() {
   const [locked, setLocked] = useState(false);
   const [pinDialog, setPinDialog] = useState(null);
   const [statementOpen, setStatementOpen] = useState(false);
+  // Set when the budget is there but can't be opened: the recovery screen
+  // replaces the app, and nothing is saved until the user chooses what to do.
+  const [loadError, setLoadError] = useState(null);
   const [searchOpen, setSearchOpen] = useState(false);
   // Kept while the dialog is closed, so reopening it carries on where you were.
   const [searchQuery, setSearchQuery] = useState({ text: "", kinds: [] });
@@ -202,10 +206,12 @@ export default function App() {
         setLoaded(true);
         return;
       }
+      let stored = null;
       try {
         const r = await window.storage.get(STORAGE_KEY);
-        if (r?.value) {
-          const raw = JSON.parse(r.value);
+        stored = r?.value ?? null;
+        if (stored) {
+          const raw = JSON.parse(stored);
           const migrated = hydrate(migrate(raw));
           setData(migrated);
           if (migrated !== raw) {
@@ -217,7 +223,14 @@ export default function App() {
           await save(hydrate(defaultData()), { undoable: false });
           setSetupOpen(true);
         }
-      } catch { /* Tauri API unavailable (browser dev server) */ }
+      } catch (err) {
+        // The budget is there but won't open - damaged, or a format this
+        // version can't convert. Carrying on with an empty budget would let
+        // the first edit save over it, so stop and let the user choose.
+        const keptAs = err?.keptAs || (stored ? await setAsideUnreadable(stored) : null);
+        setLoadError({ keptAs, message: String(err?.message || err) });
+        return;
+      }
       setLoaded(true);
     })();
     // `save` has no deps of its own, so this still runs exactly once.
@@ -333,7 +346,7 @@ export default function App() {
       if (mod && key === "l" && lockCfg) { e.preventDefault(); setLocked(true); return; }
       // Locked means locked: no undo, redo or anything else behind the lock screen.
       if (lockCfg && locked) return;
-      if (dialogOpen) return;
+      if (!loaded || dialogOpen) return;
       if (mod && key === "f") { e.preventDefault(); setSearchOpen(true); return; }
       if (mod && key === "z" && !typing) { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
       if (mod && key === "y" && !typing) { e.preventDefault(); redo(); return; }
@@ -346,13 +359,13 @@ export default function App() {
       if (typing || mod || e.altKey) return;
       if (key === "n" && ADD_LABELS[tab]) { e.preventDefault(); setModal({ type: MODAL_FOR_TAB[tab] || tab }); return; }
       if (key === "/") {
-        const search = document.querySelector('main input[placeholder^="Search"]');
+        const search = document.querySelector("main input[data-tab-search]");
         if (search) { e.preventDefault(); search.focus(); }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [modal, settingsOpen, categoriesOpen, statementOpen, searchOpen, rulesOpen, setupOpen, pinDialog, lockCfg, locked, tab, undo, redo]);
+  }, [loaded, modal, settingsOpen, categoriesOpen, statementOpen, searchOpen, rulesOpen, setupOpen, pinDialog, lockCfg, locked, tab, undo, redo]);
 
   useEffect(() => {
     let alive = true;
@@ -385,7 +398,7 @@ export default function App() {
   // isRecurringDue, which treat period bounds as whole days.
   const today = useMemo(() => new Date(`${todayKey}T00:00:00`), [todayKey]);
 
-  if (!loaded || lockCfg === undefined) return <div style={s.shell}><div style={{ color: theme.textFaint, textAlign: "center", marginTop: 200, fontSize: 14 }}>{t("Loading...")}</div></div>;
+  if ((!loaded && !loadError) || lockCfg === undefined) return <div style={s.shell}><div style={{ color: theme.textFaint, textAlign: "center", marginTop: 200, fontSize: 14 }}>{t("Loading...")}</div></div>;
 
   if (lockCfg && locked) {
     return (
@@ -396,6 +409,43 @@ export default function App() {
           <WindowControls />
         </div>
         <LockScreen lock={lockCfg} onUnlock={() => setLocked(false)} />
+      </ThemeContext.Provider>
+    );
+  }
+
+  if (loadError) {
+    // A chosen budget replaces the unreadable one; only now is anything saved.
+    const adopt = async (next) => {
+      await save(next, { undoable: false });
+      setLoadError(null);
+      setLoaded(true);
+    };
+    const adoptText = async (text) => {
+      try {
+        const parsed = JSON.parse(text);
+        if (!parsed || typeof parsed !== "object" || !parsed.months || typeof parsed.months !== "object") throw new Error("not a budget");
+        await adopt(hydrate(migrate(parsed)));
+      } catch {
+        alert(t("That backup could not be read."));
+      }
+    };
+    return (
+      <ThemeContext.Provider value={themedValue}>
+        <div data-tauri-drag-region style={{ position: "fixed", top: 0, left: 0, right: 0, height: 40, zIndex: 2 }}>
+          <WindowControls />
+        </div>
+        <RecoveryScreen keptAs={loadError.keptAs} error={loadError.message}
+          onRestoreBackup={async (name) => {
+            let text;
+            try { text = await readBackup(name); } catch { alert(t("That backup could not be read.")); return; }
+            await adoptText(text);
+          }}
+          onOpenFile={adoptText}
+          onStartNew={async () => {
+            if (!confirm(t("Start a new, empty budget? The unreadable budget and your backups are kept."))) return;
+            await adopt(hydrate(defaultData()));
+            setSetupOpen(true);
+          }} />
       </ThemeContext.Provider>
     );
   }
@@ -755,7 +805,7 @@ export default function App() {
               </div>
               <input
                 type="text"
-                placeholder={t("Search expenses...")}
+                data-tab-search placeholder={t("Search expenses...")}
                 value={expensesView.search}
                 onChange={(e) => setExpensesView((v) => ({ ...v, search: e.target.value }))}
                 style={s.searchInput}
@@ -811,7 +861,7 @@ export default function App() {
               />
               <input
                 type="text"
-                placeholder={t("Search recurring...")}
+                data-tab-search placeholder={t("Search recurring...")}
                 value={recurringView.search}
                 onChange={(e) => setRecurringView((v) => ({ ...v, search: e.target.value }))}
                 style={s.searchInput}
@@ -859,7 +909,7 @@ export default function App() {
               </div>
               <input
                 type="text"
-                placeholder={t("Search upcoming...")}
+                data-tab-search placeholder={t("Search upcoming...")}
                 value={upcomingView.search}
                 onChange={(e) => setUpcomingView((v) => ({ ...v, search: e.target.value }))}
                 style={s.searchInput}
@@ -924,7 +974,7 @@ export default function App() {
                   />
                   <input
                     type="text"
-                    placeholder={t("Search credits...")}
+                    data-tab-search placeholder={t("Search credits...")}
                     value={creditsView.search}
                     onChange={(e) => setCreditsView((v) => ({ ...v, search: e.target.value }))}
                     style={s.searchInput}
@@ -1242,7 +1292,7 @@ export default function App() {
             NOTE_FIELD(source),
           ]} onClose={() => setModal(null)} onSave={(v) => {
             const { categories, category } = ensureCategory(data.categories, v.category);
-            const fields = { name: v.name, amount: +v.amount, dayOfMonth: +v.dayOfMonth || 1, category: category.name,
+            const fields = { name: v.name, amount: +v.amount, dayOfMonth: dayOfMonthFrom(v.dayOfMonth), category: category.name,
                              autoPay: !!v.autoPay, note: cleanNote(v.note) };
             const every = touchesTemplate ? everyFromLabel(v.repeats) : (sched.every || 1);
             // Monthly items carry no schedule at all, exactly like items saved
@@ -1362,7 +1412,7 @@ export default function App() {
             const amt = +v.amount;
             if (!v.name || !(amt > 0)) { setModal(null); return; }
             const { categories: creditCategories, category } = ensureCreditCategory(data.creditCategories || [], v.category);
-            const fields = { name: v.name, amount: amt, dayOfMonth: +v.dayOfMonth || 1, category: category.name, note: cleanNote(v.note) };
+            const fields = { name: v.name, amount: amt, dayOfMonth: dayOfMonthFrom(v.dayOfMonth), category: category.name, note: cleanNote(v.note) };
             const every = touchesTemplate ? everyFromLabel(v.repeats) : (sched.every || 1);
             const schedule = every > 1
               ? { every, anchor: v.anchor || sched.anchor || targetKey }

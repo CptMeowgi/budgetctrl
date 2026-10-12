@@ -18,6 +18,13 @@ export const FREQUENCIES = [
   { every: 12, label: "Yearly" },
 ];
 
+// The day a recurring item falls on, from what was typed: a whole day, 1 to
+// 31. A month shorter than that uses its last day.
+export function dayOfMonthFrom(input) {
+  const n = Math.round(Number(input));
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, 31) : 1;
+}
+
 export function frequencyLabel(every) {
   return (FREQUENCIES.find((f) => f.every === (every || 1)) || { label: `Every ${every} months` }).label;
 }

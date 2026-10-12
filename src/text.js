@@ -1,6 +1,7 @@
 // Small pieces of wording shared across screens.
 import { fmtDate, getLanguage, t, tk, tn } from "./i18n.js";
 import { DEFAULT_CREDIT_CATEGORIES, STARTER_CATEGORIES } from "./lib/setup.js";
+import { parseBackupName } from "./lib/backups.js";
 
 // "just now", "5 minutes ago", "3 hours ago", "2 days ago".
 export function ago(then, now) {
@@ -37,6 +38,23 @@ export function shortDate(iso) {
   if (!iso) return "";
   const sameYear = iso.slice(0, 4) === String(new Date().getFullYear());
   return fmtDate(iso, sameYear ? { day: "numeric", month: "short" } : { day: "numeric", month: "short", year: "numeric" });
+}
+
+// A backup's file name as a person reads it: "11 Oct 2026, 14:32 · before a
+// statement import".
+export function backupLabel(name) {
+  const b = parseBackupName(name);
+  if (!b) return name;
+  const when = fmtDate(b.date, { day: "numeric", month: "short", year: "numeric" }) + (b.time ? `, ${b.time}` : "");
+  const update = /^before-update-(.+)$/.exec(b.tag);
+  const why = b.tag === "daily" ? t("start of the day")
+    : b.tag === "before-reset" ? t("before starting again")
+    : b.tag === "before-import" ? t("before loading a backup file")
+    : b.tag === "before-statement-import" ? t("before a statement import")
+    : b.tag === "before-restore" ? t("before a restore")
+    : update ? t("before updating to {version}", { version: update[1] })
+    : b.tag;
+  return `${when} · ${why}`;
 }
 
 // When a bill is due, relative to today.

@@ -1,4 +1,5 @@
 import { isTauri } from "./platform.js";
+import { backupName, isBudgetText, serial } from "./lib/backups.js";
 /* ---- Storage -------------------------------------------------------------
    Everything lives in one JSON document. In the browser that is localStorage;
    in the desktop app it is a real file under the OS app-data directory.
@@ -66,21 +67,41 @@ export async function writeLock(lock) {
   else localStorage.removeItem(LOCK_KEY);
 }
 
+// What the budget file holds: { status: "missing" }, { status: "ok", text },
+// or { status: "unreadable", text } for a file that is there but truncated or
+// corrupted - which must never be mistaken for "no budget yet".
 async function readStoreFile() {
   const { fs, base } = await fsApi();
-  if (!(await fs.exists(STORE_FILE, { baseDir: base }))) return null;
+  if (!(await fs.exists(STORE_FILE, { baseDir: base }))) return { status: "missing" };
   const text = await fs.readTextFile(STORE_FILE, { baseDir: base });
-  if (!text || !text.trim()) return null;
-  // Parse-check before handing it back. A truncated or corrupted file would
-  // otherwise be returned happily, fail to parse in the caller, and present as
-  // an empty app while the real data still sat in localStorage.
+  if (!text || !text.trim()) return { status: "unreadable", text: text || "" };
+  return isBudgetText(text) ? { status: "ok", text } : { status: "unreadable", text };
+}
+
+// Keep an unreadable budget file before anything can replace it, beside the
+// budget and out of the backups folder so pruning never removes it. Returns
+// the copy's name, or null if it could not be written.
+export async function setAsideUnreadable(text) {
+  if (!isTauri) return null;
+  const name = backupName(new Date(), "unreadable");
   try {
-    const parsed = JSON.parse(text);
-    if (!parsed || typeof parsed !== "object" || !parsed.months) return null;
-  } catch {
+    const { fs, base } = await fsApi();
+    await fs.writeTextFile(name, text, { baseDir: base });
+    return name;
+  } catch (err) {
+    noteStorageFault("set aside", err);
     return null;
   }
-  return text;
+}
+
+// Thrown when the budget can't be read and there is nothing safe to fall back
+// on. The app shows a recovery screen rather than starting a fresh budget that
+// the first edit would save over the real one.
+export class BudgetUnreadableError extends Error {
+  constructor(keptAs) {
+    super("The budget file could not be read");
+    this.keptAs = keptAs;
+  }
 }
 
 // Write to a temporary file and move it into place, so a crash or power loss
@@ -115,9 +136,7 @@ async function writeStoreFile(text) {
 export async function writeBackup(text, tag) {
   const { fs, base } = await fsApi();
   await ensureStoreDir();
-  const stamp = new Date();
-  const day = `${stamp.getFullYear()}-${String(stamp.getMonth() + 1).padStart(2, "0")}-${String(stamp.getDate()).padStart(2, "0")}`;
-  const name = `${BACKUP_DIR}/budget-ctrl-${day}${tag ? `-${tag}` : ""}.json`;
+  const name = `${BACKUP_DIR}/${backupName(new Date(), tag || "daily")}`;
   await fs.writeTextFile(name, text, { baseDir: base });
   await pruneBackups();
   return name;
@@ -155,58 +174,71 @@ export async function readBackup(name) {
 }
 
 // One backup per calendar day, plus an explicit one before anything
-// destructive. Writing one on every keystroke would be noise.
-async function maybeDailyBackup(text) {
-  const today = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-${String(new Date().getDate()).padStart(2, "0")}`;
+// destructive. Writing one on every keystroke would be noise. It is taken
+// before the day's first change is written, so it holds the budget as the
+// last session left it - not the state after that first change.
+async function maybeDailyBackup() {
+  const d = new Date();
+  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   let last = null;
   try { last = localStorage.getItem(LAST_BACKUP_KEY); } catch { /* unavailable */ }
   if (last === today) return;
   try {
-    await writeBackup(text);
+    const current = await readStoreFile();
+    if (current.status === "ok") await writeBackup(current.text, "daily");
     try { localStorage.setItem(LAST_BACKUP_KEY, today); } catch { /* unavailable */ }
   } catch { /* a failed backup must never block a save */ }
 }
+
+// Saving writes the whole file, so writes go one at a time, in order: two in
+// flight at once could finish in either order and leave an older budget on
+// disk. Inputs that save on every keystroke made that likely.
+const saveToFile = serial(async (key, value) => {
+  try {
+    await maybeDailyBackup();
+    await writeStoreFile(value);
+    // Mirrored to localStorage so a future read still finds the data if
+    // the file is ever lost or unreadable.
+    try { localStorage.setItem(key, value); } catch { /* quota */ }
+  } catch (err) {
+    noteStorageFault("write", err);
+    localStorage.setItem(key, value);
+  }
+  return { key, value };
+});
 
 if (!window.storage) {
   window.storage = {
     get: async (key) => {
       if (isTauri) {
+        let file;
         try {
-          const fromFile = await readStoreFile();
-          if (fromFile) return { value: fromFile };
-          // First run after upgrading: adopt whatever localStorage already
-          // holds and write it to the file. localStorage is deliberately left
-          // in place as a fallback rather than cleared.
-          const legacy = localStorage.getItem(key);
-          if (legacy) {
-            try { await writeStoreFile(legacy); } catch { /* retried next save */ }
-            return { value: legacy };
-          }
-          return null;
+          file = await readStoreFile();
         } catch (err) {
           noteStorageFault("read", err);
           const val = localStorage.getItem(key);
           return val ? { value: val } : null;
         }
+        if (file.status === "ok") return { value: file.text };
+        const keptAs = file.status === "unreadable" ? await setAsideUnreadable(file.text) : null;
+        // First run after upgrading from localStorage, or a damaged file: adopt
+        // the copy localStorage mirrors and write it to the file. localStorage
+        // is deliberately left in place as a fallback rather than cleared.
+        const legacy = localStorage.getItem(key);
+        if (isBudgetText(legacy)) {
+          try { await writeStoreFile(legacy); } catch { /* retried next save */ }
+          return { value: legacy };
+        }
+        // Never "no budget yet" for a file that is there: the app would start
+        // a fresh one and save it over the damaged file.
+        if (file.status === "unreadable") throw new BudgetUnreadableError(keptAs);
+        return null;
       }
       const val = localStorage.getItem(key);
       return val ? { value: val } : null;
     },
     set: async (key, value) => {
-      if (isTauri) {
-        try {
-          await writeStoreFile(value);
-          await maybeDailyBackup(value);
-          // Mirrored to localStorage so a future read still finds the data if
-          // the file is ever lost or unreadable.
-          try { localStorage.setItem(key, value); } catch { /* quota */ }
-          return { key, value };
-        } catch (err) {
-          noteStorageFault("write", err);
-          localStorage.setItem(key, value);
-          return { key, value };
-        }
-      }
+      if (isTauri) return saveToFile(key, value);
       localStorage.setItem(key, value);
       return { key, value };
     },

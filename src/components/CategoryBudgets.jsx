@@ -3,6 +3,7 @@ import { fmt } from "../money.js";
 import { FONT, SPACE, TYPE, useThemed } from "../theme.js";
 import { t } from "../i18n.js";
 import { catName } from "../text.js";
+import { parseAmount } from "../lib/importer.js";
 
 // `compact` (the Dashboard) lists only categories with a budget or spending
 // this period, with the rest a click away.
@@ -19,8 +20,8 @@ export function CategoryBudgets({ categories, spent, average, envelopeOf, onSetB
     setDraftRollover(!!c.rollover);
   };
   const commitEdit = () => {
-    const n = parseFloat(String(draftCap).replace(",", "."));
-    onSetBudget(editing, isFinite(n) && n > 0 ? n : null, draftRollover);
+    const n = parseAmount(draftCap);
+    onSetBudget(editing, n != null && n > 0 ? n : null, draftRollover);
     setEditing(null);
   };
   const cancelEdit = () => setEditing(null);

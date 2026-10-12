@@ -18,9 +18,22 @@ export function currencyCode() {
   return activeCurrency;
 }
 
+// Building an Intl.NumberFormat is slow next to using one, and a busy screen
+// formats hundreds of numbers per render. Kept per locale, currency and style.
+const formatters = new Map();
+function formatter(kind, options) {
+  const key = `${kind}|${activeLocale}|${activeCurrency}`;
+  let f = formatters.get(key);
+  if (!f) {
+    f = new Intl.NumberFormat(activeLocale, options);
+    formatters.set(key, f);
+  }
+  return f;
+}
+
 export function fmt(n) {
   try {
-    return new Intl.NumberFormat(activeLocale, { style: "currency", currency: activeCurrency }).format(n);
+    return formatter("money", { style: "currency", currency: activeCurrency }).format(n);
   } catch {
     // An unrecognised code should degrade to a readable number, not throw and
     // take the whole screen down with it.
@@ -32,7 +45,7 @@ export function fmt(n) {
 // already says what the numbers are.
 export function fmtWhole(n) {
   try {
-    return new Intl.NumberFormat(activeLocale, { maximumFractionDigits: 0 }).format(n);
+    return formatter("whole", { maximumFractionDigits: 0 }).format(n);
   } catch {
     return String(Math.round(n || 0));
   }
@@ -42,7 +55,7 @@ export function fmtWhole(n) {
 // grouping, no currency. Prefilled inputs read "5800,5", not "5800.5".
 export function fmtPlain(n) {
   try {
-    return new Intl.NumberFormat(activeLocale, { useGrouping: false, maximumFractionDigits: 2 }).format(n);
+    return formatter("plain", { useGrouping: false, maximumFractionDigits: 2 }).format(n);
   } catch {
     return String(n);
   }

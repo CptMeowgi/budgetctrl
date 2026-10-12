@@ -4,6 +4,21 @@
 // i18n.test.js fails if any string the app translates is missing here.
 export default {
   // App
+  "Budget Ctrl couldn't open your budget": "Budget Ctrl nie może otworzyć Twojego budżetu",
+  "Nothing has been changed or overwritten. Restore one of your backups, open a backup file, or start a new budget.": "Nic nie zostało zmienione ani nadpisane. Przywróć jedną z kopii zapasowych, otwórz plik kopii albo zacznij nowy budżet.",
+  "The unreadable file was kept as {file}.": "Nieczytelny plik zachowano jako {file}.",
+  "Your backups": "Twoje kopie zapasowe",
+  "No backups found.": "Nie znaleziono kopii zapasowych.",
+  "Restore this backup": "Przywróć tę kopię",
+  "Start a new budget": "Zacznij nowy budżet",
+  "Start a new, empty budget? The unreadable budget and your backups are kept.": "Zacząć nowy, pusty budżet? Nieczytelny budżet i Twoje kopie zapasowe zostaną zachowane.",
+  "Details: {error}": "Szczegóły: {error}",
+  "start of the day": "początek dnia",
+  "before starting again": "przed rozpoczęciem od nowa",
+  "before loading a backup file": "przed wczytaniem pliku kopii",
+  "before a statement import": "przed importem wyciągu",
+  "before a restore": "przed przywróceniem",
+  "before updating to {version}": "przed aktualizacją do {version}",
   "Start when you log in": "Uruchamiaj po zalogowaniu",
   "Sends a reminder now, to check notifications reach you.": "Wysyła przypomnienie teraz, żeby sprawdzić, czy powiadomienia docierają.",
   "Bills due soon will appear like this.": "Rachunki do zapłaty będą pojawiać się właśnie tak.",

@@ -5,6 +5,32 @@
 - The app's icon - on the desktop, the taskbar, the tray and in Linux app
   menus - is now the Budget Ctrl mark instead of a placeholder
 
+### Your budget, safer
+- If your budget file is ever damaged, Budget Ctrl no longer opens an empty
+  budget in its place, which your next change would have saved over. It opens
+  the last good copy it keeps for you when there is one; otherwise it shows
+  your backups and lets you pick one, open a backup file, or start again. The
+  damaged file is always kept.
+- Quick changes in a row are saved strictly in order. Before, two saves close
+  together could finish the wrong way round and leave an older version on disk.
+- The daily backup is taken before the day's first change, so it holds your
+  budget as you left it the day before.
+- Backups are named with their time as well as their date, so two taken the
+  same day no longer overwrite each other. Settings lists them as "11 Oct
+  2026, 14:32 · before a statement import" instead of file names.
+
+### Fixes
+- Amounts typed with a comma for decimals and a space or dot between
+  thousands - "1 234,56" or "1.234,56" - are read correctly when adding a
+  recurring payment, an upcoming bill, a credit or a category budget. They
+  were read as 1 and 1.234.
+- A recurring payment's day of the month is kept between 1 and 31.
+- Import rules follow a category you rename, merge or delete, instead of
+  filing new imports under its old name.
+- The / shortcut jumps to the search box in every language, not only English.
+- A budget file missing some parts, such as one edited by hand, keeps its
+  months when opened rather than losing them.
+
 ## 0.5.1
 
 On Windows, nothing changes in this release. It brings Budget Ctrl to Linux.
