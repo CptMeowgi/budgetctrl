@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.6.0
+
+This release is about trust: a strict security policy, the licences of
+the software Budget Ctrl is built with, and an easy way to tell me when
+something's wrong.
 
 - Settings has a new About section listing the open-source software Budget
   Ctrl is built with, and each package's licence. Their licences ask for
