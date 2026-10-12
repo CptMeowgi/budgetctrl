@@ -4,6 +4,15 @@
 // i18n.test.js fails if any string the app translates is missing here.
 export default {
   // App
+  "About": "O aplikacji",
+  "Open-source licences": "Licencje open source",
+  "The open-source software Budget Ctrl is built with, and its licences.": "Oprogramowanie open source, z którego zbudowano Budget Ctrl, i jego licencje.",
+  "Show": "Pokaż",
+  "Budget Ctrl is built on these open-source packages. Their licences ask for these notices to come with the app. Some packages are only used on other systems, or while the app is being built.": "Budget Ctrl powstał na bazie tych pakietów open source. Ich licencje wymagają, by te informacje były dołączone do aplikacji. Niektóre pakiety są używane tylko w innych systemach albo podczas budowania aplikacji.",
+  "Search packages": "Szukaj pakietów",
+  "{n} package|{n} packages": "{n} pakiet|{n} pakiety|{n} pakietów",
+  "Source code: {url}": "Kod źródłowy: {url}",
+  "No packages match.": "Brak pasujących pakietów.",
   "Budget Ctrl couldn't open your budget": "Budget Ctrl nie może otworzyć Twojego budżetu",
   "Nothing has been changed or overwritten. Restore one of your backups, open a backup file, or start a new budget.": "Nic nie zostało zmienione ani nadpisane. Przywróć jedną z kopii zapasowych, otwórz plik kopii albo zacznij nowy budżet.",
   "The unreadable file was kept as {file}.": "Nieczytelny plik zachowano jako {file}.",

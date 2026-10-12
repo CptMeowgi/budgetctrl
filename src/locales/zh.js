@@ -4,6 +4,15 @@
 // any string the app translates is missing here.
 export default {
   // App
+  "About": "关于",
+  "Open-source licences": "开源许可证",
+  "The open-source software Budget Ctrl is built with, and its licences.": "Budget Ctrl 所使用的开源软件及其许可证。",
+  "Show": "查看",
+  "Budget Ctrl is built on these open-source packages. Their licences ask for these notices to come with the app. Some packages are only used on other systems, or while the app is being built.": "Budget Ctrl 基于以下开源软件包构建。它们的许可证要求随应用附带这些声明。部分软件包仅在其他系统上或构建应用时使用。",
+  "Search packages": "搜索软件包",
+  "{n} package|{n} packages": "{n} 个软件包",
+  "Source code: {url}": "源代码：{url}",
+  "No packages match.": "没有匹配的软件包。",
   "Budget Ctrl couldn't open your budget": "Budget Ctrl 无法打开你的预算",
   "Nothing has been changed or overwritten. Restore one of your backups, open a backup file, or start a new budget.": "没有任何内容被更改或覆盖。你可以恢复某个备份、打开备份文件，或新建一个预算。",
   "The unreadable file was kept as {file}.": "无法读取的文件已保留为 {file}。",

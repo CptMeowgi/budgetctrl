@@ -207,6 +207,7 @@ npm run tauri:dev
 | `npm run build` | Builds the web assets only |
 | `npm run lint` | ESLint |
 | `npm test` | Unit tests (Vitest) for the logic in `src/lib/` |
+| `npm run licenses` | Rebuilds the open-source licence list shown in Settings. Run it after adding or updating a dependency, once `npm ci` and `cargo fetch --locked` (in `src-tauri`) have run; a test fails until you do |
 
 Notifications need the installed app. Windows attributes a toast through a Start
 Menu shortcut that only the installer creates, so they may not appear under

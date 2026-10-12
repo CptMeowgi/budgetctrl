@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Settings has a new About section listing the open-source software Budget
+  Ctrl is built with, and each package's licence. Their licences ask for
+  this, and until now the app didn't include it.
+
 ## 0.5.2
 
 This release makes your budget harder to lose, fixes amounts typed with a

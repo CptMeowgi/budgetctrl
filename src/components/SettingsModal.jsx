@@ -5,6 +5,7 @@ import { getStorageFault, listBackups } from "../storage.js";
 import { FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
 import { SettingRow, Switch } from "./controls.jsx";
 import { Modal } from "./Modal.jsx";
+import { LicensesModal } from "./LicensesModal.jsx";
 import { ago, backupLabel, ordinal } from "../text.js";
 import { LANGUAGES, t, tk, tn } from "../i18n.js";
 
@@ -18,6 +19,7 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
   const [autostart, setAutostart] = useState(null);
   const [backups, setBackups] = useState([]);
   const [dataPath, setDataPath] = useState("");
+  const [licensesOpen, setLicensesOpen] = useState(false);
 
   useEffect(() => {
     if (!isTauri) return;
@@ -57,6 +59,10 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
 
   const group = { fontSize: 10, textTransform: "uppercase", letterSpacing: 1.2, color: theme.textMuted, fontWeight: 600, marginBottom: 2 };
   const divider = { borderTop: `1px solid ${theme.border}`, margin: "6px 0" };
+
+  // Shown in place of Settings, not on top of it, so Escape steps back one
+  // dialog at a time.
+  if (licensesOpen) return <LicensesModal onClose={() => setLicensesOpen(false)} />;
 
   return (
     <Modal title={t("Settings")} onClose={onClose}>
@@ -280,6 +286,12 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
           </SettingRow>
         </>
       )}
+
+      <div style={divider} />
+      <div style={group}>{t("About")}</div>
+      <SettingRow label={t("Open-source licences")} hint={t("The open-source software Budget Ctrl is built with, and its licences.")}>
+        <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => setLicensesOpen(true)}>{t("Show")}</button>
+      </SettingRow>
     </Modal>
   );
 }

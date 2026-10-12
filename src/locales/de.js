@@ -4,6 +4,15 @@
 // any string the app translates is missing here.
 export default {
   // App
+  "About": "Über",
+  "Open-source licences": "Open-Source-Lizenzen",
+  "The open-source software Budget Ctrl is built with, and its licences.": "Die Open-Source-Software, auf der Budget Ctrl aufbaut, und ihre Lizenzen.",
+  "Show": "Anzeigen",
+  "Budget Ctrl is built on these open-source packages. Their licences ask for these notices to come with the app. Some packages are only used on other systems, or while the app is being built.": "Budget Ctrl baut auf diesen Open-Source-Paketen auf. Ihre Lizenzen verlangen, dass diese Hinweise mit der App ausgeliefert werden. Manche Pakete werden nur auf anderen Systemen oder beim Erstellen der App verwendet.",
+  "Search packages": "Pakete suchen",
+  "{n} package|{n} packages": "{n} Paket|{n} Pakete",
+  "Source code: {url}": "Quellcode: {url}",
+  "No packages match.": "Keine passenden Pakete.",
   "Budget Ctrl couldn't open your budget": "Budget Ctrl kann dein Budget nicht öffnen",
   "Nothing has been changed or overwritten. Restore one of your backups, open a backup file, or start a new budget.": "Nichts wurde geändert oder überschrieben. Stelle eine deiner Sicherungen wieder her, öffne eine Sicherungsdatei oder beginne ein neues Budget.",
   "The unreadable file was kept as {file}.": "Die unlesbare Datei wurde als {file} aufbewahrt.",
