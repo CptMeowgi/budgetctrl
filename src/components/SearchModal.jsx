@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { periodLabel } from "../lib/periods.js";
+import { calendarFor } from "../lib/calendar.js";
 import { isEmptyQuery, search } from "../lib/search.js";
 import { CREDIT_UNCATEGORIZED } from "../model.js";
 import { fmt } from "../money.js";
@@ -41,7 +41,7 @@ export function SearchModal({ data, query, onQueryChange, onClose, onOpen }) {
   });
   const small = { ...s.input, minHeight: 34, padding: "5px 10px", width: "auto" };
   const money = { fontFamily: FONT, fontVariantNumeric: "tabular-nums" };
-  const cutoffDay = data.cutoffDay || 1;
+  const cal = calendarFor(data);
 
   return (
     <Modal title={t("Search everything")} onClose={onClose} width={780}>
@@ -100,7 +100,7 @@ export function SearchModal({ data, query, onQueryChange, onClose, onOpen }) {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ ...TYPE.caption, fontWeight: 600, color: theme.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.entry.name}</div>
                     <div style={{ ...TYPE.finePrint, color: theme.textFaint, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {t(KIND_LABEL[r.kind])} · {periodLabel(r.periodKey, cutoffDay).primary}{r.entry.note ? ` · ${r.entry.note}` : ""}
+                      {t(KIND_LABEL[r.kind])} · {cal.label(r.periodKey).primary}{r.entry.note ? ` · ${r.entry.note}` : ""}
                     </div>
                   </div>
                   <div style={{ flexShrink: 0 }}>

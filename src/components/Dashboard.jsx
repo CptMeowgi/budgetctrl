@@ -1,9 +1,7 @@
 import { useRef } from "react";
 import { Area, AreaChart, ReferenceDot, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis } from "recharts";
-import { balanceHistory, periodDays, spendingByDay } from "../lib/forecast.js";
-import { periodLabel } from "../lib/periods.js";
+import { balanceHistory, spendingByDay } from "../lib/forecast.js";
 import { percentChange } from "../lib/reports.js";
-import { addMonths } from "../lib/schedule.js";
 import { categoryAverage } from "../lib/totals.js";
 import { envelope } from "../lib/envelopes.js";
 import { findCategory, CREDIT_UNCATEGORIZED, UNCATEGORIZED } from "../model.js";
@@ -31,19 +29,19 @@ function Chip({ tone, children, title }) {
 }
 
 // Money left this period: the actual line so far, then the forecast to payday.
-function MoneyLeftCard({ data, curKey, today, cutoffDay, fc, remaining, sub, stillToPay, goalsLine }) {
+function MoneyLeftCard({ data, curKey, today, cal, fc, remaining, sub, stillToPay, goalsLine }) {
   const { theme, s } = useThemed();
   const history = balanceHistory(data, curKey, today);
   const ahead = new Map(fc.series.map((p) => [p.date, p.withEveryday]));
   const lastActual = history[history.length - 1];
-  const days = periodDays(curKey, cutoffDay);
+  const days = cal.days(curKey);
   const points = days.map((d) => {
     const h = history.find((p) => p.date === d);
     return { date: d, actual: h ? h.balance : null, ahead: ahead.has(d) ? ahead.get(d) : null };
   });
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => days[Math.round(f * (days.length - 1))]);
   const short = fc.runsShortOn;
-  const monthly = cutoffDay === 1;
+  const monthly = cal.calendarMonths;
 
   return (
     <article style={{ ...s.card, background: theme.heroBg, borderRadius: 28, padding: "22px 24px", minHeight: 310, display: "flex", flexDirection: "column" }}>
@@ -120,25 +118,25 @@ function MoneyLeftCard({ data, curKey, today, cutoffDay, fc, remaining, sub, sti
           </AreaChart>
         </ResponsiveContainer>
       </div>
-      {!monthly && <div style={{ fontSize: 11, color: theme.textSoft, marginTop: 2 }}>{periodLabel(curKey, cutoffDay).range}</div>}
+      {!monthly && <div style={{ fontSize: 11, color: theme.textSoft, marginTop: 2 }}>{cal.label(curKey).range}</div>}
     </article>
   );
 }
 
 // This period's spending: the running total day by day, how it compares with
 // the same day last period, and the three biggest categories.
-function SpendingCard({ data, curKey, today, cutoffDay, spent, effectiveIncome, spentByCat, onReports }) {
+function SpendingCard({ data, curKey, today, cal, spent, effectiveIncome, spentByCat, onReports }) {
   const { theme, s } = useThemed();
   const daily = spendingByDay(data, curKey, today);
-  const prevKey = addMonths(curKey, -1);
+  const prevKey = cal.prev(curKey);
   const prev = data.months?.[prevKey] ? spendingByDay(data, prevKey, today) : [];
   const atSameDay = prev.length ? prev[Math.min(daily.length, prev.length) - 1].total : 0;
   const change = percentChange(spent, atSameDay);
-  const monthly = cutoffDay === 1;
+  const monthly = cal.calendarMonths;
   const pctOfIncome = effectiveIncome > 0 ? Math.round((spent / effectiveIncome) * 100) : null;
   const top = [...spentByCat.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 3)
     .map(([name, v]) => ({ name, v, color: (findCategory(data.categories || [], name) || UNCATEGORIZED).color }));
-  const days = periodDays(curKey, cutoffDay);
+  const days = cal.days(curKey);
   // Each bubble is at least as wide as its amount needs, so a narrow card
   // puts fewer in a row instead of letting the figures spill out, and one
   // left alone on a row stretches across it.
@@ -208,7 +206,7 @@ function SpendingCard({ data, curKey, today, cutoffDay, spent, effectiveIncome, 
 }
 
 // The latest expenses and money received this period, newest first.
-function RecentCard({ data, cur, cutoffDay, isReceived, onOpen, onViewAll }) {
+function RecentCard({ data, cur, cal, isReceived, onOpen, onViewAll }) {
   const { theme, s } = useThemed();
   const rows = [
     ...(cur.expenses || []).map((e) => ({ kind: "expense", e, date: e.date || "", amount: -(e.amount || 0),
@@ -216,7 +214,7 @@ function RecentCard({ data, cur, cutoffDay, isReceived, onOpen, onViewAll }) {
     ...(cur.credits || []).filter(isReceived).map((c) => ({ kind: c.dayOfMonth != null ? "creditRecurring" : "credit", e: c, amount: c.amount || 0,
       date: c.date || "", cat: findCategory(data.creditCategories || [], c.category || c.source) || CREDIT_UNCATEGORIZED })),
   ].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
-  const monthly = cutoffDay === 1;
+  const monthly = cal.calendarMonths;
 
   return (
     <article style={{ ...s.card, borderRadius: 28, minHeight: 300 }}>
@@ -249,7 +247,7 @@ function RecentCard({ data, cur, cutoffDay, isReceived, onOpen, onViewAll }) {
 
 export function Dashboard(props) {
   const {
-    data, cur, curKey, today, cutoffDay, fc, remaining, remainingSub, totalUpcoming, totalActuallySpent, goals, goalsSaved, goalsTarget,
+    data, cur, curKey, today, cal, fc, remaining, remainingSub, totalUpcoming, totalActuallySpent, goals, goalsSaved, goalsTarget,
     dueBills, totalCredits, totalCreditsPending, savingsGoal, savingsShortfall, savingsTarget, leftToSpend, goalsNeed, effectiveIncome,
     totalStillScheduled, spentByCat, isReceived, onSetTab, onEdit, patchCur, save, onManageCategories, onSetBudget, onStartFresh,
   } = props;
@@ -288,14 +286,14 @@ export function Dashboard(props) {
       )}
 
       <section className="dash-top" ref={topRef}>
-        <MoneyLeftCard data={data} curKey={curKey} today={today} cutoffDay={cutoffDay} fc={fc} remaining={remaining} sub={remainingSub}
+        <MoneyLeftCard data={data} curKey={curKey} today={today} cal={cal} fc={fc} remaining={remaining} sub={remainingSub}
           stillToPay={totalUpcoming} goalsLine={goalsLine} />
-        <SpendingCard data={data} curKey={curKey} today={today} cutoffDay={cutoffDay} spent={totalActuallySpent}
+        <SpendingCard data={data} curKey={curKey} today={today} cal={cal} spent={totalActuallySpent}
           effectiveIncome={effectiveIncome} spentByCat={spentByCat} onReports={() => onSetTab("reports")} />
       </section>
 
       <section className="dash-lower" ref={lowerRef}>
-        <RecentCard data={data} cur={cur} cutoffDay={cutoffDay} isReceived={isReceived}
+        <RecentCard data={data} cur={cur} cal={cal} isReceived={isReceived}
           onOpen={(r) => onEdit({ type: r.kind, editId: r.e.id })} onViewAll={() => onSetTab("expenses")} />
         <article style={{ ...s.card, borderRadius: 28, minHeight: 300 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -321,7 +319,7 @@ export function Dashboard(props) {
         <div className="dash-plan">
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <div style={s.cardTitle}>{cutoffDay === 1 ? t("Income this month") : t("Income this period")}</div>
+              <div style={s.cardTitle}>{cal.calendarMonths ? t("Income this month") : t("Income this period")}</div>
               <InfoHint text={t("Your pay for this period. A new period starts with the last one's figure, so change it here when your pay changes. Credits are added on top.")} />
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
@@ -339,7 +337,7 @@ export function Dashboard(props) {
           </div>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <div style={s.cardTitle}>{cutoffDay === 1 ? t("Set aside each month") : t("Set aside each period")}</div>
+              <div style={s.cardTitle}>{cal.calendarMonths ? t("Set aside each month") : t("Set aside each period")}</div>
               <InfoHint text={t("How much you mean to save out of this period's money. It is taken off before Left to Spend, so what remains is genuinely free.")} />
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>

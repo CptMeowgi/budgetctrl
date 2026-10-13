@@ -1,4 +1,5 @@
-import { monthLabel, periodLabel } from "../lib/periods.js";
+import { monthLabel } from "../lib/periods.js";
+import { calendarFor } from "../lib/calendar.js";
 import { BASE_INCOME_NAME, buildReport, categoryChanges, comparisonFor, percentChange, rangeKeys, rangeOptions, reportToCsv } from "../lib/reports.js";
 import { downloadText, fileDate } from "../exportFiles.js";
 import { categoryBreakdown, CREDIT_UNCATEGORIZED, findCategory } from "../model.js";
@@ -104,7 +105,7 @@ function CategoryTrends({ report, categories, curKey, onOpenPeriod }) {
 
 export function ReportsView({ data, today, curKey, range, onRange, onOpenPeriod }) {
   const { theme, s } = useThemed();
-  const cutoffDay = data.cutoffDay || 1;
+  const cal = calendarFor(data);
   const options = rangeOptions(data, curKey);
   const rangeId = options.some((o) => o.id === range) ? range : (options[0]?.id || `year:${curKey.slice(0, 4)}`);
   const keys = rangeKeys(data, rangeId, curKey);
@@ -114,7 +115,7 @@ export function ReportsView({ data, today, curKey, range, onRange, onOpenPeriod 
   const running = keys.includes(curKey);
   // Months or payday-to-payday periods: the two nouns decline differently in
   // Polish, so each wording is its own sentence rather than a word swapped in.
-  const monthly = cutoffDay === 1;
+  const monthly = cal.calendarMonths;
   const cmp = comparisonFor(data, rangeId, curKey);
   // What the comparison is against, named in the reader's language: a year,
   // the stretch before, or - when that stretch was only partly tracked - the
@@ -144,7 +145,7 @@ export function ReportsView({ data, today, curKey, range, onRange, onOpenPeriod 
   const exportReport = () => {
     const csv = reportToCsv(report, {
       locale: data.locale || navigator.language,
-      label: (k) => periodLabel(k, cutoffDay).primary,
+      label: (k) => cal.label(k).primary,
     });
     downloadText(csv, `budget-ctrl-report-${rangeId.replace(":", "-")}-${fileDate()}.csv`, "text/csv;charset=utf-8");
   };

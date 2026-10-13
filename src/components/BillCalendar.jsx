@@ -1,5 +1,6 @@
 import { Area, AreaChart, CartesianGrid, Line, ReferenceLine, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis } from "recharts";
-import { periodDays, scheduledItems } from "../lib/forecast.js";
+import { scheduledItems } from "../lib/forecast.js";
+import { calendarFor } from "../lib/calendar.js";
 import { isoDay } from "../lib/periods.js";
 import { fmt, fmtWhole } from "../money.js";
 import { ANIMATE_CHARTS, FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
@@ -16,7 +17,7 @@ function dayShort(iso) {
 // The period as a month grid, Monday first, with what lands on each day.
 export function BillCalendar({ data, periodKey, today, onOpen }) {
   const { theme } = useThemed();
-  const days = periodDays(periodKey, data.cutoffDay || 1);
+  const days = calendarFor(data).days(periodKey);
   const items = scheduledItems(data, periodKey, today);
   const byDay = new Map();
   for (const it of items) {

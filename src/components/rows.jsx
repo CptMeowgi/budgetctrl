@@ -1,5 +1,4 @@
 import { useContext } from "react";
-import { periodLabel } from "../lib/periods.js";
 import { upcomingSettled } from "../lib/reminders.js";
 import { frequencyLabel, nextOnCycle } from "../lib/schedule.js";
 import { DeleteArmContext } from "../contexts.js";
@@ -54,7 +53,7 @@ export function EntryName({ name, note, strike, every, children }) {
 // Recurring bills or credits that exist in the template but fall in a later
 // period. Without this they would vanish from view entirely between occurrences
 // - a yearly bill set up in October would be invisible until March.
-export function NotDueThisPeriod({ items, curKey, cutoffDay, categories, fallback, positive, onEdit, onDelete }) {
+export function NotDueThisPeriod({ items, curKey, cal, categories, fallback, positive, onEdit, onDelete }) {
   const { theme, s } = useThemed();
   if (!items.length) return null;
   return (
@@ -65,7 +64,7 @@ export function NotDueThisPeriod({ items, curKey, cutoffDay, categories, fallbac
           <EntryName name={tpl.name} note={tpl.note} />
           <div style={{ flex: 1.2 }}><CategoryPill categoryName={tpl.category} categories={categories} fallback={fallback} /></div>
           <div style={{ flex: 1.5, color: theme.textMuted, ...TYPE.caption }}>
-            {t("{frequency} · next {period}", { frequency: t(frequencyLabel(tpl.every)), period: periodLabel(nextOnCycle(tpl, curKey), cutoffDay).primary })}
+            {t("{frequency} · next {period}", { frequency: t(frequencyLabel(tpl.every)), period: cal.label(nextOnCycle(tpl, curKey)).primary })}
           </div>
           <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700,
                         color: positive ? theme.success : theme.accent }}>{positive ? "+" : ""}{fmt(tpl.amount)}</div>

@@ -5,7 +5,8 @@ import { goalStatus, goalsMonthlyNeed, leftOverHistory } from "./lib/goals.js";
 import { convertToRecurring, dismissRegular, findRegularPayments } from "./lib/regular.js";
 import { forecast } from "./lib/forecast.js";
 import { applySetup } from "./lib/setup.js";
-import { currentPeriodKey, isoDay, newEntryDate, periodLabel, setLabelLocale } from "./lib/periods.js";
+import { isoDay, setLabelLocale } from "./lib/periods.js";
+import { calendarFor } from "./lib/calendar.js";
 import { collectDueBills, OVERDUE_GRACE_DAYS, upcomingSettled } from "./lib/reminders.js";
 import { dayOfMonthFrom, everyFromLabel, FREQUENCIES, frequencyLabel, isOnCycle } from "./lib/schedule.js";
 import { creditReceived, periodIncome, periodSpending } from "./lib/totals.js";
@@ -258,7 +259,7 @@ export default function App() {
     // it. The Savings table surfaces this, otherwise a hand-corrected figure is
     // indistinguishable from a calculated one months later. ISO-UTC is right
     // here: this is an instant, not a calendar day.
-    const closed = key < currentPeriodKey(data.cutoffDay || 1);
+    const closed = key < calendarFor(data).current();
     save({
       ...data,
       months: {
@@ -269,8 +270,8 @@ export default function App() {
   }, [data, save]);
 
   const patchCur = useCallback((patch) => {
-    patchMonth(currentPeriodKey(data.cutoffDay || 1), patch);
-  }, [patchMonth, data.cutoffDay]);
+    patchMonth(calendarFor(data).current(), patch);
+  }, [patchMonth, data]);
 
   // Applied during render so every fmt() and t() below this line uses the
   // chosen currency and language, including the ones inside helpers called
@@ -450,19 +451,19 @@ export default function App() {
     );
   }
 
-  const cutoffDay = data.cutoffDay || 1;
-  const curKey = currentPeriodKey(cutoffDay);
+  const cal = calendarFor(data);
+  const curKey = cal.current();
   const cur = data.months[curKey] || emptyMonth();
 
   // Every spending and income figure on screen comes from these two. Nothing
   // below re-sums entries, or the cards and charts drift apart again.
-  const spending = periodSpending(cur, curKey, today, cutoffDay);
-  const income = periodIncome(cur, curKey, today, cutoffDay);
+  const spending = periodSpending(cur, curKey, today, cal);
+  const income = periodIncome(cur, curKey, today, cal);
   const totalExpenses = spending.expenses;
   const totalRecurringAll = cur.recurring.reduce((a, e) => a + e.amount, 0);
   const totalRecurringFuture = totalRecurringAll - spending.recurring;
   const totalUnpaidUpcoming = cur.upcoming.filter((u) => !upcomingSettled(u, today)).reduce((a, e) => a + e.amount, 0);
-  const isReceived = (c) => creditReceived(c, curKey, today, cutoffDay);
+  const isReceived = (c) => creditReceived(c, curKey, today, cal);
   const totalCredits = income.credits;
   const totalCreditsPending = income.pending;
   const effectiveIncome = income.total;
@@ -516,7 +517,7 @@ export default function App() {
   const filteredCredits = filterAndSort(cur.credits || [], creditsView);
   const onChangeCutoff = (next) => {
     const clamped = Math.max(1, Math.min(28, next || 1));
-    if (clamped === cutoffDay) return;
+    if (clamped === cal.cutoffDay) return;
     const moves = countRebucketMoves(data, clamped);
     if (moves === 0) { save({ ...data, cutoffDay: clamped }); return; }
     const ok = confirm(
@@ -667,7 +668,7 @@ export default function App() {
           <div data-tauri-drag-region style={{ flex: 1, minWidth: 0, alignSelf: "stretch", display: "flex", flexDirection: "column", justifyContent: "center" }}>
             <span data-tauri-drag-region style={{ ...TYPE.navLink, textTransform: "uppercase", color: theme.outerTextMuted, marginBottom: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {fmtDate(new Date(), { weekday: "long", day: "numeric", month: "long" })}
-              {cutoffDay > 1 && ` · ${t("period {range}", { range: periodLabel(curKey, cutoffDay).range })}`}
+              {!cal.calendarMonths && ` · ${t("period {range}", { range: cal.label(curKey).range })}`}
             </span>
             <h1 data-tauri-drag-region style={{ ...TYPE.tagline, margin: 0, color: theme.outerText, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {tab === "dashboard" ? greeting(new Date()) : t(TABS.find((tb) => tb.id === tab)?.label || "")}
@@ -716,7 +717,7 @@ export default function App() {
           {/* DASHBOARD */}
           {tab === "dashboard" && (
             <Dashboard
-              data={data} cur={cur} curKey={curKey} today={today} cutoffDay={cutoffDay} fc={fc}
+              data={data} cur={cur} curKey={curKey} today={today} cal={cal} fc={fc}
               remaining={remaining}
               remainingSub={fc.series.length < 2 || fc.lowestWithEveryday.date === fc.series[0].date
                 // Nothing ahead brings it lower than now: no dip worth naming.
@@ -766,7 +767,7 @@ export default function App() {
                             Naming its period makes that obvious. */}
                         {b.periodKey !== curKey && (
                           <span style={{ display: "block", color: theme.danger }}>
-                            {t("from {period}", { period: periodLabel(b.periodKey, cutoffDay).primary })}
+                            {t("from {period}", { period: cal.label(b.periodKey).primary })}
                           </span>
                         )}
                       </div>
@@ -887,7 +888,7 @@ export default function App() {
                   ))}
                 </>
               )}
-              <NotDueThisPeriod items={offCycleRecurring} curKey={curKey} cutoffDay={cutoffDay} categories={data.categories}
+              <NotDueThisPeriod items={offCycleRecurring} curKey={curKey} cal={cal} categories={data.categories}
                 onEdit={(tpl) => setModal({ type: "recurring", templateId: tpl.id })}
                 onDelete={(tpl) => save({ ...data, recurringTemplate: data.recurringTemplate.filter((x) => x.id !== tpl.id) })} />
             </div>
@@ -897,7 +898,7 @@ export default function App() {
           {tab === "upcoming" && (
             <>
               <div style={{ ...s.card, marginBottom: 16 }}>
-                <div style={s.cardTitle}>{cutoffDay === 1 ? t("Money left this month, looking ahead") : t("Money left this period, looking ahead")}</div>
+                <div style={s.cardTitle}>{cal.calendarMonths ? t("Money left this month, looking ahead") : t("Money left this period, looking ahead")}</div>
                 <ForecastCard fc={fc} />
               </div>
               <div style={{ ...s.card, marginBottom: 16 }}>
@@ -1001,7 +1002,7 @@ export default function App() {
                       {recurringCredits.map((c) => creditRow(c, "recurring"))}
                     </>
                   )}
-                  <NotDueThisPeriod items={offCycleCredits} curKey={curKey} cutoffDay={cutoffDay}
+                  <NotDueThisPeriod items={offCycleCredits} curKey={curKey} cal={cal}
                     categories={data.creditCategories || []} fallback={CREDIT_UNCATEGORIZED} positive
                     onEdit={(tpl) => setModal({ type: "creditRecurring", templateId: tpl.id })}
                     onDelete={(tpl) => save({ ...data, creditTemplate: (data.creditTemplate || []).filter((x) => x.id !== tpl.id) })} />
@@ -1040,9 +1041,9 @@ export default function App() {
                   <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
                     {pastKeys.map((k) => {
                       const m = data.months[k];
-                      const inc = periodIncome(m, k, today, cutoffDay);
+                      const inc = periodIncome(m, k, today, cal);
                       const credits = inc.credits;
-                      const spent = periodSpending(m, k, today, cutoffDay).total;
+                      const spent = periodSpending(m, k, today, cal).total;
                       const rem = inc.total - spent;
                       const color = rem >= 0 ? theme.success : theme.danger;
                       return (
@@ -1053,9 +1054,9 @@ export default function App() {
                           color: theme.text, fontFamily: FONT,
                         }}>
                           <div>
-                            <div style={{ fontWeight: 700, fontSize: 16 }}>{periodLabel(k, cutoffDay).primary}</div>
-                            {periodLabel(k, cutoffDay).range && (
-                              <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 2 }}>{periodLabel(k, cutoffDay).range}</div>
+                            <div style={{ fontWeight: 700, fontSize: 16 }}>{cal.label(k).primary}</div>
+                            {cal.label(k).range && (
+                              <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 2 }}>{cal.label(k).range}</div>
                             )}
                           </div>
                           <div>
@@ -1086,17 +1087,17 @@ export default function App() {
           {/* HISTORY - DETAIL */}
           {tab === "history" && historyKey !== null && (() => {
             const m = data.months[historyKey] || emptyMonth();
-            const spent = periodSpending(m, historyKey, today, cutoffDay).total;
-            const inc = periodIncome(m, historyKey, today, cutoffDay);
+            const spent = periodSpending(m, historyKey, today, cal).total;
+            const inc = periodIncome(m, historyKey, today, cal);
             const credits = inc.credits;
             const effective = inc.total;
             const rem = effective - spent;
             return (
               <>
                 <button style={{ ...s.linkBtn, marginBottom: 16, fontSize: 14 }} onClick={() => setHistoryKey(null)}>{t("← Back to History")}</button>
-                <h2 style={{ fontSize: 20, fontWeight: 700, margin: "0 0 4px" }}>{periodLabel(historyKey, cutoffDay).primary}</h2>
-                {periodLabel(historyKey, cutoffDay).range && (
-                  <div style={{ fontSize: 12, color: theme.textMuted, marginBottom: 12 }}>{periodLabel(historyKey, cutoffDay).range}</div>
+                <h2 style={{ fontSize: 20, fontWeight: 700, margin: "0 0 4px" }}>{cal.label(historyKey).primary}</h2>
+                {cal.label(historyKey).range && (
+                  <div style={{ fontSize: 12, color: theme.textMuted, marginBottom: 12 }}>{cal.label(historyKey).range}</div>
                 )}
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
                   <span style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1.5, color: theme.textMuted, fontWeight: 600 }}>{t("Income")}</span>
@@ -1198,7 +1199,7 @@ export default function App() {
 
           {/* SAVINGS */}
           {tab === "savings" && (
-            <SavingsView data={data} history={leftOver} today={today} cutoffDay={cutoffDay}
+            <SavingsView data={data} history={leftOver} today={today} cal={cal}
               onAddGoal={() => setModal({ type: "goal" })}
               onEditGoal={(g) => setModal({ type: "goal", editId: g.id })}
               onChangeIncome={(key, v) => patchMonth(key, { income: v })}
@@ -1249,7 +1250,7 @@ export default function App() {
         const targetMonth = data.months[targetKey] || emptyMonth();
         const editing = modal.editId ? targetMonth.expenses.find((x) => x.id === modal.editId) : null;
         return (
-          <ExpenseModal editing={editing} categories={data.categories} defaultDate={newEntryDate(targetKey, cutoffDay, today)}
+          <ExpenseModal editing={editing} categories={data.categories} defaultDate={cal.newEntryDate(targetKey, today)}
             onClose={() => setModal(null)}
             onSave={(v) => {
               // Every category named - the one, or each part's - is created if new.
@@ -1361,7 +1362,7 @@ export default function App() {
             { key: "name", label: t("Name"), placeholder: t("e.g. Car Insurance"), defaultValue: editing?.name },
             { key: "amount", label: t("Amount ({currency})", { currency: currencyCode() }), type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
             { key: "category", label: t("Category"), type: "category", categories: data.categories, defaultValue: editing?.category },
-            { key: "dueDate", label: t("Due Date"), type: "date", defaultValue: editing?.dueDate || newEntryDate(targetKey, cutoffDay, today) },
+            { key: "dueDate", label: t("Due Date"), type: "date", defaultValue: editing?.dueDate || cal.newEntryDate(targetKey, today) },
             { key: "autoPay", label: t("Pays itself"), type: "checkbox", defaultValue: editing?.autoPay,
               hint: t("Direct debit or card on file. Counts as paid on its due date and never sends a reminder.") },
             NOTE_FIELD(editing),
@@ -1476,7 +1477,7 @@ export default function App() {
             { key: "name", label: t("Name"), placeholder: t("e.g. Amazon refund"), defaultValue: editing?.name },
             { key: "amount", label: t("Amount ({currency})", { currency: currencyCode() }), type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
             { key: "category", label: t("Source"), type: "category", categories: data.creditCategories || [], defaultValue: editing?.category || editing?.source },
-            { key: "date", label: t("Date"), type: "date", defaultValue: editing?.date || newEntryDate(targetKey, cutoffDay, today) },
+            { key: "date", label: t("Date"), type: "date", defaultValue: editing?.date || cal.newEntryDate(targetKey, today) },
             NOTE_FIELD(editing),
           ]} onClose={() => setModal(null)} onSave={(v) => {
             const amt = +v.amount;

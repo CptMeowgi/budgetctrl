@@ -2,7 +2,7 @@ import { useState } from "react";
 import { latestBalance, daysBetweenISO } from "../lib/accounts.js";
 import { goalAccount, goalAccountOptions, goalStatus } from "../lib/goals.js";
 import { parseAmount } from "../lib/importer.js";
-import { monthLabel, periodLabel, isoDay } from "../lib/periods.js";
+import { monthLabel, isoDay } from "../lib/periods.js";
 import { currencyCode, fmt } from "../money.js";
 import { FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
 import { SavingsChart } from "./charts.jsx";
@@ -76,7 +76,7 @@ function GoalCard({ goal, status, data, todayIso, onEdit }) {
   );
 }
 
-export function SavingsView({ data, history, today, cutoffDay, onAddGoal, onEditGoal, onChangeIncome, onOpenPeriod }) {
+export function SavingsView({ data, history, today, cal, onAddGoal, onEditGoal, onChangeIncome, onOpenPeriod }) {
   const { theme, s } = useThemed();
   const goals = data.goals || [];
   const todayIso = isoDay(today);
@@ -121,7 +121,7 @@ export function SavingsView({ data, history, today, cutoffDay, onAddGoal, onEdit
             {history.series.slice(1).map((row) => (
               <div key={row.key} style={s.tableRow}>
                 <div style={{ flex: 2, fontWeight: 600, display: "flex", alignItems: "center", gap: SPACE.xs }}>
-                  {periodLabel(row.key, cutoffDay).primary}
+                  {cal.label(row.key).primary}
                   {row.editedAt && (
                     <span
                       title={t("Edited after this period closed, on {date}", { date: fmtDate(new Date(row.editedAt)) })}
