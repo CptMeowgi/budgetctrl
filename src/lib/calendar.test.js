@@ -14,7 +14,10 @@ describe("monthlyCalendar matches the period functions", () => {
   it("puts every day in the same period, for every payday day", () => {
     for (let cutoff = 1; cutoff <= 31; cutoff++) {
       const cal = monthlyCalendar(cutoff);
-      for (const d of days) expect(cal.keyFor(d)).toBe(periodKeyFor(d, cutoff));
+      for (const d of days) {
+        expect(cal.keyFor(d)).toBe(periodKeyFor(d, cutoff));
+        expect(cal.current(d)).toBe(periodKeyFor(d, cutoff));
+      }
     }
   });
 

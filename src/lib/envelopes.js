@@ -15,6 +15,7 @@
 //               Switching rollover on never reaches back into older history.
 
 import { periodSpending } from "./totals.js";
+import { calendarFor } from "./calendar.js";
 
 const EARLIEST = "0000-00";
 
@@ -76,13 +77,13 @@ export function startFresh(category, periodKey) {
 // untracked month is not a month of saving.
 export function carryInto(data, category, periodKey, today) {
   if (!category?.rollover || asBudget(category.cap) == null) return 0;
-  const cutoffDay = data.cutoffDay || 1;
+  const cal = calendarFor(data);
   let carry = 0;
   for (const k of Object.keys(data.months || {}).sort()) {
     if (k < category.rollover.from || k >= periodKey) continue;
     const cap = capAt(category, k);
     if (cap == null) continue;
-    const spent = periodSpending(data.months[k], k, today, cutoffDay).byCategory.get(category.name) || 0;
+    const spent = periodSpending(data.months[k], k, today, cal).byCategory.get(category.name) || 0;
     carry += cap - spent;
   }
   return Math.round(carry * 100) / 100;

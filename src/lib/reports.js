@@ -4,7 +4,7 @@
 // never disagree with the Dashboard about a period.
 
 import { periodSpending, periodIncome } from "./totals.js";
-import { addMonths } from "./schedule.js";
+import { calendarFor } from "./calendar.js";
 import { monthLabel } from "./periods.js";
 import { csvDialect, csvEscape, guardText, formatAmount } from "./csv.js";
 
@@ -54,7 +54,7 @@ export function rangeKeys(data, rangeId, curKey) {
   if (!r) return [];
   if (r.kind === "year") return all.filter((k) => k.startsWith(`${r.year}-`));
   if (r.kind === "last") {
-    const from = addMonths(curKey, -r.n);
+    const from = calendarFor(data).shift(curKey, -r.n);
     return all.filter((k) => k >= from && k < curKey);
   }
   return all;
@@ -80,7 +80,8 @@ export function comparisonFor(data, rangeId, curKey) {
   if (!r || r.kind === "all") return null;
   const closed = rangeKeys(data, rangeId, curKey).filter((k) => k < curKey);
   const shift = r.kind === "year" ? 12 : r.n;
-  const keys = closed.map((k) => addMonths(k, -shift)).filter((k) => data.months?.[k]);
+  const cal = calendarFor(data);
+  const keys = closed.map((k) => cal.shift(k, -shift)).filter((k) => data.months?.[k]);
   if (!closed.length || !keys.length) return null;
   // Say exactly what is compared when the earlier stretch was only partly
   // tracked - "vs 2025" would claim a whole year that isn't there.
@@ -103,11 +104,11 @@ export function payeeKey(name) {
 // `runningKey` is the period still in progress. It counts toward totals but not
 // averages, which are over completed periods whenever there are any.
 export function buildReport(data, keys, today, { runningKey } = {}) {
-  const cutoffDay = data.cutoffDay || 1;
+  const cal = calendarFor(data);
   const periods = keys.map((key) => ({
     key,
-    spending: periodSpending(data.months[key], key, today, cutoffDay),
-    income: periodIncome(data.months[key], key, today, cutoffDay),
+    spending: periodSpending(data.months[key], key, today, cal),
+    income: periodIncome(data.months[key], key, today, cal),
   }));
   const income = sum(periods, (p) => p.income.total);
   const spent = sum(periods, (p) => p.spending.total);

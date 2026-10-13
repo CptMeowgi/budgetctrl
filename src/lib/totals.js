@@ -18,14 +18,18 @@
 // Its income is the base income plus each credit once received: a repeating
 // credit once its day has passed, a one-off once its date has.
 
-import { isRecurringDue, isoDay } from "./periods.js";
+import { isoDay } from "./periods.js";
+import { asCalendar, calendarFor } from "./calendar.js";
 import { upcomingSettled } from "./reminders.js";
 import { splitParts } from "./splits.js";
 
 export const UNCATEGORIZED_NAME = "Uncategorized";
 export const OTHER_SOURCE_NAME = "Other";
 
-export function periodSpending(month, periodKey, today, cutoffDay) {
+// `calendar` is the budget's period calendar, or its payday day as shorthand
+// for a monthly one; the same goes for creditReceived and periodIncome.
+export function periodSpending(month, periodKey, today, calendar) {
+  const cal = asCalendar(calendar);
   const byCategory = new Map();
   const add = (category, amount) => {
     const key = category || UNCATEGORIZED_NAME;
@@ -43,7 +47,7 @@ export function periodSpending(month, periodKey, today, cutoffDay) {
     items.push({ kind: "expense", entry: e });
   }
   for (const r of month?.recurring || []) {
-    if (!isRecurringDue(r, periodKey, today, cutoffDay)) continue;
+    if (!cal.isDue(r, periodKey, today)) continue;
     recurring += r.amount || 0;
     add(r.category, r.amount);
     items.push({ kind: "recurring", entry: r });
@@ -57,18 +61,18 @@ export function periodSpending(month, periodKey, today, cutoffDay) {
   return { total: expenses + recurring + upcoming, expenses, recurring, upcoming, byCategory, items };
 }
 
-export function creditReceived(c, periodKey, today, cutoffDay) {
-  if (c.dayOfMonth != null) return isRecurringDue(c, periodKey, today, cutoffDay);
+export function creditReceived(c, periodKey, today, calendar) {
+  if (c.dayOfMonth != null) return asCalendar(calendar).isDue(c, periodKey, today);
   return (c.date || "") <= isoDay(today);
 }
 
-export function periodIncome(month, periodKey, today, cutoffDay) {
+export function periodIncome(month, periodKey, today, calendar) {
   const base = month?.income || 0;
   const bySource = new Map();
   let credits = 0;
   let pending = 0;
   for (const c of month?.credits || []) {
-    if (!creditReceived(c, periodKey, today, cutoffDay)) { pending += c.amount || 0; continue; }
+    if (!creditReceived(c, periodKey, today, calendar)) { pending += c.amount || 0; continue; }
     credits += c.amount || 0;
     const source = c.category || c.source || OTHER_SOURCE_NAME;
     bySource.set(source, (bySource.get(source) || 0) + (c.amount || 0));
@@ -79,10 +83,10 @@ export function periodIncome(month, periodKey, today, cutoffDay) {
 // Average spending per period in one category, over periods strictly before
 // `beforeKey` - "what you usually spend here", for comparing against now.
 export function categoryAverage(data, category, beforeKey, today) {
-  const cutoffDay = data.cutoffDay || 1;
+  const cal = calendarFor(data);
   const keys = Object.keys(data.months || {}).filter((k) => k < beforeKey);
   if (!keys.length) return null;
   let total = 0;
-  for (const k of keys) total += periodSpending(data.months[k], k, today, cutoffDay).byCategory.get(category) || 0;
+  for (const k of keys) total += periodSpending(data.months[k], k, today, cal).byCategory.get(category) || 0;
   return total / keys.length;
 }

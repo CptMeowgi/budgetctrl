@@ -1,4 +1,5 @@
-import { currentMonthKey, currentPeriodKey, monthKey, periodKeyFor } from "./lib/periods.js";
+import { currentMonthKey, monthKey, periodKeyFor } from "./lib/periods.js";
+import { calendarFor } from "./lib/calendar.js";
 import { isOnCycle } from "./lib/schedule.js";
 import { migrateGoals } from "./lib/goals.js";
 import { DEFAULT_CREDIT_CATEGORIES } from "./lib/setup.js";
@@ -180,7 +181,7 @@ function migrateSavingsGoal(data) {
     return { ...data, savingsGoal: { monthly: clean(g.monthly), target: clean(g.target) } };
   }
   const pct = Number(data.savingsGoalPercent) || 0;
-  const income = data.months?.[currentPeriodKey(data.cutoffDay || 1)]?.income || 0;
+  const income = data.months?.[calendarFor(data).current()]?.income || 0;
   const { savingsGoalPercent: _dropped, ...rest } = data;
   return { ...rest, savingsGoal: { monthly: clean((income * pct) / 100), target: 0 } };
 }
@@ -282,7 +283,7 @@ export function hydrate(data) {
 }
 
 export function ensureCurrentMonth(data) {
-  const cur = currentPeriodKey(data.cutoffDay || 1);
+  const cur = calendarFor(data).current();
   if (data.months[cur]) return data;
   const priorKeys = Object.keys(data.months).filter((k) => k < cur).sort();
   const lastKey = priorKeys[priorKeys.length - 1];

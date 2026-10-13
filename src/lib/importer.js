@@ -13,7 +13,8 @@
 // each transaction against what the budget already holds and proposes an action,
 // leaving anything it believes is already counted unticked.
 
-import { periodKeyFor, recurringDateInPeriod, daysBetween, isoDay } from "./periods.js";
+import { daysBetween, isoDay } from "./periods.js";
+import { calendarFor } from "./calendar.js";
 import { applyRule } from "./rules.js";
 import { isSplit } from "./splits.js";
 
@@ -288,7 +289,7 @@ function why(template, vars = {}) {
 //   skip     - already counted (duplicate, a recurring bill, the salary)
 // `include` is the proposed default; the user can override every row.
 export function analyzeImport(transactions, data) {
-  const cutoffDay = data.cutoffDay || 1;
+  const cal = calendarFor(data);
   const index = categoryIndex(data);
   // Your import rules have the last word on what a new row is called and
   // where it is filed; the guess from past entries only fills the gaps.
@@ -304,7 +305,7 @@ export function analyzeImport(transactions, data) {
   const claim = (key) => { if (claimed.has(key)) return false; claimed.add(key); return true; };
 
   return transactions.map((tx, i) => {
-    const period = periodKeyFor(new Date(tx.date + "T00:00:00"), cutoffDay);
+    const period = cal.keyFor(new Date(tx.date + "T00:00:00"));
     const m = (data.months || {})[period];
     // bankName keeps the statement's own wording after a rule renames the row.
     const base = { ...tx, id: `tx-${i}`, period, bankName: tx.name };
@@ -317,7 +318,7 @@ export function analyzeImport(transactions, data) {
       }
       for (const r of m?.recurring || []) {
         if (r.dayOfMonth == null || !sameMoney(r.amount, tx.amount)) continue;
-        const due = isoDay(recurringDateInPeriod(r.dayOfMonth, period, cutoffDay));
+        const due = isoDay(cal.dateOf(r.dayOfMonth, period));
         if (dayGap(due, tx.date) <= 5 && claim(`r:${r.id}`)) {
           return { ...base, action: "skip", include: false, ...why('Matches your recurring "{name}"', { name: r.name }) };
         }
@@ -340,7 +341,7 @@ export function analyzeImport(transactions, data) {
     }
 
     for (const c of m?.credits || []) {
-      const cDate = c.dayOfMonth != null ? isoDay(recurringDateInPeriod(c.dayOfMonth, period, cutoffDay)) : c.date;
+      const cDate = c.dayOfMonth != null ? isoDay(cal.dateOf(c.dayOfMonth, period)) : c.date;
       if (cDate && sameMoney(c.amount, tx.amount) && dayGap(cDate, tx.date) <= 5 && claim(`c:${c.id}`)) {
         return { ...base, action: "skip", include: false, ...why('Already recorded as credit "{name}"', { name: c.name }) };
       }

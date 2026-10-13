@@ -1,7 +1,7 @@
 // The welcome screens a brand-new budget starts with: currency, when the
 // month starts, this month's income, and some categories to begin with.
 
-import { periodKeyFor } from "./periods.js";
+import { monthlyCalendar } from "./calendar.js";
 
 // Offered on the last screen; the first eight start ticked.
 export const STARTER_CATEGORIES = [
@@ -38,7 +38,7 @@ export const DEFAULT_CREDIT_CATEGORIES = [
 export function applySetup(data, answers, today) {
   const { currency, locale, cutoffDay, income, setAside, categories } = answers || {};
   const cd = Math.max(1, Math.min(28, Math.floor(Number(cutoffDay)) || 1));
-  const cur = periodKeyFor(today, cd);
+  const cur = monthlyCalendar(cd).keyFor(today);
   const fallback = (data.categories || []).find((c) => c.name === "Uncategorized") || { name: "Uncategorized", color: "#9ca3af", icon: "·" };
   return {
     ...data,

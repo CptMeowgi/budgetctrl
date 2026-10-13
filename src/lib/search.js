@@ -1,7 +1,8 @@
 // Search across every period and every kind of entry. The tabs only ever show
 // the current period, so "what did I spend at Orlen this year" had no answer.
 
-import { recurringDateInPeriod, isoDay } from "./periods.js";
+import { isoDay } from "./periods.js";
+import { calendarFor } from "./calendar.js";
 import { splitParts } from "./splits.js";
 
 export const ENTRY_KINDS = ["expense", "recurring", "upcoming", "credit"];
@@ -24,7 +25,7 @@ function asAmount(token) {
 
 // Every entry in the budget, flattened, each with the date it falls on.
 export function allEntries(data) {
-  const cutoffDay = data.cutoffDay || 1;
+  const cal = calendarFor(data);
   const out = [];
   for (const [periodKey, m] of Object.entries(data.months || {})) {
     for (const e of m.expenses || []) {
@@ -33,11 +34,11 @@ export function allEntries(data) {
     }
     for (const r of m.recurring || []) {
       out.push({ kind: "recurring", entry: r, periodKey, amount: r.amount || 0, category: r.category,
-        date: isoDay(recurringDateInPeriod(r.dayOfMonth, periodKey, cutoffDay)) });
+        date: isoDay(cal.dateOf(r.dayOfMonth, periodKey)) });
     }
     for (const u of m.upcoming || []) out.push({ kind: "upcoming", entry: u, periodKey, date: u.dueDate || "", amount: u.amount || 0, category: u.category });
     for (const c of m.credits || []) {
-      const date = c.dayOfMonth != null ? isoDay(recurringDateInPeriod(c.dayOfMonth, periodKey, cutoffDay)) : (c.date || "");
+      const date = c.dayOfMonth != null ? isoDay(cal.dateOf(c.dayOfMonth, periodKey)) : (c.date || "");
       out.push({ kind: "credit", entry: c, periodKey, date, amount: c.amount || 0, category: c.category || c.source });
     }
   }

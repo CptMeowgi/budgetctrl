@@ -11,7 +11,8 @@
 // and it is not already a recurring bill, or a suggestion you dismissed.
 
 import { payeeKey } from "./reports.js";
-import { periodKeyFor, isoDay } from "./periods.js";
+import { isoDay } from "./periods.js";
+import { calendarFor } from "./calendar.js";
 import { monthsBetween } from "./schedule.js";
 import { daysBetweenISO } from "./accounts.js";
 
@@ -84,8 +85,7 @@ export function findRegularPayments(data, today) {
 // expenses as recorded; this period's expense becomes this period's instance
 // of the bill, so its spending is counted once, not twice.
 export function convertToRecurring(data, suggestion, newId, today) {
-  const cutoffDay = data.cutoffDay || 1;
-  const curKey = periodKeyFor(today, cutoffDay);
+  const curKey = calendarFor(data).current(today);
   const tpl = {
     id: newId(), name: suggestion.name, amount: suggestion.amount, dayOfMonth: suggestion.dayOfMonth,
     category: suggestion.category, autoPay: false,

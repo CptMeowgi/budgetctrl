@@ -1,5 +1,6 @@
 import { budgetToCsv } from "./lib/csv.js";
-import { isoDay, recurringDateInPeriod } from "./lib/periods.js";
+import { isoDay } from "./lib/periods.js";
+import { calendarFor } from "./lib/calendar.js";
 
 export function downloadText(text, filename, type) {
   const blob = new Blob([text], { type });
@@ -26,7 +27,7 @@ export function exportData(data) {
 
 export function exportCsv(data) {
   const csv = budgetToCsv(data, {
-    resolveRecurringDate: (day, period) => isoDay(recurringDateInPeriod(day, period, data.cutoffDay || 1)),
+    resolveRecurringDate: (day, period) => isoDay(calendarFor(data).dateOf(day, period)),
     locale: data.locale || navigator.language,
     currency: data.currency,
   });

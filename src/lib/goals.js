@@ -10,7 +10,8 @@
 // on its date, or when it will get there at the rate you are going.
 
 import { periodSpending, periodIncome } from "./totals.js";
-import { periodKeyFor, monthLabel, isoDay } from "./periods.js";
+import { monthLabel, isoDay } from "./periods.js";
+import { calendarFor } from "./calendar.js";
 import { addMonths, monthsBetween } from "./schedule.js";
 import { balanceAsOf, isLiability, addDays, daysBetweenISO, sortedBalances } from "./accounts.js";
 
@@ -20,15 +21,15 @@ export const GOAL_SOURCES = ["account", "budget"];
 // total. The period still in progress is left out: it has not finished
 // leaving anything over.
 export function leftOverHistory(data, today) {
-  const cutoffDay = data.cutoffDay || 1;
-  const cur = periodKeyFor(today, cutoffDay);
+  const cal = calendarFor(data);
+  const cur = cal.current(today);
   const keys = Object.keys(data.months || {}).filter((k) => k < cur).sort();
   let total = 0;
   const series = [{ key: "start", label: "Start", balance: 0, delta: 0, income: 0, spent: 0 }];
   for (const k of keys) {
     const m = data.months[k];
-    const income = periodIncome(m, k, today, cutoffDay).total;
-    const spent = periodSpending(m, k, today, cutoffDay).total;
+    const income = periodIncome(m, k, today, cal).total;
+    const spent = periodSpending(m, k, today, cal).total;
     const delta = income - spent;
     total += delta;
     series.push({ key: k, label: monthLabel(k).slice(0, 3), balance: total, delta, income, spent, editedAt: m.editedAt || null });
@@ -71,7 +72,7 @@ export function goalSaved(goal, data, today, history = leftOverHistory(data, tod
 }
 
 export function goalStatus(goal, data, today, history = leftOverHistory(data, today)) {
-  const cur = periodKeyFor(today, data.cutoffDay || 1);
+  const cur = calendarFor(data).current(today);
   const saved = goalSaved(goal, data, today, history);
   const target = Number(goal.target) || 0;
   const known = saved != null;

@@ -2,7 +2,8 @@
 // time, returns the due list. The Due Soon view and the notification both call
 // this, so the screen and the toast can never disagree.
 
-import { periodKeyFor, recurringDateInPeriod, isoDay, startOfDay, daysBetween } from "./periods.js";
+import { isoDay, startOfDay, daysBetween } from "./periods.js";
+import { calendarFor } from "./calendar.js";
 
 // How far back a notification will chase an unpaid bill. It exists to stop a
 // forgotten entry nagging forever - NOT to hide it. The app itself passes
@@ -22,15 +23,15 @@ export function upcomingSettled(u, today) {
 }
 
 export function collectDueBills(data, now, leadDays, graceDays = OVERDUE_GRACE_DAYS) {
-  const cutoffDay = data.cutoffDay || 1;
-  const key = periodKeyFor(now, cutoffDay);
+  const cal = calendarFor(data);
+  const key = cal.keyFor(now);
   const out = [];
 
   for (const r of (data.months?.[key]?.recurring || [])) {
     if (r.dayOfMonth == null) continue;
     // A bill that pays itself needs no warning - that is the point of the flag.
     if (r.autoPay) continue;
-    const due = recurringDateInPeriod(r.dayOfMonth, key, cutoffDay);
+    const due = cal.dateOf(r.dayOfMonth, key);
     const inDays = daysBetween(now, due);
     // Recurring items carry no paid flag - they count as spent once the day
     // passes - so only the run-up to the date is worth announcing.
