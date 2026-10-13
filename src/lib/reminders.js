@@ -2,7 +2,7 @@
 // time, returns the due list. The Due Soon view and the notification both call
 // this, so the screen and the toast can never disagree.
 
-import { isoDay, startOfDay, daysBetween } from "./periods.js";
+import { isoDay, parseDay, startOfDay, daysBetween } from "./periods.js";
 import { calendarFor } from "./calendar.js";
 
 // How far back a notification will chase an unpaid bill. It exists to stop a
@@ -18,7 +18,7 @@ export const OVERDUE_GRACE_DAYS = 30;
 export function upcomingSettled(u, today) {
   if (u.paid) return true;
   if (!u.autoPay) return false;
-  const due = new Date(u.dueDate);
+  const due = parseDay(u.dueDate);
   return !isNaN(due.getTime()) && startOfDay(due) <= startOfDay(today || new Date());
 }
 
@@ -47,7 +47,7 @@ export function collectDueBills(data, now, leadDays, graceDays = OVERDUE_GRACE_D
   for (const [mk, m] of Object.entries(data.months || {})) {
     for (const u of (m.upcoming || [])) {
       if (u.paid || u.autoPay) continue;
-      const due = new Date(u.dueDate);
+      const due = parseDay(u.dueDate);
       if (isNaN(due.getTime())) continue;
       const inDays = daysBetween(now, due);
       if (inDays <= leadDays && inDays >= -graceDays) {

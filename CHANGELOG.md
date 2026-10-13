@@ -2,10 +2,10 @@
 
 ## Unreleased
 
-- If you're paid on the 29th, 30th or 31st, the last day of a shorter
-  month (30 April, or the end of February) now belongs to the new period
-  that starts on it. Before, the app treated the period that had just
-  ended as still running that day.
+- In the Americas and anywhere else west of Greenwich, dates are now read
+  as the day you entered. Before, a payment that pays itself counted as paid
+  a day early, a reminder showed its due date a day early, and changing your
+  payday could move an entry dated on the new payday into the period before.
 - The Dashboard handles a narrowing window gracefully. Total Spent is
   squeezed down first and only moves below once it can't get any narrower,
   and it glides there instead of jumping, like a bubble being pushed out.

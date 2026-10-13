@@ -8,8 +8,17 @@
 // short months, UTC dates landing on the wrong day, recurring items counted
 // before they were due - so it is the code that most needs a safety net.
 
+// A date as the app stores it - "YYYY-MM-DD", a calendar day - read as that
+// day where you are. new Date("2026-10-25") reads midnight in London, which is
+// still the 24th anywhere west of it. Dates and full timestamps pass through.
+export function parseDay(value) {
+  if (value instanceof Date) return value;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value ?? ""));
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(value);
+}
+
 export function monthKey(date) {
-  const d = date instanceof Date ? date : new Date(date);
+  const d = parseDay(date);
   if (isNaN(d.getTime())) return null;
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
@@ -39,7 +48,7 @@ export function daysInCalMonth(year, month1) {
 // A budget period is keyed by the calendar month it STARTS in. With a cutoff of
 // 10, period "2026-09" runs 10 Sep - 9 Oct. Cutoff 1 collapses to calendar months.
 export function periodKeyFor(date, cutoffDay) {
-  const d = date instanceof Date ? date : new Date(date);
+  const d = parseDay(date);
   if (isNaN(d.getTime())) return null;
   let y = d.getFullYear();
   let m = d.getMonth();
