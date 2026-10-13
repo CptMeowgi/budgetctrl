@@ -43,7 +43,10 @@ export function periodKeyFor(date, cutoffDay) {
   if (isNaN(d.getTime())) return null;
   let y = d.getFullYear();
   let m = d.getMonth();
-  if (cutoffDay > 1 && d.getDate() < cutoffDay) {
+  // The payday as this month has it: the 31st is the 30th in April and the
+  // 28th in February, exactly as periodRange starts the period.
+  const payday = Math.min(cutoffDay || 1, daysInCalMonth(y, m + 1));
+  if (payday > 1 && d.getDate() < payday) {
     m -= 1;
     if (m < 0) { m = 11; y -= 1; }
   }

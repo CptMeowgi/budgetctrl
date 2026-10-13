@@ -127,3 +127,25 @@ describe("newEntryDate", () => {
     expect(newEntryDate("2026-02", 30, TODAY)).toBe("2026-02-28");
   });
 });
+
+describe("every day falls inside its own period", () => {
+  it("for every payday day, through a whole year with a February", () => {
+    const outside = [];
+    for (let cutoff = 1; cutoff <= 31; cutoff++) {
+      for (let d = new Date(2026, 0, 1); d < new Date(2027, 0, 1); d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
+        const { start, end } = periodRange(periodKeyFor(d, cutoff), cutoff);
+        if (d < start || d > end) outside.push(`${isoDay(d)} payday ${cutoff}`);
+      }
+    }
+    expect(outside).toEqual([]);
+  });
+
+  it("puts a short month's last day in the period that starts on it", () => {
+    // Paid on the 31st: April's period starts on 30 April, its last day.
+    expect(periodKeyFor(new Date(2026, 3, 30), 31)).toBe("2026-04");
+    expect(periodKeyFor(new Date(2026, 3, 29), 31)).toBe("2026-03");
+    expect(periodKeyFor(new Date(2027, 1, 28), 30)).toBe("2027-02");
+    expect(periodKeyFor(new Date(2028, 1, 29), 30)).toBe("2028-02"); // leap year
+    expect(periodKeyFor(new Date(2028, 1, 28), 30)).toBe("2028-01");
+  });
+});
