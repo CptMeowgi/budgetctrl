@@ -527,7 +527,7 @@ export default function App() {
   const onChangeCutoff = (next) => {
     const clamped = Math.max(1, Math.min(28, next || 1));
     if (clamped === cal.cutoffDay) return;
-    const moves = countRebucketMoves(data, clamped);
+    const moves = countRebucketMoves(data, clamped, today);
     if (moves === 0) { save({ ...data, cutoffDay: clamped }); return; }
     const ok = confirm(
       tn(moves, "Move {n} entry to match the new start day?", "Move {n} entries to match the new start day?") + "\n\n" +

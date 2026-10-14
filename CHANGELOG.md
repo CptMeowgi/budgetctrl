@@ -25,6 +25,11 @@
   it properly, with income carried over and its recurring bills and credits.
   Before, if any entries moved into it, it began with no income and none of
   its bills, and Remaining was wrong until you added them by hand.
+- Changing your payday no longer starts a future period early. A payment,
+  expense or one-off credit dated after the current period now stays in it,
+  just as when you add one there. Before, it moved into a period of its own
+  that later began with no income and none of its recurring bills or credits.
+  The move also keeps the "Edited after this period closed" mark in Savings.
 
 ## 0.6.0
 

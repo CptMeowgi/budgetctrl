@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
-import { hydrate, migrate, rebucketData, uid } from "./model.js";
+import { countRebucketMoves, hydrate, migrate, rebucketData, uid } from "./model.js";
 import { readFileSync } from "node:fs";
 import { monthlyCalendar } from "./lib/calendar.js";
 import { capAt, envelope } from "./lib/envelopes.js";
@@ -259,5 +259,49 @@ describe("changing the payday mid-period", () => {
     expect(sep.income).toBe(9200);
     expect(sep.recurring.map((r) => r.id)).toEqual(["r4"]);
     expect(sep.credits.map((c) => c.id)).toEqual(["c3"]);
+  });
+
+  it("keeps a payment due after the running period in it, rather than starting the next period early", () => {
+    // Payday 25 → 20: the car service due 20 Oct falls in 20 Oct – 19 Nov,
+    // which hasn't begun. Moving it there made that period with only the
+    // payment in it, and it then began with income 0 and no bills.
+    const d = open();
+    expect(countRebucketMoves(d, 20, TODAY)).toBe(0);
+    const months = rebucketData(d, 20, TODAY).months;
+    expect(Object.keys(months)).toEqual(["2026-08", "2026-09"]);
+    expect(months["2026-09"].upcoming.map((u) => u.id)).toEqual(["u2", "u3"]);
+  });
+
+  it("moves what's dated after the new running period into it, from a period the move closed", () => {
+    // Payday 25 → 10: "2026-09" now ends on 9 Oct. A payment, an expense and
+    // a credit dated in mid-November join the running period, 10 Oct – 9 Nov.
+    const d = open();
+    const sep = d.months["2026-09"];
+    sep.upcoming.push({ id: "u4", name: "Tyres", amount: 600, dueDate: "2026-11-12", category: "Transport", paid: false });
+    sep.expenses.push({ id: "e7", name: "Concert", amount: 180, date: "2026-11-15", category: "Fun" });
+    sep.credits.push({ id: "c4", name: "Deposit back", amount: 500, date: "2026-11-15", category: "Refund" });
+    const months = rebucketData(d, 10, TODAY).months;
+    expect(Object.keys(months)).toEqual(["2026-08", "2026-09", "2026-10"]);
+    const oct = months["2026-10"];
+    expect(oct.upcoming.map((u) => u.id)).toEqual(["u2", "u3", "u4"]);
+    expect(oct.expenses.map((e) => e.id)).toEqual(["e7"]);
+    expect(oct.credits.filter((c) => !c.templateId).map((c) => c.id)).toEqual(["c4"]);
+  });
+
+  it("leaves what's in a later period that already exists where it is", () => {
+    // An earlier payday change or a statement import can make a period
+    // early. Payday 25 → 20 dates the 21 Nov payment in 20 Nov – 19 Dec;
+    // it stays in "2026-10" rather than starting that period too.
+    const d = open();
+    d.months["2026-10"] = { income: 0, expenses: [], recurring: [], credits: [],
+      upcoming: [{ id: "u5", name: "Boiler check", amount: 250, dueDate: "2026-11-21", category: "Home", paid: false }] };
+    expect(countRebucketMoves(d, 20, TODAY)).toBe(0);
+    const months = rebucketData(d, 20, TODAY).months;
+    expect(Object.keys(months)).toEqual(["2026-08", "2026-09", "2026-10"]);
+    expect(months["2026-10"].upcoming.map((u) => u.id)).toEqual(["u5"]);
+  });
+
+  it("keeps a period's own marks, such as an edit made after it closed", () => {
+    expect(moveTo10th()["2026-08"].editedAt).toBe("2026-09-30T08:15:00.000Z");
   });
 });

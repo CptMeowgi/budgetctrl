@@ -200,52 +200,68 @@ function migrateReminders(data) {
 
 // When the payday changes, a monthly copy stays in its period and falls on
 // its day of the month there. Everything with a date of its own, weekly
-// copies included, moves to the period that date falls in.
+// copies included, moves to the period that date falls in - but never past
+// the running period, which `today` decides under the new payday. A later
+// period hasn't begun: made now, it would hold only what moved, and since a
+// period that exists is never filled in again, it would begin with income 0
+// and none of its bills. So a weekly copy dated there is left to its
+// template, which makes it when that period begins, along with the period's
+// other bills and its income. Anything else stays in the running period, as
+// when it is added there today - or in a later period it is already in.
 const staysPut = (x) => isRecurringItem(x) && !isWeekly(x);
 
-export function countRebucketMoves(data, newCutoff) {
+// The period an entry of period `k` belongs in under the new payday, or
+// null for a weekly copy left to its template.
+function placement(newCutoff, today) {
+  const runningKey = periodKeyFor(today, newCutoff);
+  const placeOf = (x, k, date) => {
+    if (staysPut(x)) return k;
+    const to = periodKeyFor(date, newCutoff) || k;
+    if (to <= runningKey || to === k) return to;
+    if (isWeekly(x)) return null;
+    return k > runningKey ? k : runningKey;
+  };
+  return { runningKey, placeOf };
+}
+
+export function countRebucketMoves(data, newCutoff, today = new Date()) {
+  const { placeOf } = placement(newCutoff, today);
   let moves = 0;
   for (const [k, m] of Object.entries(data.months)) {
-    for (const e of (m.expenses || [])) if ((periodKeyFor(e.date, newCutoff) || k) !== k) moves++;
-    for (const r of (m.recurring || [])) if (!staysPut(r) && (periodKeyFor(r.date, newCutoff) || k) !== k) moves++;
-    for (const c of (m.credits || [])) if (!staysPut(c) && (periodKeyFor(c.date, newCutoff) || k) !== k) moves++;
-    for (const u of (m.upcoming || [])) if ((periodKeyFor(u.dueDate, newCutoff) || k) !== k) moves++;
+    for (const e of (m.expenses || [])) if (placeOf(e, k, e.date) !== k) moves++;
+    for (const r of (m.recurring || [])) if (placeOf(r, k, r.date) !== k) moves++;
+    for (const c of (m.credits || [])) if (placeOf(c, k, c.date) !== k) moves++;
+    for (const u of (m.upcoming || [])) if (placeOf(u, k, u.dueDate) !== k) moves++;
   }
   return moves;
 }
 
-// `today` decides the running period under the new payday. A weekly copy that
-// would move past it is left to its template instead, which makes it when
-// that period begins, along with the period's other bills and its income.
-// Moving it would start the period early with nothing else in it, and a
-// period that exists is never filled in again.
-//
-// The new payday can also make a period the running one before it began
-// (25th to 10th on 14 Oct starts the period of 10 Oct at once). Entries dated
-// in it move there, and it starts as any period does: income carried over
-// and the bills and credits that fall in it.
+// The new payday can make a period the running one before it began (25th to
+// 10th on 14 Oct starts the period of 10 Oct at once). Entries dated in it
+// move there, and it starts as any period does: income carried over and the
+// bills and credits that fall in it.
 export function rebucketData(data, newCutoff, today = new Date()) {
-  const runningKey = periodKeyFor(today, newCutoff);
-  const placeOf = (x, k) => (staysPut(x) ? k : (periodKeyFor(x.date, newCutoff) || k));
-  const leftToTemplate = (x, to, k) => isWeekly(x) && to !== k && to > runningKey;
+  const { runningKey, placeOf } = placement(newCutoff, today);
   const out = {};
   const ensure = (k) => {
-    if (!out[k]) out[k] = { income: 0, expenses: [], recurring: [], upcoming: [], credits: [] };
+    if (!out[k]) out[k] = emptyMonth();
     return out[k];
   };
   for (const [k, m] of Object.entries(data.months)) {
-    const home = ensure(k);
-    home.income = m.income || 0;
-    for (const e of (m.expenses || [])) ensure(periodKeyFor(e.date, newCutoff) || k).expenses.push(e);
+    // A period keeps its own fields, such as when it was edited after it
+    // closed; only its entries are dealt out again.
+    const { expenses, recurring, upcoming, credits } = ensure(k);
+    out[k] = { ...m, income: m.income || 0, expenses, recurring, upcoming, credits };
+    for (const e of (m.expenses || [])) ensure(placeOf(e, k, e.date)).expenses.push(e);
     for (const r of (m.recurring || [])) {
-      const to = placeOf(r, k);
-      if (!leftToTemplate(r, to, k)) ensure(to).recurring.push(r);
+      const to = placeOf(r, k, r.date);
+      if (to) ensure(to).recurring.push(r);
     }
     for (const c of (m.credits || [])) {
-      const to = placeOf(c, k);
-      if (!leftToTemplate(c, to, k)) ensure(to).credits.push(c);
+      const to = placeOf(c, k, c.date);
+      if (to) ensure(to).credits.push(c);
     }
-    for (const u of (m.upcoming || [])) ensure(periodKeyFor(u.dueDate, newCutoff) || k).upcoming.push(u);
+    for (const u of (m.upcoming || [])) ensure(placeOf(u, k, u.dueDate)).upcoming.push(u);
   }
   if (out[runningKey] && !data.months[runningKey]) {
     out[runningKey] = startPeriod(data, calendarFor({ ...data, cutoffDay: newCutoff }), runningKey, out[runningKey]);
