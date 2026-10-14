@@ -7,7 +7,7 @@
 // For now every calendar is monthly and gives exactly the answers the
 // functions in periods.js and schedule.js always have; it is built on them.
 
-import { isRecurringDue, isoDay, newEntryDate, periodKeyFor, periodLabel, periodRange, recurringDateInPeriod } from "./periods.js";
+import { isRecurringDue, isoDay, itemDateInPeriod, newEntryDate, periodKeyFor, periodLabel, periodRange, recurringDateInPeriod } from "./periods.js";
 import { addMonths, monthsBetween } from "./schedule.js";
 
 // Periods running from payday `cutoffDay` to the day before it a month
@@ -41,6 +41,7 @@ export function monthlyCalendar(cutoffDay) {
       return out;
     },
     dateOf: (dayOfMonth, key) => recurringDateInPeriod(dayOfMonth, key, cd),
+    itemDate: (item, key) => itemDateInPeriod(item, key, cd),
     isDue: (item, key, today) => isRecurringDue(item, key, today, cd),
     newEntryDate: (key, today) => newEntryDate(key, cd, today),
   });

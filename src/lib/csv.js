@@ -10,6 +10,7 @@
 //    present, which mangles "ł", "ż" and friends. The BOM is on by default.
 
 import { isSplit, splitParts } from "./splits.js";
+import { isRecurringItem } from "./occurrences.js";
 
 export const CSV_COLUMNS = ["Period", "Date", "Type", "Name", "Category", "Amount", "Currency", "Status", "Note"];
 
@@ -62,7 +63,7 @@ export function budgetToRows(data, { resolveRecurringDate, currency }) {
       }
     }
     for (const r of m.recurring || []) {
-      rows.push({ period, date: resolveRecurringDate ? resolveRecurringDate(r.dayOfMonth, period) : "",
+      rows.push({ period, date: r.date || (resolveRecurringDate ? resolveRecurringDate(r.dayOfMonth, period) : ""),
                   type: "Recurring", name: r.name, category: r.category, amount: -(r.amount || 0),
                   status: r.autoPay ? "Pays itself" : "", note: r.note });
     }
@@ -72,8 +73,8 @@ export function budgetToRows(data, { resolveRecurringDate, currency }) {
                   note: u.note });
     }
     for (const c of m.credits || []) {
-      const recurring = c.dayOfMonth != null;
-      rows.push({ period, date: recurring ? (resolveRecurringDate ? resolveRecurringDate(c.dayOfMonth, period) : "") : (c.date || ""),
+      const recurring = isRecurringItem(c);
+      rows.push({ period, date: recurring ? (c.date || (resolveRecurringDate ? resolveRecurringDate(c.dayOfMonth, period) : "")) : (c.date || ""),
                   type: recurring ? "Recurring credit" : "Credit", name: c.name, category: c.category || c.source,
                   amount: c.amount || 0, status: "", note: c.note });
     }

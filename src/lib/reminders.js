@@ -4,6 +4,7 @@
 
 import { isoDay, parseDay, startOfDay, daysBetween } from "./periods.js";
 import { calendarFor } from "./calendar.js";
+import { isRecurringItem } from "./occurrences.js";
 
 // How far back a notification will chase an unpaid bill. It exists to stop a
 // forgotten entry nagging forever - NOT to hide it. The app itself passes
@@ -28,10 +29,10 @@ export function collectDueBills(data, now, leadDays, graceDays = OVERDUE_GRACE_D
   const out = [];
 
   for (const r of (data.months?.[key]?.recurring || [])) {
-    if (r.dayOfMonth == null) continue;
+    if (!isRecurringItem(r)) continue;
     // A bill that pays itself needs no warning - that is the point of the flag.
     if (r.autoPay) continue;
-    const due = cal.dateOf(r.dayOfMonth, key);
+    const due = cal.itemDate(r, key);
     const inDays = daysBetween(now, due);
     // Recurring items carry no paid flag - they count as spent once the day
     // passes - so only the run-up to the date is worth announcing.

@@ -20,6 +20,7 @@
 
 import { isoDay } from "./periods.js";
 import { asCalendar, calendarFor } from "./calendar.js";
+import { isRecurringItem } from "./occurrences.js";
 import { upcomingSettled } from "./reminders.js";
 import { splitParts } from "./splits.js";
 
@@ -62,7 +63,7 @@ export function periodSpending(month, periodKey, today, calendar) {
 }
 
 export function creditReceived(c, periodKey, today, calendar) {
-  if (c.dayOfMonth != null) return asCalendar(calendar).isDue(c, periodKey, today);
+  if (isRecurringItem(c)) return asCalendar(calendar).isDue(c, periodKey, today);
   return (c.date || "") <= isoDay(today);
 }
 

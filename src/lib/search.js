@@ -3,6 +3,7 @@
 
 import { isoDay } from "./periods.js";
 import { calendarFor } from "./calendar.js";
+import { isRecurringItem } from "./occurrences.js";
 import { splitParts } from "./splits.js";
 
 export const ENTRY_KINDS = ["expense", "recurring", "upcoming", "credit"];
@@ -34,11 +35,11 @@ export function allEntries(data) {
     }
     for (const r of m.recurring || []) {
       out.push({ kind: "recurring", entry: r, periodKey, amount: r.amount || 0, category: r.category,
-        date: isoDay(cal.dateOf(r.dayOfMonth, periodKey)) });
+        date: isoDay(cal.itemDate(r, periodKey)) });
     }
     for (const u of m.upcoming || []) out.push({ kind: "upcoming", entry: u, periodKey, date: u.dueDate || "", amount: u.amount || 0, category: u.category });
     for (const c of m.credits || []) {
-      const date = c.dayOfMonth != null ? isoDay(cal.dateOf(c.dayOfMonth, periodKey)) : (c.date || "");
+      const date = isRecurringItem(c) ? isoDay(cal.itemDate(c, periodKey)) : (c.date || "");
       out.push({ kind: "credit", entry: c, periodKey, date, amount: c.amount || 0, category: c.category || c.source });
     }
   }

@@ -100,11 +100,20 @@ export function recurringDateInPeriod(dayOfMonth, periodKey, cutoffDay) {
   return start;
 }
 
+// The date a recurring copy falls on in its period. A weekly copy carries
+// its own `date`. A monthly one falls on its day of the month, as it always
+// has, whatever else it carries.
+export function itemDateInPeriod(item, periodKey, cutoffDay) {
+  return item?.dayOfMonth == null && item?.date
+    ? parseDay(item.date)
+    : recurringDateInPeriod(item?.dayOfMonth, periodKey, cutoffDay);
+}
+
 export function isRecurringDue(r, periodKey, today, cutoffDay) {
   const { start, end } = periodRange(periodKey, cutoffDay || 1);
   if (today > end) return true;
   if (today < start) return false;
-  return today >= recurringDateInPeriod(r.dayOfMonth, periodKey, cutoffDay || 1);
+  return today >= itemDateInPeriod(r, periodKey, cutoffDay || 1);
 }
 
 // The date a new entry starts with: today, when it is going into the running

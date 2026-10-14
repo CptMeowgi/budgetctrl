@@ -1,5 +1,6 @@
 import { currentMonthKey, monthKey, periodKeyFor } from "./lib/periods.js";
 import { calendarFor } from "./lib/calendar.js";
+import { isRecurringItem, isWeekly } from "./lib/occurrences.js";
 import { isOnCycle } from "./lib/schedule.js";
 import { migrateGoals } from "./lib/goals.js";
 import { DEFAULT_CREDIT_CATEGORIES } from "./lib/setup.js";
@@ -198,11 +199,17 @@ function migrateReminders(data) {
   };
 }
 
+// When the payday changes, a monthly copy stays in its period and falls on
+// its day of the month there. Everything with a date of its own, weekly
+// copies included, moves to the period that date falls in.
+const staysPut = (x) => isRecurringItem(x) && !isWeekly(x);
+
 export function countRebucketMoves(data, newCutoff) {
   let moves = 0;
   for (const [k, m] of Object.entries(data.months)) {
     for (const e of (m.expenses || [])) if ((periodKeyFor(e.date, newCutoff) || k) !== k) moves++;
-    for (const c of (m.credits || [])) if (c.dayOfMonth == null && (periodKeyFor(c.date, newCutoff) || k) !== k) moves++;
+    for (const r of (m.recurring || [])) if (!staysPut(r) && (periodKeyFor(r.date, newCutoff) || k) !== k) moves++;
+    for (const c of (m.credits || [])) if (!staysPut(c) && (periodKeyFor(c.date, newCutoff) || k) !== k) moves++;
     for (const u of (m.upcoming || [])) if ((periodKeyFor(u.dueDate, newCutoff) || k) !== k) moves++;
   }
   return moves;
@@ -217,12 +224,9 @@ export function rebucketData(data, newCutoff) {
   for (const [k, m] of Object.entries(data.months)) {
     const home = ensure(k);
     home.income = m.income || 0;
-    home.recurring = [...home.recurring, ...(m.recurring || [])];
     for (const e of (m.expenses || [])) ensure(periodKeyFor(e.date, newCutoff) || k).expenses.push(e);
-    for (const c of (m.credits || [])) {
-      if (c.dayOfMonth != null) home.credits.push(c);
-      else ensure(periodKeyFor(c.date, newCutoff) || k).credits.push(c);
-    }
+    for (const r of (m.recurring || [])) ensure(staysPut(r) ? k : (periodKeyFor(r.date, newCutoff) || k)).recurring.push(r);
+    for (const c of (m.credits || [])) ensure(staysPut(c) ? k : (periodKeyFor(c.date, newCutoff) || k)).credits.push(c);
     for (const u of (m.upcoming || [])) ensure(periodKeyFor(u.dueDate, newCutoff) || k).upcoming.push(u);
   }
   return { ...data, months: out };

@@ -12,6 +12,7 @@ import { isoDay } from "./periods.js";
 import { upcomingSettled } from "./reminders.js";
 import { creditReceived, periodIncome, periodSpending } from "./totals.js";
 import { asCalendar, calendarFor } from "./calendar.js";
+import { isRecurringItem } from "./occurrences.js";
 
 // Every day of a period, by the calendar (never by adding 24 hours, which a
 // clock change turns into 23 or 25).
@@ -28,7 +29,7 @@ export function scheduledItems(data, periodKey, today) {
   const items = [];
   for (const r of m.recurring || []) {
     items.push({
-      date: isoDay(cal.dateOf(r.dayOfMonth, periodKey)), kind: "recurring", id: r.id,
+      date: isoDay(cal.itemDate(r, periodKey)), kind: "recurring", id: r.id,
       name: r.name, amount: -(r.amount || 0), autoPay: !!r.autoPay,
       status: cal.isDue(r, periodKey, today) ? "done" : "due",
     });
@@ -42,7 +43,7 @@ export function scheduledItems(data, periodKey, today) {
     });
   }
   for (const c of m.credits || []) {
-    const date = c.dayOfMonth != null ? isoDay(cal.dateOf(c.dayOfMonth, periodKey)) : (c.date || "");
+    const date = isRecurringItem(c) ? isoDay(cal.itemDate(c, periodKey)) : (c.date || "");
     if (!date) continue;
     items.push({
       date, kind: "credit", id: c.id, name: c.name, amount: c.amount || 0,

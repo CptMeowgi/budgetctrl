@@ -15,6 +15,7 @@
 
 import { daysBetween, isoDay } from "./periods.js";
 import { calendarFor } from "./calendar.js";
+import { isRecurringItem } from "./occurrences.js";
 import { applyRule } from "./rules.js";
 import { isSplit } from "./splits.js";
 
@@ -317,8 +318,8 @@ export function analyzeImport(transactions, data) {
         }
       }
       for (const r of m?.recurring || []) {
-        if (r.dayOfMonth == null || !sameMoney(r.amount, tx.amount)) continue;
-        const due = isoDay(cal.dateOf(r.dayOfMonth, period));
+        if (!isRecurringItem(r) || !sameMoney(r.amount, tx.amount)) continue;
+        const due = isoDay(cal.itemDate(r, period));
         if (dayGap(due, tx.date) <= 5 && claim(`r:${r.id}`)) {
           return { ...base, action: "skip", include: false, ...why('Matches your recurring "{name}"', { name: r.name }) };
         }
@@ -341,7 +342,7 @@ export function analyzeImport(transactions, data) {
     }
 
     for (const c of m?.credits || []) {
-      const cDate = c.dayOfMonth != null ? isoDay(cal.dateOf(c.dayOfMonth, period)) : c.date;
+      const cDate = isRecurringItem(c) ? isoDay(cal.itemDate(c, period)) : c.date;
       if (cDate && sameMoney(c.amount, tx.amount) && dayGap(cDate, tx.date) <= 5 && claim(`c:${c.id}`)) {
         return { ...base, action: "skip", include: false, ...why('Already recorded as credit "{name}"', { name: c.name }) };
       }
