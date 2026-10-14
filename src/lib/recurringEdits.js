@@ -16,7 +16,7 @@ const KINDS = {
 };
 const emptyPeriod = () => ({ income: 0, expenses: [], recurring: [], upcoming: [], credits: [] });
 
-export function saveRecurring(data, kind, { cal, curKey, targetKey, editing, editingTpl, fields, schedule, newId }) {
+export function saveRecurring(data, kind, { cal, curKey, targetKey, editing, editingTpl, fields, schedule, newId, today }) {
   const { list, template } = KINDS[kind];
   const months = data.months || {};
   const tmpl = data[template] || [];
@@ -45,13 +45,17 @@ export function saveRecurring(data, kind, { cal, curKey, targetKey, editing, edi
     if (isWeekly(editing) || isWeekly(schedule)) {
       // Weekly, before or after: this period's copies are redone from the
       // template. A date that stays keeps its copy's id, so a reminder
-      // already shown for it isn't shown again.
+      // already shown for it isn't shown again. A payment already made on a
+      // date the new schedule doesn't have stays as it was: changing the
+      // schedule today doesn't undo money already spent.
       const tpl = nextTmpl.find((x) => x.id === editing.templateId) || { ...editing, ...fields, ...schedule, id: editing.templateId };
       const mine = items.filter((x) => x.templateId === editing.templateId);
       const idOn = new Map(mine.filter((x) => x.date).map((x) => [x.date, x.id]));
       const redone = copiesFor(tpl, cal, targetKey, newId).map((c) => (idOn.has(c.date) ? { ...c, id: idOn.get(c.date) } : c));
+      const redoneDates = new Set(redone.map((c) => c.date));
+      const paid = today ? mine.filter((x) => !redoneDates.has(x.date) && cal.isDue(x, targetKey, today)) : [];
       const kept = items.filter((x) => x.templateId !== editing.templateId);
-      return { ...data, [template]: nextTmpl, months: put(targetKey, target, [...kept, ...redone]) };
+      return { ...data, [template]: nextTmpl, months: put(targetKey, target, [...kept, ...paid, ...redone]) };
     }
     // Rescheduled out of this period: this copy goes, the template stays.
     const updated = { ...editing, ...fields, ...schedule };

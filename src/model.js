@@ -214,7 +214,15 @@ export function countRebucketMoves(data, newCutoff) {
   return moves;
 }
 
-export function rebucketData(data, newCutoff) {
+// `today` decides the running period under the new payday. A weekly copy that
+// would move past it is left to its template instead, which makes it when
+// that period begins, along with the period's other bills and its income.
+// Moving it would start the period early with nothing else in it, and a
+// period that exists is never filled in again.
+export function rebucketData(data, newCutoff, today = new Date()) {
+  const runningKey = periodKeyFor(today, newCutoff);
+  const placeOf = (x, k) => (staysPut(x) ? k : (periodKeyFor(x.date, newCutoff) || k));
+  const leftToTemplate = (x, to, k) => isWeekly(x) && to !== k && to > runningKey;
   const out = {};
   const ensure = (k) => {
     if (!out[k]) out[k] = { income: 0, expenses: [], recurring: [], upcoming: [], credits: [] };
@@ -224,8 +232,14 @@ export function rebucketData(data, newCutoff) {
     const home = ensure(k);
     home.income = m.income || 0;
     for (const e of (m.expenses || [])) ensure(periodKeyFor(e.date, newCutoff) || k).expenses.push(e);
-    for (const r of (m.recurring || [])) ensure(staysPut(r) ? k : (periodKeyFor(r.date, newCutoff) || k)).recurring.push(r);
-    for (const c of (m.credits || [])) ensure(staysPut(c) ? k : (periodKeyFor(c.date, newCutoff) || k)).credits.push(c);
+    for (const r of (m.recurring || [])) {
+      const to = placeOf(r, k);
+      if (!leftToTemplate(r, to, k)) ensure(to).recurring.push(r);
+    }
+    for (const c of (m.credits || [])) {
+      const to = placeOf(c, k);
+      if (!leftToTemplate(c, to, k)) ensure(to).credits.push(c);
+    }
     for (const u of (m.upcoming || [])) ensure(periodKeyFor(u.dueDate, newCutoff) || k).upcoming.push(u);
   }
   return { ...data, months: out };

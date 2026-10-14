@@ -62,8 +62,11 @@ export function budgetToRows(data, { resolveRecurringDate, currency }) {
                     category: p.category, amount: -(p.amount || 0), status: "", note: e.note });
       }
     }
+    // A weekly copy carries its own date. A monthly one falls on its day of the
+    // month, whatever else it carries, as everywhere else in the app.
+    const dateOf = (x) => (x.dayOfMonth == null && x.date) ? x.date : (resolveRecurringDate ? resolveRecurringDate(x.dayOfMonth, period) : "");
     for (const r of m.recurring || []) {
-      rows.push({ period, date: r.date || (resolveRecurringDate ? resolveRecurringDate(r.dayOfMonth, period) : ""),
+      rows.push({ period, date: dateOf(r),
                   type: "Recurring", name: r.name, category: r.category, amount: -(r.amount || 0),
                   status: r.autoPay ? "Pays itself" : "", note: r.note });
     }
@@ -74,7 +77,7 @@ export function budgetToRows(data, { resolveRecurringDate, currency }) {
     }
     for (const c of m.credits || []) {
       const recurring = isRecurringItem(c);
-      rows.push({ period, date: recurring ? (c.date || (resolveRecurringDate ? resolveRecurringDate(c.dayOfMonth, period) : "")) : (c.date || ""),
+      rows.push({ period, date: recurring ? dateOf(c) : (c.date || ""),
                   type: recurring ? "Recurring credit" : "Credit", name: c.name, category: c.category || c.source,
                   amount: c.amount || 0, status: "", note: c.note });
     }

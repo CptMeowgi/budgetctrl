@@ -116,6 +116,28 @@ describe("dated copies of weekly items", () => {
     expect(out["2026-10"].credits.map((c) => c.id)).toEqual(["c2"]);
   });
 
+  it("export a monthly copy with a stray date on its day of the month", () => {
+    // History's credit form writes a date onto a monthly credit; its day still wins.
+    const b = budget();
+    b.months["2026-10"].credits.push({ id: "c3", name: "Allowance", amount: 300, category: "Gift", dayOfMonth: 26, date: "2026-10-01", templateId: "ta" });
+    const resolveRecurringDate = (day, period) => `${period}-${String(day).padStart(2, "0")}`;
+    expect(budgetToRows(b, { resolveRecurringDate }).find((r) => r.name === "Allowance").date).toBe("2026-10-26");
+  });
+
+  it("payday moved earlier: a weekly copy past the running period is left to its template", () => {
+    // Payday 10 → 1 on 14 Oct: the running period becomes October, and the
+    // 6 Nov cleaning would otherwise start November early, with no income or
+    // other bills in it.
+    const tpl = { name: "Cleaner", amount: 40, category: "Home", repeat: "weeks", every: 1, startDate: "2026-10-16", templateId: "tw" };
+    const data = { cutoffDay: 10, months: { "2026-10": { income: 3000, expenses: [], upcoming: [], credits: [],
+      recurring: [{ id: "m1", name: "Rent", amount: 1000, dayOfMonth: 10, templateId: "tm" },
+        ...["2026-10-16", "2026-10-23", "2026-10-30", "2026-11-06"].map((date) => ({ ...tpl, id: date, date }))] } } };
+    expect(countRebucketMoves(data, 1)).toBe(1);
+    const out = rebucketData(data, 1, new Date(2026, 9, 14, 12)).months;
+    expect(Object.keys(out)).toEqual(["2026-10"]);
+    expect(out["2026-10"].recurring.map((r) => r.id)).toEqual(["m1", "2026-10-16", "2026-10-23", "2026-10-30"]);
+  });
+
   it("stray date: a monthly copy still falls on its day of the month", () => {
     expect(isoDay(itemDateInPeriod({ dayOfMonth: 5, date: "2026-10-20" }, "2026-10", 1))).toBe("2026-10-05");
     expect(isoDay(itemDateInPeriod({ repeat: "weeks", date: "2026-10-20" }, "2026-10", 1))).toBe("2026-10-20");

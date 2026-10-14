@@ -533,7 +533,7 @@ export default function App() {
       t("Expenses, one-off credits, upcoming payments and weekly items will move to the period their date falls in. Monthly recurring items and income stay where they are.") + "\n\n" +
       t("Choose Cancel to change the start day without moving anything.")
     );
-    save(ok ? { ...rebucketData(data, clamped), cutoffDay: clamped } : { ...data, cutoffDay: clamped });
+    save(ok ? { ...rebucketData(data, clamped, today), cutoffDay: clamped } : { ...data, cutoffDay: clamped });
   };
 
   // Budget and rollover change together, as one undo step. A budget change
@@ -1310,7 +1310,7 @@ export default function App() {
             const fields = { name: v.name, amount: +v.amount, ...(dated ? { date: v.date || editing.date } : { dayOfMonth: dayOfMonthFrom(v.dayOfMonth) }),
                              category: category.name, autoPay: !!v.autoPay, note: cleanNote(v.note) };
             const schedule = scheduleFromForm(v, sched, targetKey, cal.newEntryDate(curKey, today));
-            save({ ...saveRecurring(data, "recurring", { cal, curKey, targetKey, editing, editingTpl, fields, schedule, newId: uid }), categories });
+            save({ ...saveRecurring(data, "recurring", { cal, curKey, targetKey, editing, editingTpl, fields, schedule, newId: uid, today }), categories });
             setModal(null);
           }} />
         );
@@ -1390,7 +1390,7 @@ export default function App() {
             const fields = { name: v.name, amount: amt, ...(dated ? { date: v.date || editing.date } : { dayOfMonth: dayOfMonthFrom(v.dayOfMonth) }),
                              category: category.name, note: cleanNote(v.note) };
             const schedule = scheduleFromForm(v, sched, targetKey, cal.newEntryDate(curKey, today));
-            save({ ...saveRecurring(data, "credits", { cal, curKey, targetKey, editing, editingTpl, fields, schedule, newId: uid }), creditCategories });
+            save({ ...saveRecurring(data, "credits", { cal, curKey, targetKey, editing, editingTpl, fields, schedule, newId: uid, today }), creditCategories });
             setModal(null);
           }} />
         );

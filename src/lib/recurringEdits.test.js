@@ -78,6 +78,24 @@ describe("saveRecurring, weekly", () => {
   });
 });
 
+describe("saveRecurring keeps payments already made", () => {
+  const today = new Date(2026, 9, 14, 12);
+
+  it("changing a weekly bill's first date mid-period keeps the copies already paid", () => {
+    const b = base();
+    const out = saveRecurring(b, "recurring", opts({ today, editing: b.months["2026-10"].recurring[1], fields: { name: "Cleaner", amount: 40 }, schedule: { ...WEEKLY, startDate: "2026-10-19" } }));
+    expect(out.months["2026-10"].recurring.filter((r) => r.templateId === "tw").map((r) => r.date))
+      .toEqual(["2026-10-02", "2026-10-09", "2026-10-19", "2026-10-26"]);
+  });
+
+  it("switching a paid monthly bill to weekly keeps this period's payment", () => {
+    const b = base();
+    const out = saveRecurring(b, "recurring", opts({ today, editing: b.months["2026-10"].recurring[0], fields: { name: "Rent", amount: 250 }, schedule: { ...WEEKLY, startDate: "2026-10-14" } }));
+    expect(out.months["2026-10"].recurring.filter((r) => r.templateId === "tr").map((r) => [r.date, r.amount]))
+      .toEqual([[undefined, 900], ["2026-10-14", 250], ["2026-10-21", 250], ["2026-10-28", 250]]);
+  });
+});
+
 describe("deleteRecurringCopy", () => {
   it("removes a monthly copy and its template, as before", () => {
     const b = base();
