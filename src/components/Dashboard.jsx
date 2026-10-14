@@ -3,6 +3,7 @@ import { Area, AreaChart, ReferenceDot, ResponsiveContainer, Tooltip as RTooltip
 import { balanceHistory, spendingByDay } from "../lib/forecast.js";
 import { percentChange } from "../lib/reports.js";
 import { categoryAverage } from "../lib/totals.js";
+import { isRecurringItem } from "../lib/occurrences.js";
 import { envelope } from "../lib/envelopes.js";
 import { findCategory, CREDIT_UNCATEGORIZED, UNCATEGORIZED } from "../model.js";
 import { fmt } from "../money.js";
@@ -211,7 +212,7 @@ function RecentCard({ data, cur, cal, isReceived, onOpen, onViewAll }) {
   const rows = [
     ...(cur.expenses || []).map((e) => ({ kind: "expense", e, date: e.date || "", amount: -(e.amount || 0),
       cat: findCategory(data.categories || [], e.category) || UNCATEGORIZED })),
-    ...(cur.credits || []).filter(isReceived).map((c) => ({ kind: c.dayOfMonth != null ? "creditRecurring" : "credit", e: c, amount: c.amount || 0,
+    ...(cur.credits || []).filter(isReceived).map((c) => ({ kind: isRecurringItem(c) ? "creditRecurring" : "credit", e: c, amount: c.amount || 0,
       date: c.date || "", cat: findCategory(data.creditCategories || [], c.category || c.source) || CREDIT_UNCATEGORIZED })),
   ].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
   const monthly = cal.calendarMonths;

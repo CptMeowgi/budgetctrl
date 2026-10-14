@@ -20,6 +20,10 @@ export function toggleSort(sorts, col, shiftKey) {
   return [{ col, dir: "asc" }];
 }
 
+// A weekly copy has a date instead of a day of the month; by day, it sorts
+// by its date's day.
+const valueOf = (x, col) => (col === "dayOfMonth" && x.dayOfMonth == null && x.date ? Number(x.date.slice(8, 10)) : x[col]);
+
 export function filterAndSort(arr, view) {
   let out = arr;
   if (view.search) {
@@ -32,7 +36,7 @@ export function filterAndSort(arr, view) {
   if (sorts.length > 0) {
     out = [...out].sort((a, b) => {
       for (const { col, dir } of sorts) {
-        const av = a[col], bv = b[col];
+        const av = valueOf(a, col), bv = valueOf(b, col);
         const cmp = (typeof av === "string" && typeof bv === "string")
           ? av.localeCompare(bv)
           : (av < bv ? -1 : av > bv ? 1 : 0);

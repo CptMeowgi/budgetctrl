@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Recurring bills and credits can repeat every week or every two weeks:
+  choose it under Repeats and give the first date. Each payment shows on
+  its own date in Recurring, the forecast, the bill calendar and
+  reminders, and statement imports match each one.
 - In the Americas and anywhere else west of Greenwich, dates are now read
   as the day you entered. Before, a payment that pays itself counted as paid
   a day early, a reminder showed its due date a day early, and changing your

@@ -9,7 +9,7 @@ import es from "./locales/es.js";
 import pl from "./locales/pl.js";
 import zh from "./locales/zh.js";
 import { ACCOUNT_KINDS } from "./lib/accounts.js";
-import { FREQUENCIES } from "./lib/schedule.js";
+import { REPEAT_OPTIONS } from "./lib/schedule.js";
 import { DEFAULT_CREDIT_CATEGORIES, STARTER_CATEGORIES } from "./lib/setup.js";
 import { describeUpdateError } from "./lib/updates.js";
 import { ensureCategory, ensureCreditCategory } from "./model.js";
@@ -255,7 +255,7 @@ for (const f of files) {
 // Labels kept in data tables and translated with t(label) where shown.
 const LABELS = [
   ...ACCOUNT_KINDS.map((k) => k.label),
-  ...FREQUENCIES.map((f) => f.label),
+  ...REPEAT_OPTIONS.map((o) => o.label),
   ...STARTER_CATEGORIES.map((c) => c.name),
   ...DEFAULT_CREDIT_CATEGORIES.map((c) => c.name),
   ...["bad signature", "404", "dns error", "os error 5"].map((e) => describeUpdateError(new Error(e))),

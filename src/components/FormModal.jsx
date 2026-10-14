@@ -48,10 +48,13 @@ export function FormModal({ title, fields, onClose, onSave }) {
     });
     return init;
   });
+  // A field can depend on another's value (`when`), like the first date that
+  // only a weekly repeat needs. Hidden fields keep their values for saving.
+  const shown = fields.filter((f) => !f.when || f.when(vals));
   return (
     <Modal title={title} onClose={onClose}>
-      <div style={{ display: "grid", gridTemplateColumns: fields.length > 3 ? "1fr 1fr" : "1fr", gap: 16, padding: "20px 0" }}>
-        {fields.map((f) => (
+      <div style={{ display: "grid", gridTemplateColumns: shown.length > 3 ? "1fr 1fr" : "1fr", gap: 16, padding: "20px 0" }}>
+        {shown.map((f) => (
           <div key={f.key} style={f.type === "checkbox" || f.type === "textarea" ? { gridColumn: "1 / -1" } : undefined}>
             {f.type !== "checkbox" && (
               <label style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 6, display: "block", fontWeight: 600 }}>{f.label}</label>

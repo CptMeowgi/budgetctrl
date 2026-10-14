@@ -1,6 +1,7 @@
 import { useContext } from "react";
 import { upcomingSettled } from "../lib/reminders.js";
-import { frequencyLabel, nextOnCycle } from "../lib/schedule.js";
+import { repeatLabel } from "../lib/schedule.js";
+import { isWeekly, nextPeriodOf } from "../lib/occurrences.js";
 import { DeleteArmContext } from "../contexts.js";
 import { fmt } from "../money.js";
 import { FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
@@ -31,14 +32,16 @@ export function RowActions({ id, onEdit, onDelete }) {
 // Name cell shared by every entry row: the name, any badge passed as children,
 // and the note on a second line. The note is clipped to one line so a long one
 // never changes row height; the full text is on hover.
-export function EntryName({ name, note, strike, every, children }) {
+// `schedule` is the item, when it repeats: anything but a monthly repeat is
+// named beside it, so a fortnightly bill reads "every 2 weeks".
+export function EntryName({ name, note, strike, schedule, children }) {
   const { theme } = useThemed();
   return (
     <div style={{ flex: 2, minWidth: 0 }}>
       <div style={{ fontWeight: 600, textDecoration: strike ? "line-through" : "none" }}>
         {name}
-        {(every || 1) > 1 && (
-          <span style={{ ...TYPE.microLegal, color: theme.textFaint, marginLeft: 6 }}>{t(frequencyLabel(every)).toLowerCase()}</span>
+        {schedule && repeatLabel(schedule) !== "Monthly" && (
+          <span style={{ ...TYPE.microLegal, color: theme.textFaint, marginLeft: 6 }}>{t(repeatLabel(schedule)).toLowerCase()}</span>
         )}
         {children}
       </div>
@@ -64,7 +67,7 @@ export function NotDueThisPeriod({ items, curKey, cal, categories, fallback, pos
           <EntryName name={tpl.name} note={tpl.note} />
           <div style={{ flex: 1.2 }}><CategoryPill categoryName={tpl.category} categories={categories} fallback={fallback} /></div>
           <div style={{ flex: 1.5, color: theme.textMuted, ...TYPE.caption }}>
-            {t("{frequency} · next {period}", { frequency: t(frequencyLabel(tpl.every)), period: cal.label(nextOnCycle(tpl, curKey)).primary })}
+            {t("{frequency} · next {period}", { frequency: t(repeatLabel(tpl)), period: cal.label(nextPeriodOf(tpl, cal, curKey)).primary })}
           </div>
           <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700,
                         color: positive ? theme.success : theme.accent }}>{positive ? "+" : ""}{fmt(tpl.amount)}</div>
@@ -103,11 +106,11 @@ export function RecurringRow({ entry: r, categories, onEdit, onDelete }) {
   const { theme, s } = useThemed();
   return (
     <div style={s.tableRow}>
-      <EntryName name={r.name} note={r.note} every={r.every}>
+      <EntryName name={r.name} note={r.note} schedule={r}>
         {r.autoPay && <span title={t("Pays itself")} style={{ ...TYPE.microLegal, color: theme.textFaint, marginLeft: 6 }}>{t("auto")}</span>}
       </EntryName>
       <div style={{ flex: 1.2 }}><CategoryPill categoryName={r.category} categories={categories} /></div>
-      <div style={{ flex: 0.5, textAlign: "center", color: theme.textMuted, ...TYPE.caption }}>{r.dayOfMonth || "—"}</div>
+      <div style={{ flex: 0.5, textAlign: "center", color: theme.textMuted, ...TYPE.caption }}>{isWeekly(r) ? shortDate(r.date) : (r.dayOfMonth || "—")}</div>
       <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: theme.accent }}>{fmt(r.amount)}</div>
       <RowActions id={r.id} onEdit={onEdit} onDelete={onDelete} />
     </div>
