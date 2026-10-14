@@ -9,6 +9,7 @@ import { isoDay, setLabelLocale } from "./lib/periods.js";
 import { calendarFor } from "./lib/calendar.js";
 import { collectDueBills, OVERDUE_GRACE_DAYS, upcomingSettled } from "./lib/reminders.js";
 import { dayOfMonthFrom, everyFromLabel, FREQUENCIES, frequencyLabel, isOnCycle } from "./lib/schedule.js";
+import { missingCopies, occursIn } from "./lib/occurrences.js";
 import { creditReceived, periodIncome, periodSpending } from "./lib/totals.js";
 import { AccountModal, AccountsView } from "./components/AccountsView.jsx";
 import { CategoryManager } from "./components/CategoryManager.jsx";
@@ -481,12 +482,13 @@ export default function App() {
   const remaining = effectiveIncome - totalCommitted;
   // Only bills due THIS period can be missing from it. Without the cycle check a
   // yearly bill would be reported missing in the eleven periods it is not due.
+  // A weekly one is missing any of its dates the period has no copy for.
   const missingRecurring = (data.recurringTemplate || []).filter(
-    (tpl) => isOnCycle(tpl, curKey) && !cur.recurring.some((r) => r.templateId === tpl.id));
+    (tpl) => missingCopies(tpl, cal, curKey, cur.recurring, uid).length > 0);
   const missingCredits = (data.creditTemplate || []).filter(
-    (tpl) => isOnCycle(tpl, curKey) && !(cur.credits || []).some((c) => c.templateId === tpl.id));
-  const offCycleRecurring = (data.recurringTemplate || []).filter((tpl) => !isOnCycle(tpl, curKey));
-  const offCycleCredits = (data.creditTemplate || []).filter((tpl) => !isOnCycle(tpl, curKey));
+    (tpl) => missingCopies(tpl, cal, curKey, cur.credits, uid).length > 0);
+  const offCycleRecurring = (data.recurringTemplate || []).filter((tpl) => !occursIn(tpl, cal, curKey));
+  const offCycleCredits = (data.creditTemplate || []).filter((tpl) => !occursIn(tpl, cal, curKey));
   const reminderLeadDays = Number.isFinite(data.reminders?.leadDays) ? data.reminders.leadDays : 3;
   // Exactly what a reminder would fire for, so the notification and the screen
   // can never disagree about what is due.
@@ -865,7 +867,7 @@ export default function App() {
               <MissingFromTemplate
                 missing={missingRecurring}
                 kind="recurring"
-                onAdd={() => patchCur({ recurring: [...cur.recurring, ...missingRecurring.map((tpl) => ({ ...tpl, id: uid(), templateId: tpl.id }))] })}
+                onAdd={() => patchCur({ recurring: [...cur.recurring, ...missingRecurring.flatMap((tpl) => missingCopies(tpl, cal, curKey, cur.recurring, uid))] })}
               />
               <input
                 type="text"
@@ -978,7 +980,7 @@ export default function App() {
                   <MissingFromTemplate
                     missing={missingCredits}
                     kind="credit"
-                    onAdd={() => patchCur({ credits: [...(cur.credits || []), ...missingCredits.map((tpl) => ({ ...tpl, id: uid(), templateId: tpl.id }))] })}
+                    onAdd={() => patchCur({ credits: [...(cur.credits || []), ...missingCredits.flatMap((tpl) => missingCopies(tpl, cal, curKey, cur.credits, uid))] })}
                   />
                   <input
                     type="text"

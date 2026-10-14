@@ -69,3 +69,35 @@ export function nextOnCycle(item, fromKey) {
   const r = diff % every;
   return r === 0 ? fromKey : addMonths(fromKey, every - r);
 }
+
+// The Repeats choices on the Recurring and Credit forms: weekly first, then
+// the monthly frequencies.
+export const REPEAT_OPTIONS = [
+  { label: "Every week", weeks: 1 },
+  { label: "Every 2 weeks", weeks: 2 },
+  ...FREQUENCIES.map((f) => ({ label: f.label, months: f.every })),
+];
+
+export function repeatLabel(item) {
+  if (item?.repeat === "weeks") return Number(item.every) === 2 ? "Every 2 weeks" : "Every week";
+  return frequencyLabel(item?.every);
+}
+
+// The repeat settings a Recurring or Credit form saves. Weekly items carry a
+// first date and no day of the month. Monthly items carry `every` and
+// `anchor` only when they skip months, and nothing at all otherwise, exactly
+// like items saved before frequencies existed. `values.repeats` is only on
+// the form when the template is being edited; otherwise `sched` (what the
+// item had) stands.
+export function scheduleFromForm(values, sched, targetKey, firstDate) {
+  const choice = values.repeats ? REPEAT_OPTIONS.find((o) => o.label === values.repeats) : null;
+  const weeks = choice ? choice.weeks : (sched.repeat === "weeks" ? (Number(sched.every) === 2 ? 2 : 1) : undefined);
+  if (weeks) {
+    return { repeat: "weeks", every: weeks, startDate: values.startDate || sched.startDate || firstDate,
+             dayOfMonth: undefined, anchor: undefined };
+  }
+  const every = choice ? choice.months : (sched.every || 1);
+  return every > 1
+    ? { every, anchor: values.anchor || sched.anchor || targetKey, repeat: undefined, startDate: undefined }
+    : { every: undefined, anchor: undefined, repeat: undefined, startDate: undefined };
+}

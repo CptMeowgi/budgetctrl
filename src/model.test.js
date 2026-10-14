@@ -186,3 +186,24 @@ describe("opening a budget saved by 0.5.2", () => {
     expect(["2026-08", "2026-09", "2026-10", "2026-11"].map((k) => isOnCycle(t3, k))).toEqual([true, false, false, true]);
   });
 });
+
+describe("a new period gets copies of weekly items", () => {
+  beforeAll(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 10, 3, 12)); });
+  afterAll(() => vi.useRealTimers());
+
+  it("one per date it falls on, and monthly items as before", () => {
+    const data = hydrate(migrate({
+      cutoffDay: 1,
+      months: { "2026-10": { income: 3000, expenses: [], recurring: [], upcoming: [], credits: [] } },
+      recurringTemplate: [
+        { id: "t1", name: "Cleaner", amount: 40, category: "Home", repeat: "weeks", every: 1, startDate: "2026-10-02" },
+        { id: "t2", name: "Rent", amount: 1000, category: "Home", dayOfMonth: 1 },
+      ],
+      creditTemplate: [],
+    }));
+    const nov = data.months["2026-11"];
+    expect(nov.recurring.filter((r) => r.templateId === "t1").map((r) => r.date))
+      .toEqual(["2026-11-06", "2026-11-13", "2026-11-20", "2026-11-27"]);
+    expect(nov.recurring.filter((r) => r.templateId === "t2").map((r) => [r.dayOfMonth, r.date])).toEqual([[1, undefined]]);
+  });
+});

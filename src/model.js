@@ -1,7 +1,6 @@
 import { currentMonthKey, monthKey, periodKeyFor } from "./lib/periods.js";
 import { calendarFor } from "./lib/calendar.js";
-import { isRecurringItem, isWeekly } from "./lib/occurrences.js";
-import { isOnCycle } from "./lib/schedule.js";
+import { copiesFor, isRecurringItem, isWeekly } from "./lib/occurrences.js";
 import { migrateGoals } from "./lib/goals.js";
 import { DEFAULT_CREDIT_CATEGORIES } from "./lib/setup.js";
 import { detectCurrency } from "./money.js";
@@ -287,7 +286,8 @@ export function hydrate(data) {
 }
 
 export function ensureCurrentMonth(data) {
-  const cur = calendarFor(data).current();
+  const cal = calendarFor(data);
+  const cur = cal.current();
   if (data.months[cur]) return data;
   const priorKeys = Object.keys(data.months).filter((k) => k < cur).sort();
   const lastKey = priorKeys[priorKeys.length - 1];
@@ -301,9 +301,10 @@ export function ensureCurrentMonth(data) {
         expenses: [],
         // Only bills that fall in this period - a yearly bill is copied into one
         // period in twelve. Items saved before frequencies existed are monthly.
-        recurring: (data.recurringTemplate || []).filter((r) => isOnCycle(r, cur)).map((r) => ({ ...r, id: uid(), templateId: r.id })),
+        // A weekly item gets a dated copy for each date it falls on.
+        recurring: (data.recurringTemplate || []).flatMap((r) => copiesFor(r, cal, cur, uid)),
         upcoming: [],
-        credits: (data.creditTemplate || []).filter((c) => isOnCycle(c, cur)).map((c) => ({ ...c, id: uid(), templateId: c.id })),
+        credits: (data.creditTemplate || []).flatMap((c) => copiesFor(c, cal, cur, uid)),
       },
     },
   };
