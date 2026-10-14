@@ -180,8 +180,13 @@ const CANONICAL = new Set(["Apache-2.0", "MPL-2.0", "CC0-1.0", "Unlicense"]);
 const PREFERENCE = ["MIT", "Apache-2.0", "ISC", "BSD-3-Clause", "BSD-2-Clause", "Zlib", "0BSD", "MIT-0", "Unicode-3.0", "MPL-2.0", "CC0-1.0", "Unlicense"];
 const rank = (id) => (PREFERENCE.indexOf(id) === -1 ? PREFERENCE.length : PREFERENCE.indexOf(id));
 
-const holderOf = (authors, name) => {
-  const people = (authors || []).map((a) => String(a).replace(/\s*<[^>]*>/g, "").replace(/\s*\([^)]*\)/g, "").trim()).filter(Boolean);
+// npm writes an author as "Name <email> (website)"; the holder is the name.
+// Any bracket left over (nested or unmatched ones) goes too, so the text can
+// never carry markup.
+export const holderOf = (authors, name) => {
+  const people = (authors || [])
+    .map((a) => String(a).replace(/\s*<[^>]*>/g, "").replace(/\s*\([^)]*\)/g, "").replace(/[<>]/g, "").trim())
+    .filter(Boolean);
   return people.length ? people.join(", ") : `the ${name} authors`;
 };
 

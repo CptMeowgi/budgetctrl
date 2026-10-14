@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import notices from "./licenses/third-party.json";
+import { holderOf } from "../scripts/licenses.js";
 
 // The licence list in Settings must cover everything the app is built from.
 // When one of these fails, a dependency changed without `npm run licenses`
@@ -36,5 +37,18 @@ describe("open-source licences", () => {
 
   it("includes the Rust standard library, which is compiled into the app", () => {
     expect(notices.packages.some((p) => p.source === "rust" && p.license.includes("MIT"))).toBe(true);
+  });
+});
+
+// A package with no licence file gets one written out with its authors as
+// the copyright holder, and the app shows that text.
+describe("the copyright holder in a written-out licence", () => {
+  it("is the authors' names, without email or website", () => {
+    expect(holderOf(["Jane Doe <jane@example.com> (https://example.com)", "Sam Roe"], "pkg")).toBe("Jane Doe, Sam Roe");
+    expect(holderOf([], "pkg")).toBe("the pkg authors");
+  });
+
+  it("can't carry markup, however the brackets are nested", () => {
+    expect(holderOf(["<<x>script>alert(1)<</x>/script>"], "pkg")).not.toMatch(/[<>]/);
   });
 });
