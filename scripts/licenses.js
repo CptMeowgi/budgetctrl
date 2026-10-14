@@ -181,7 +181,7 @@ const PREFERENCE = ["MIT", "Apache-2.0", "ISC", "BSD-3-Clause", "BSD-2-Clause", 
 const rank = (id) => (PREFERENCE.indexOf(id) === -1 ? PREFERENCE.length : PREFERENCE.indexOf(id));
 
 const holderOf = (authors, name) => {
-  const people = (authors || []).map((a) => String(a).replace(/\s*<[^>]*>/g, "").replace(/\s*\([^)]*\)/g, "").trim()).filter(Boolean);
+  const people = (authors || []).map((a) => String(a).replace(/[<>]/g, "").replace(/\s*\([^)]*\)/g, "").trim()).filter(Boolean);
   return people.length ? people.join(", ") : `the ${name} authors`;
 };
 
