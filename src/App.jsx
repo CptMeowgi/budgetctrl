@@ -8,8 +8,9 @@ import { applySetup } from "./lib/setup.js";
 import { isoDay, setLabelLocale } from "./lib/periods.js";
 import { calendarFor } from "./lib/calendar.js";
 import { collectDueBills, OVERDUE_GRACE_DAYS, upcomingSettled } from "./lib/reminders.js";
-import { dayOfMonthFrom, everyFromLabel, FREQUENCIES, frequencyLabel, isOnCycle } from "./lib/schedule.js";
+import { dayOfMonthFrom, FREQUENCIES, frequencyLabel, scheduleFromForm } from "./lib/schedule.js";
 import { missingCopies, occursIn } from "./lib/occurrences.js";
+import { deleteRecurringCopy, saveRecurring } from "./lib/recurringEdits.js";
 import { creditReceived, periodIncome, periodSpending } from "./lib/totals.js";
 import { AccountModal, AccountsView } from "./components/AccountsView.jsx";
 import { CategoryManager } from "./components/CategoryManager.jsx";
@@ -882,11 +883,7 @@ export default function App() {
                   {filteredRecurring.map((r) => (
                     <RecurringRow key={r.id} entry={r} categories={data.categories}
                       onEdit={() => setModal({ type: "recurring", editId: r.id })}
-                      onDelete={() => save({
-                        ...data,
-                        months: { ...data.months, [curKey]: { ...cur, recurring: cur.recurring.filter((x) => x.id !== r.id) } },
-                        recurringTemplate: data.recurringTemplate.filter((x) => x.id !== r.templateId),
-                      })} />
+                      onDelete={() => save(deleteRecurringCopy(data, "recurring", curKey, r))} />
                   ))}
                 </>
               )}
@@ -955,11 +952,7 @@ export default function App() {
                   onEdit={() => setModal({ type: kind === "recurring" ? "creditRecurring" : "credit", editId: c.id })}
                   onDelete={() => {
                     if (kind === "recurring") {
-                      save({
-                        ...data,
-                        months: { ...data.months, [curKey]: { ...cur, credits: (cur.credits || []).filter((x) => x.id !== c.id) } },
-                        creditTemplate: (data.creditTemplate || []).filter((t) => t.id !== c.templateId),
-                      });
+                      save(deleteRecurringCopy(data, "credits", curKey, c));
                     } else {
                       patchCur({ credits: (cur.credits || []).filter((x) => x.id !== c.id) });
                     }
@@ -1304,53 +1297,8 @@ export default function App() {
             const { categories, category } = ensureCategory(data.categories, v.category);
             const fields = { name: v.name, amount: +v.amount, dayOfMonth: dayOfMonthFrom(v.dayOfMonth), category: category.name,
                              autoPay: !!v.autoPay, note: cleanNote(v.note) };
-            const every = touchesTemplate ? everyFromLabel(v.repeats) : (sched.every || 1);
-            // Monthly items carry no schedule at all, exactly like items saved
-            // before frequencies existed.
-            const schedule = every > 1
-              ? { every, anchor: v.anchor || sched.anchor || targetKey }
-              : { every: undefined, anchor: undefined };
-            const dueNow = isOnCycle(schedule, curKey);
-
-            if (editingTpl) {
-              const tpl = { ...editingTpl, ...fields, ...schedule };
-              const has = cur.recurring.some((r) => r.templateId === tpl.id);
-              save({
-                ...data, categories,
-                recurringTemplate: data.recurringTemplate.map((x) => x.id === tpl.id ? tpl : x),
-                // Rescheduled into this period: give it an instance now, since the
-                // rollover that would have created one has already happened.
-                months: dueNow && !has
-                  ? { ...data.months, [curKey]: { ...cur, recurring: [...cur.recurring, { ...tpl, id: uid(), templateId: tpl.id }] } }
-                  : data.months,
-              });
-            } else if (editing) {
-              const updatedItem = { ...editing, ...fields, ...(touchesTemplate ? schedule : {}) };
-              // Rescheduled out of this period: this instance goes, the template stays.
-              const nextRecurring = touchesTemplate && !dueNow
-                ? targetMonth.recurring.filter((x) => x.id !== editing.id)
-                : targetMonth.recurring.map((x) => x.id === editing.id ? updatedItem : x);
-              save({
-                ...data, categories,
-                months: { ...data.months, [targetKey]: { ...targetMonth, recurring: nextRecurring } },
-                recurringTemplate: touchesTemplate
-                  ? data.recurringTemplate.map((x) => x.id === editing.templateId ? { ...x, ...fields, ...schedule } : x)
-                  : data.recurringTemplate,
-              });
-            } else {
-              const tid = uid();
-              const tpl = { id: tid, ...fields, ...(touchesTemplate ? schedule : {}) };
-              // A past-period add is a one-off correction with no template; a
-              // current-period add appears here only if it is due here.
-              const addHere = !touchesTemplate || dueNow;
-              save({
-                ...data, categories,
-                months: addHere
-                  ? { ...data.months, [targetKey]: { ...targetMonth, recurring: [...targetMonth.recurring, { ...tpl, id: uid(), templateId: tid }] } }
-                  : data.months,
-                recurringTemplate: touchesTemplate ? [...data.recurringTemplate, tpl] : data.recurringTemplate,
-              });
-            }
+            const schedule = scheduleFromForm(v, sched, targetKey, cal.newEntryDate(curKey, today));
+            save({ ...saveRecurring(data, "recurring", { cal, curKey, targetKey, editing, editingTpl, fields, schedule, newId: uid }), categories });
             setModal(null);
           }} />
         );
@@ -1423,49 +1371,8 @@ export default function App() {
             if (!v.name || !(amt > 0)) { setModal(null); return; }
             const { categories: creditCategories, category } = ensureCreditCategory(data.creditCategories || [], v.category);
             const fields = { name: v.name, amount: amt, dayOfMonth: dayOfMonthFrom(v.dayOfMonth), category: category.name, note: cleanNote(v.note) };
-            const every = touchesTemplate ? everyFromLabel(v.repeats) : (sched.every || 1);
-            const schedule = every > 1
-              ? { every, anchor: v.anchor || sched.anchor || targetKey }
-              : { every: undefined, anchor: undefined };
-            const dueNow = isOnCycle(schedule, curKey);
-            const curCredits = cur.credits || [];
-            const tmpl = data.creditTemplate || [];
-
-            if (editingTpl) {
-              const tpl = { ...editingTpl, ...fields, ...schedule };
-              const has = curCredits.some((c) => c.templateId === tpl.id);
-              save({
-                ...data, creditCategories,
-                creditTemplate: tmpl.map((x) => x.id === tpl.id ? tpl : x),
-                months: dueNow && !has
-                  ? { ...data.months, [curKey]: { ...cur, credits: [...curCredits, { ...tpl, id: uid(), templateId: tpl.id }] } }
-                  : data.months,
-              });
-            } else if (editing) {
-              const updated = { ...editing, ...fields, ...(touchesTemplate ? schedule : {}) };
-              const credits = targetMonth.credits || [];
-              const nextCredits = touchesTemplate && !dueNow
-                ? credits.filter((x) => x.id !== editing.id)
-                : credits.map((x) => x.id === editing.id ? updated : x);
-              save({
-                ...data, creditCategories,
-                months: { ...data.months, [targetKey]: { ...targetMonth, credits: nextCredits } },
-                creditTemplate: touchesTemplate
-                  ? tmpl.map((x) => x.id === editing.templateId ? { ...x, ...fields, ...schedule } : x)
-                  : tmpl,
-              });
-            } else {
-              const tid = uid();
-              const tpl = { id: tid, ...fields, ...(touchesTemplate ? schedule : {}) };
-              const addHere = !touchesTemplate || dueNow;
-              save({
-                ...data, creditCategories,
-                months: addHere
-                  ? { ...data.months, [targetKey]: { ...targetMonth, credits: [...(targetMonth.credits || []), { ...tpl, id: uid(), templateId: tid }] } }
-                  : data.months,
-                creditTemplate: touchesTemplate ? [...tmpl, tpl] : tmpl,
-              });
-            }
+            const schedule = scheduleFromForm(v, sched, targetKey, cal.newEntryDate(curKey, today));
+            save({ ...saveRecurring(data, "credits", { cal, curKey, targetKey, editing, editingTpl, fields, schedule, newId: uid }), creditCategories });
             setModal(null);
           }} />
         );

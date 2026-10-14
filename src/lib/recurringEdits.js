@@ -1,0 +1,87 @@
+// Saving and deleting recurring bills and credits: the template that makes
+// each new period's copies, and the copies in the period being edited. Bills
+// and credits follow the same rules, so both forms use these.
+//
+// A monthly item has at most one copy in a period. A weekly item has one per
+// date it falls on, so editing or deleting one copy in the running period
+// redoes or removes them all: they are the same bill. Past periods are
+// history, and only ever change one copy at a time.
+
+import { copiesFor, isWeekly, missingCopies } from "./occurrences.js";
+import { isOnCycle } from "./schedule.js";
+
+const KINDS = {
+  recurring: { list: "recurring", template: "recurringTemplate" },
+  credits: { list: "credits", template: "creditTemplate" },
+};
+const emptyPeriod = () => ({ income: 0, expenses: [], recurring: [], upcoming: [], credits: [] });
+
+export function saveRecurring(data, kind, { cal, curKey, targetKey, editing, editingTpl, fields, schedule, newId }) {
+  const { list, template } = KINDS[kind];
+  const months = data.months || {};
+  const tmpl = data[template] || [];
+  const cur = months[curKey] || emptyPeriod();
+  const target = months[targetKey] || emptyPeriod();
+  const touchesTemplate = targetKey === curKey;
+  const curItems = cur[list] || [];
+  const put = (key, month, items) => ({ ...months, [key]: { ...month, [list]: items } });
+
+  // A template edited from "not due this period". Rescheduled into this
+  // period, it gets its copies now: the rollover that would have made them
+  // has already happened.
+  if (editingTpl) {
+    const tpl = { ...editingTpl, ...fields, ...schedule };
+    const add = missingCopies(tpl, cal, curKey, curItems, newId);
+    return { ...data, [template]: tmpl.map((x) => (x.id === tpl.id ? tpl : x)),
+             months: add.length ? put(curKey, cur, [...curItems, ...add]) : months };
+  }
+
+  if (editing) {
+    const items = target[list] || [];
+    if (!touchesTemplate) {
+      return { ...data, months: put(targetKey, target, items.map((x) => (x.id === editing.id ? { ...editing, ...fields } : x))) };
+    }
+    const nextTmpl = tmpl.map((x) => (x.id === editing.templateId ? { ...x, ...fields, ...schedule } : x));
+    if (isWeekly(editing) || isWeekly(schedule)) {
+      // Weekly, before or after: this period's copies are redone from the
+      // template. A date that stays keeps its copy's id, so a reminder
+      // already shown for it isn't shown again.
+      const tpl = nextTmpl.find((x) => x.id === editing.templateId) || { ...editing, ...fields, ...schedule, id: editing.templateId };
+      const mine = items.filter((x) => x.templateId === editing.templateId);
+      const idOn = new Map(mine.filter((x) => x.date).map((x) => [x.date, x.id]));
+      const redone = copiesFor(tpl, cal, targetKey, newId).map((c) => (idOn.has(c.date) ? { ...c, id: idOn.get(c.date) } : c));
+      const kept = items.filter((x) => x.templateId !== editing.templateId);
+      return { ...data, [template]: nextTmpl, months: put(targetKey, target, [...kept, ...redone]) };
+    }
+    // Rescheduled out of this period: this copy goes, the template stays.
+    const updated = { ...editing, ...fields, ...schedule };
+    const dueNow = isOnCycle(schedule, curKey);
+    const nextItems = !dueNow ? items.filter((x) => x.id !== editing.id) : items.map((x) => (x.id === editing.id ? updated : x));
+    return { ...data, [template]: nextTmpl, months: put(targetKey, target, nextItems) };
+  }
+
+  // A new item: a template when the running period is being edited, and
+  // this period's copies if it falls here. In a past period it is a one-off
+  // correction with no template.
+  const tid = newId();
+  const tpl = { id: tid, ...fields, ...(touchesTemplate ? schedule : {}) };
+  const add = touchesTemplate ? copiesFor(tpl, cal, targetKey, newId) : [{ ...tpl, id: newId(), templateId: tid }];
+  return {
+    ...data,
+    [template]: touchesTemplate ? [...tmpl, tpl] : tmpl,
+    months: add.length ? put(targetKey, target, [...(target[list] || []), ...add]) : months,
+  };
+}
+
+// Deleting a copy in the running period deletes the item: its template, and
+// every copy of it in this period (a weekly one has several).
+export function deleteRecurringCopy(data, kind, curKey, copy) {
+  const { list, template } = KINDS[kind];
+  const cur = data.months?.[curKey] || emptyPeriod();
+  const sameItem = (x) => x.id === copy.id || (isWeekly(copy) && x.templateId === copy.templateId);
+  return {
+    ...data,
+    months: { ...data.months, [curKey]: { ...cur, [list]: (cur[list] || []).filter((x) => !sameItem(x)) } },
+    [template]: (data[template] || []).filter((x) => x.id !== copy.templateId),
+  };
+}
