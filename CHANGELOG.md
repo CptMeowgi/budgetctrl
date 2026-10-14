@@ -21,6 +21,10 @@
   move without animating.
 - The category amounts under Total Spent always fit inside their bubbles. A
   narrow card puts fewer in a row instead of letting the figures spill out.
+- Changing your payday so that a new period starts straight away now starts
+  it properly, with income carried over and its recurring bills and credits.
+  Before, if any entries moved into it, it began with no income and none of
+  its bills, and Remaining was wrong until you added them by hand.
 
 ## 0.6.0
 

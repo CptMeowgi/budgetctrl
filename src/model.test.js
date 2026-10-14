@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
-import { hydrate, migrate } from "./model.js";
+import { hydrate, migrate, rebucketData, uid } from "./model.js";
 import { readFileSync } from "node:fs";
+import { monthlyCalendar } from "./lib/calendar.js";
 import { capAt, envelope } from "./lib/envelopes.js";
+import { missingCopies } from "./lib/occurrences.js";
 import { isOnCycle } from "./lib/schedule.js";
 import { periodIncome, periodSpending } from "./lib/totals.js";
 
@@ -205,5 +207,57 @@ describe("a new period gets copies of weekly items", () => {
     expect(nov.recurring.filter((r) => r.templateId === "t1").map((r) => r.date))
       .toEqual(["2026-11-06", "2026-11-13", "2026-11-20", "2026-11-27"]);
     expect(nov.recurring.filter((r) => r.templateId === "t2").map((r) => [r.dayOfMonth, r.date])).toEqual([[1, undefined]]);
+  });
+});
+
+// Moving the payday can make a period the running one before it ever began.
+// Entries dated in it move there, but it must still start as a new period
+// does: income carried over, and a copy of each bill and credit that falls
+// in it. Before, it held only what moved, so income was 0 and every bill
+// was missing until added by hand.
+describe("changing the payday mid-period", () => {
+  const TODAY = new Date(2026, 9, 14, 12);
+  beforeAll(() => { vi.useFakeTimers(); vi.setSystemTime(TODAY); });
+  afterAll(() => vi.useRealTimers());
+
+  const open = () => hydrate(migrate(structuredClone(SAVED_BY_0_5_2)));
+  // Payday 25 → 10 on 14 Oct: the running period becomes 10 Oct – 9 Nov
+  // ("2026-10"), and the payments due on 15 and 20 Oct move into it.
+  const moveTo10th = () => rebucketData(open(), 10, TODAY).months;
+
+  it("starts the new running period with income and its bills and credits", () => {
+    const d = open();
+    const oct = moveTo10th()["2026-10"];
+    expect(oct.income).toBe(9200);
+    // Rent and Spotify; the quarterly car insurance next falls in November.
+    expect(oct.recurring.map((r) => [r.templateId, r.dayOfMonth])).toEqual([["t1", 1], ["t2", 28]]);
+    expect(oct.credits.map((c) => [c.templateId, c.dayOfMonth])).toEqual([["ct1", 26]]);
+    expect(oct.upcoming.map((u) => u.id)).toEqual(["u2", "u3"]);
+    expect(oct.expenses).toEqual([]);
+    // Nothing for the Recurring tab to offer as "not in this period yet".
+    const cal = monthlyCalendar(10);
+    expect(d.recurringTemplate.filter((tpl) => missingCopies(tpl, cal, "2026-10", oct.recurring, uid).length)).toEqual([]);
+    expect(d.creditTemplate.filter((tpl) => missingCopies(tpl, cal, "2026-10", oct.credits, uid).length)).toEqual([]);
+  });
+
+  it("leaves the periods before it as the move made them", () => {
+    const saved = SAVED_BY_0_5_2.months;
+    const months = moveTo10th();
+    const contents = ({ income, expenses, recurring, upcoming, credits }) => ({ income, expenses, recurring, upcoming, credits });
+    expect(Object.keys(months)).toEqual(["2026-08", "2026-09", "2026-10"]);
+    // The 14 Sep expense now belongs to the period starting 10 Sep.
+    expect(contents(months["2026-08"])).toEqual(contents({ ...saved["2026-08"], expenses: saved["2026-08"].expenses.slice(0, 2) }));
+    expect(contents(months["2026-09"])).toEqual(contents({ ...saved["2026-09"], expenses: [saved["2026-08"].expenses[2], ...saved["2026-09"].expenses], upcoming: [] }));
+  });
+
+  it("leaves a running period that already existed as it was", () => {
+    // Payday 25 → 20: 14 Oct is still in "2026-09", now 20 Sep – 19 Oct.
+    // Spotify was taken out of it by hand and must not come back.
+    const d = open();
+    d.months["2026-09"].recurring = d.months["2026-09"].recurring.filter((r) => r.templateId !== "t2");
+    const sep = rebucketData(d, 20, TODAY).months["2026-09"];
+    expect(sep.income).toBe(9200);
+    expect(sep.recurring.map((r) => r.id)).toEqual(["r4"]);
+    expect(sep.credits.map((c) => c.id)).toEqual(["c3"]);
   });
 });

@@ -1,6 +1,6 @@
 import { currentMonthKey, monthKey, periodKeyFor } from "./lib/periods.js";
 import { calendarFor } from "./lib/calendar.js";
-import { copiesFor, isRecurringItem, isWeekly } from "./lib/occurrences.js";
+import { isRecurringItem, isWeekly, missingCopies } from "./lib/occurrences.js";
 import { migrateGoals } from "./lib/goals.js";
 import { DEFAULT_CREDIT_CATEGORIES } from "./lib/setup.js";
 import { detectCurrency } from "./money.js";
@@ -219,6 +219,11 @@ export function countRebucketMoves(data, newCutoff) {
 // that period begins, along with the period's other bills and its income.
 // Moving it would start the period early with nothing else in it, and a
 // period that exists is never filled in again.
+//
+// The new payday can also make a period the running one before it began
+// (25th to 10th on 14 Oct starts the period of 10 Oct at once). Entries dated
+// in it move there, and it starts as any period does: income carried over
+// and the bills and credits that fall in it.
 export function rebucketData(data, newCutoff, today = new Date()) {
   const runningKey = periodKeyFor(today, newCutoff);
   const placeOf = (x, k) => (staysPut(x) ? k : (periodKeyFor(x.date, newCutoff) || k));
@@ -241,6 +246,9 @@ export function rebucketData(data, newCutoff, today = new Date()) {
       if (!leftToTemplate(c, to, k)) ensure(to).credits.push(c);
     }
     for (const u of (m.upcoming || [])) ensure(periodKeyFor(u.dueDate, newCutoff) || k).upcoming.push(u);
+  }
+  if (out[runningKey] && !data.months[runningKey]) {
+    out[runningKey] = startPeriod(data, calendarFor({ ...data, cutoffDay: newCutoff }), runningKey, out[runningKey]);
   }
   return { ...data, months: out };
 }
@@ -303,24 +311,24 @@ export function ensureCurrentMonth(data) {
   const cal = calendarFor(data);
   const cur = cal.current();
   if (data.months[cur]) return data;
-  const priorKeys = Object.keys(data.months).filter((k) => k < cur).sort();
+  return { ...data, months: { ...data.months, [cur]: startPeriod(data, cal, cur) } };
+}
+
+// A period as it begins: income carried over from the latest earlier period,
+// and a copy of each recurring bill and credit that falls in it. `already`
+// is what's in it before it begins (entries a payday change moved there);
+// copies among it count, so none is made twice.
+function startPeriod(data, cal, key, already = emptyMonth()) {
+  const priorKeys = Object.keys(data.months).filter((k) => k < key).sort();
   const lastKey = priorKeys[priorKeys.length - 1];
-  const carriedIncome = lastKey ? (data.months[lastKey].income || 0) : 0;
   return {
-    ...data,
-    months: {
-      ...data.months,
-      [cur]: {
-        income: carriedIncome,
-        expenses: [],
-        // Only bills that fall in this period - a yearly bill is copied into one
-        // period in twelve. Items saved before frequencies existed are monthly.
-        // A weekly item gets a dated copy for each date it falls on.
-        recurring: (data.recurringTemplate || []).flatMap((r) => copiesFor(r, cal, cur, uid)),
-        upcoming: [],
-        credits: (data.creditTemplate || []).flatMap((c) => copiesFor(c, cal, cur, uid)),
-      },
-    },
+    ...already,
+    income: lastKey ? (data.months[lastKey].income || 0) : 0,
+    // Only bills that fall in this period - a yearly bill is copied into one
+    // period in twelve. Items saved before frequencies existed are monthly.
+    // A weekly item gets a dated copy for each date it falls on.
+    recurring: [...already.recurring, ...(data.recurringTemplate || []).flatMap((r) => missingCopies(r, cal, key, already.recurring, uid))],
+    credits: [...already.credits, ...(data.creditTemplate || []).flatMap((c) => missingCopies(c, cal, key, already.credits, uid))],
   };
 }
 
