@@ -15,6 +15,7 @@ import { isoDay } from "./periods.js";
 import { calendarFor } from "./calendar.js";
 import { monthsBetween } from "./schedule.js";
 import { daysBetweenISO } from "./accounts.js";
+import { copiesFor } from "./occurrences.js";
 
 const mostCommon = (xs) => {
   const counts = new Map();
@@ -85,19 +86,23 @@ export function findRegularPayments(data, today) {
 // expenses as recorded; this period's expense becomes this period's instance
 // of the bill, so its spending is counted once, not twice.
 export function convertToRecurring(data, suggestion, newId, today) {
-  const curKey = calendarFor(data).current(today);
+  const cal = calendarFor(data);
+  const curKey = cal.current(today);
   const tpl = {
     id: newId(), name: suggestion.name, amount: suggestion.amount, dayOfMonth: suggestion.dayOfMonth,
     category: suggestion.category, autoPay: false,
   };
-  const inThisPeriod = new Set(suggestion.entries.filter((e) => e.periodKey === curKey).map((e) => e.id));
+  // This period's copy of the bill, when it falls here. The expense it stands
+  // for goes, so the payment is counted once; with no copy here it stays.
+  const copies = copiesFor(tpl, cal, curKey, newId);
+  const inThisPeriod = new Set(copies.length ? suggestion.entries.filter((e) => e.periodKey === curKey).map((e) => e.id) : []);
   const cur = data.months?.[curKey] || { income: 0, expenses: [], recurring: [], upcoming: [], credits: [] };
   const months = {
     ...data.months,
     [curKey]: {
       ...cur,
       expenses: (cur.expenses || []).filter((e) => !inThisPeriod.has(e.id)),
-      recurring: [...(cur.recurring || []), { ...tpl, id: newId(), templateId: tpl.id }],
+      recurring: [...(cur.recurring || []), ...copies],
     },
   };
   return {

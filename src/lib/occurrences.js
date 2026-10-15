@@ -5,7 +5,7 @@
 // A period holds one copy of a weekly item for each date it falls on, and
 // each copy stores that `date`.
 
-import { daysBetween, isoDay, parseDay } from "./periods.js";
+import { datesOnDay, daysBetween, isoDay, monthKey, parseDay } from "./periods.js";
 import { isOnCycle, nextOnCycle } from "./schedule.js";
 
 export function isWeekly(item) {
@@ -35,39 +35,49 @@ export function weeklyDates(item, start, end) {
   return out;
 }
 
-// The copies a period gets of a template. A weekly item gets one per date
-// it falls on, each dated. A monthly item gets one undated copy when the
-// period is on its cycle, exactly as before.
-export function copiesFor(tpl, cal, periodKey, newId) {
-  if (isWeekly(tpl)) {
-    const { start, end } = cal.range(periodKey);
-    return weeklyDates(tpl, start, end).map((d) => ({ ...tpl, id: newId(), templateId: tpl.id, date: isoDay(d) }));
-  }
-  return isOnCycle(tpl, periodKey) ? [{ ...tpl, id: newId(), templateId: tpl.id }] : [];
+// The dates a monthly item falls on from `start` to `end`: its day of each
+// month (the month's last day, when shorter), in the months on its cycle.
+export function monthlyDates(item, start, end) {
+  return datesOnDay(item?.dayOfMonth, start, end).filter((d) => isOnCycle(item, monthKey(d)));
 }
 
-// The copies a period should hold of a template but doesn't. A monthly item
-// is missing when the period has no copy of it at all. A weekly one is
+// A period's copies carry their date when the day of the month can't say it:
+// a weekly item's, and every copy in a fortnight.
+const datedIn = (tpl, cal, periodKey) => isWeekly(tpl) || cal.kindOf(periodKey) === "weeks";
+
+// The copies a period gets of a template: one per date it falls on there.
+// In a monthly period a monthly item's copy stays undated, exactly as before.
+export function copiesFor(tpl, cal, periodKey, newId) {
+  const dated = datedIn(tpl, cal, periodKey);
+  return cal.occurrences(tpl, periodKey).map((d) => (dated
+    ? { ...tpl, id: newId(), templateId: tpl.id, date: isoDay(d) }
+    : { ...tpl, id: newId(), templateId: tpl.id }));
+}
+
+// The copies a period should hold of a template but doesn't. An undated one
+// is missing when the period has no copy of it at all. Dated ones are
 // missing a copy for each date nothing stands on, so a period left with some
-// of its copies (after the payday changed, say) is topped up, not doubled.
+// of them (after the payday changed, say) is topped up, not doubled.
 export function missingCopies(tpl, cal, periodKey, items, newId) {
   const mine = (items || []).filter((x) => x.templateId === tpl.id);
-  if (!isWeekly(tpl)) return mine.length ? [] : copiesFor(tpl, cal, periodKey, newId);
+  if (!datedIn(tpl, cal, periodKey)) return mine.length ? [] : copiesFor(tpl, cal, periodKey, newId);
   const have = new Set(mine.map((x) => x.date));
   return copiesFor(tpl, cal, periodKey, newId).filter((c) => !have.has(c.date));
 }
 
 export function occursIn(tpl, cal, periodKey) {
-  if (isWeekly(tpl)) {
-    const { start, end } = cal.range(periodKey);
-    return weeklyDates(tpl, start, end).length > 0;
-  }
-  return isOnCycle(tpl, periodKey);
+  return cal.occurrences(tpl, periodKey).length > 0;
 }
 
 // The first period, from `fromKey` on, that an item falls in.
 export function nextPeriodOf(tpl, cal, fromKey) {
-  if (!isWeekly(tpl)) return nextOnCycle(tpl, fromKey);
+  if (!isWeekly(tpl)) {
+    if (!cal.scheduled) return nextOnCycle(tpl, fromKey);
+    // A budget that switched: the first period ahead the bill falls in.
+    let k = fromKey;
+    for (let i = 0; i < 400; i++, k = cal.next(k)) if (occursIn(tpl, cal, k)) return k;
+    return fromKey;
+  }
   const { start } = cal.range(fromKey);
   const first = parseDay(tpl.startDate);
   const next = first >= start ? first : weeklyDates(tpl, start, addDays(start, 14))[0];

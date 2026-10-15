@@ -7,8 +7,7 @@
 // redoes or removes them all: they are the same bill. Past periods are
 // history, and only ever change one copy at a time.
 
-import { copiesFor, isWeekly, missingCopies } from "./occurrences.js";
-import { isOnCycle } from "./schedule.js";
+import { copiesFor, isWeekly, missingCopies, occursIn } from "./occurrences.js";
 
 const KINDS = {
   recurring: { list: "recurring", template: "recurringTemplate" },
@@ -42,12 +41,13 @@ export function saveRecurring(data, kind, { cal, curKey, targetKey, editing, edi
       return { ...data, months: put(targetKey, target, items.map((x) => (x.id === editing.id ? { ...editing, ...fields } : x))) };
     }
     const nextTmpl = tmpl.map((x) => (x.id === editing.templateId ? { ...x, ...fields, ...schedule } : x));
-    if (isWeekly(editing) || isWeekly(schedule)) {
-      // Weekly, before or after: this period's copies are redone from the
-      // template. A date that stays keeps its copy's id, so a reminder
-      // already shown for it isn't shown again. A payment already made on a
-      // date the new schedule doesn't have stays as it was: changing the
-      // schedule today doesn't undo money already spent.
+    if (isWeekly(editing) || isWeekly(schedule) || cal.kindOf(targetKey) === "weeks") {
+      // Weekly before or after, or any bill in a fortnight: this period's
+      // copies are redone from the template. A date that stays keeps its
+      // copy's id, so a reminder already shown for it isn't shown again. A
+      // payment already made on a date the new schedule doesn't have stays
+      // as it was: changing the schedule today doesn't undo money already
+      // spent.
       const tpl = nextTmpl.find((x) => x.id === editing.templateId) || { ...editing, ...fields, ...schedule, id: editing.templateId };
       const mine = items.filter((x) => x.templateId === editing.templateId);
       const idOn = new Map(mine.filter((x) => x.date).map((x) => [x.date, x.id]));
@@ -59,7 +59,7 @@ export function saveRecurring(data, kind, { cal, curKey, targetKey, editing, edi
     }
     // Rescheduled out of this period: this copy goes, the template stays.
     const updated = { ...editing, ...fields, ...schedule };
-    const dueNow = isOnCycle(schedule, curKey);
+    const dueNow = occursIn(updated, cal, curKey);
     const nextItems = !dueNow ? items.filter((x) => x.id !== editing.id) : items.map((x) => (x.id === editing.id ? updated : x));
     return { ...data, [template]: nextTmpl, months: put(targetKey, target, nextItems) };
   }

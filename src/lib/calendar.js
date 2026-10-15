@@ -14,7 +14,8 @@ import {
   datesOnDay, dayRangeLabel, daysBetween, isRecurringDue, isoDay, itemDateInPeriod, monthKey, monthLabel,
   newEntryDate, parseDay, periodKeyFor, periodLabel, periodRange, recurringDateInPeriod, shortDay,
 } from "./periods.js";
-import { addMonths, monthsBetween } from "./schedule.js";
+import { addMonths, isOnCycle, monthsBetween } from "./schedule.js";
+import { isWeekly, monthlyDates, weeklyDates } from "./occurrences.js";
 
 const isDayKey = (key) => /^\d{4}-\d{2}-\d{2}$/.test(String(key));
 const dayOf = (value) => {
@@ -72,6 +73,13 @@ export function monthlyCalendar(cutoffDay) {
     itemDate: (item, key) => itemDateInPeriod(item, key, cd),
     isDue: (item, key, today) => isRecurringDue(item, key, today, cd),
     newEntryDate: (key, today) => newEntryDate(key, cd, today),
+    // The dates an item falls on in a period.
+    occurrences: (item, key) => {
+      const r = range(key);
+      if (isWeekly(item)) return weeklyDates(item, r.start, r.end);
+      if (isDayKey(key)) return monthlyDates(item, r.start, r.end);
+      return isOnCycle(item, key) ? [recurringDateInPeriod(item?.dayOfMonth, key, cd)] : [];
+    },
   });
 }
 
@@ -261,6 +269,15 @@ function scheduleCalendar(schedule) {
       return today >= itemDate(item, key);
     },
     newEntryDate: (key, today) => (keyFor(today) === key ? isoDay(today) : isoDay(range(key).start)),
+    // The dates an item falls on in a period. Month-keyed periods count a
+    // bill's cycle by period, as they always have; the rest by the month the
+    // bill falls in.
+    occurrences: (item, key) => {
+      const r = range(key);
+      if (isWeekly(item)) return weeklyDates(item, r.start, r.end);
+      if (owned(key)?.s.monthKeys) return isOnCycle(item, key) ? datesOnDay(item?.dayOfMonth, r.start, r.end).slice(0, 1) : [];
+      return monthlyDates(item, r.start, r.end);
+    },
   });
 }
 
