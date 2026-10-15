@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { deleteRecurringCopy, saveRecurring } from "./recurringEdits.js";
+import { deleteRecurringCopy, editFormFor, saveRecurring } from "./recurringEdits.js";
 import { monthlyCalendar } from "./calendar.js";
 
 const cal = monthlyCalendar(1);
@@ -118,5 +118,14 @@ describe("deleteRecurringCopy", () => {
     const out = deleteRecurringCopy(b, "credits", "2026-10", b.months["2026-10"].credits[0]);
     expect(out.months["2026-10"].credits).toEqual([]);
     expect(out.creditTemplate).toEqual([]);
+  });
+});
+
+describe("editFormFor", () => {
+  it("opens a recurring credit in its own form, wherever it's opened from", () => {
+    expect(editFormFor("credit", { id: "c", dayOfMonth: 26 })).toBe("creditRecurring");
+    expect(editFormFor("credit", { id: "c", repeat: "weeks", every: 2, date: "2026-11-06" })).toBe("creditRecurring");
+    expect(editFormFor("credit", { id: "c", date: "2026-11-06" })).toBe("credit");
+    expect(editFormFor("expense", { id: "e", dayOfMonth: 5 })).toBe("expense");
   });
 });

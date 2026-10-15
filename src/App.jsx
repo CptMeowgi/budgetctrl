@@ -5,12 +5,12 @@ import { goalStatus, goalsMonthlyNeed, leftOverHistory } from "./lib/goals.js";
 import { convertToRecurring, dismissRegular, findRegularPayments } from "./lib/regular.js";
 import { forecast } from "./lib/forecast.js";
 import { applySetup } from "./lib/setup.js";
-import { isoDay, setLabelLocale } from "./lib/periods.js";
+import { isoDay, monthKey, setLabelLocale } from "./lib/periods.js";
 import { calendarFor } from "./lib/calendar.js";
 import { collectDueBills, OVERDUE_GRACE_DAYS, upcomingSettled } from "./lib/reminders.js";
 import { dayOfMonthFrom, REPEAT_OPTIONS, repeatLabel, scheduleFromForm } from "./lib/schedule.js";
 import { isRecurringItem, isWeekly, missingCopies, occursIn } from "./lib/occurrences.js";
-import { deleteRecurringCopy, saveRecurring } from "./lib/recurringEdits.js";
+import { deleteRecurringCopy, editFormFor, saveRecurring } from "./lib/recurringEdits.js";
 import { creditReceived, periodIncome, periodSpending } from "./lib/totals.js";
 import { AccountModal, AccountsView } from "./components/AccountsView.jsx";
 import { CategoryManager } from "./components/CategoryManager.jsx";
@@ -209,8 +209,9 @@ export default function App() {
       // import.meta.env.DEV first, so the release build drops this - demo.js
       // included - instead of shipping it unused.
       if (import.meta.env.DEV && DEMO.has("demo")) {
-        const { demoData } = await import("./demo.js");
-        setData(hydrate(demoData(new Date(), DEMO.get("lang") || "en")));
+        const { demoData, fortnightlyDemo } = await import("./demo.js");
+        const lang = DEMO.get("lang") || "en";
+        setData(hydrate(DEMO.get("pay") === "fortnightly" ? fortnightlyDemo(new Date(), lang) : demoData(new Date(), lang)));
         setLoaded(true);
         return;
       }
@@ -676,7 +677,7 @@ export default function App() {
           <div data-tauri-drag-region style={{ flex: 1, minWidth: 0, alignSelf: "stretch", display: "flex", flexDirection: "column", justifyContent: "center" }}>
             <span data-tauri-drag-region style={{ ...TYPE.navLink, textTransform: "uppercase", color: theme.outerTextMuted, marginBottom: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {fmtDate(new Date(), { weekday: "long", day: "numeric", month: "long" })}
-              {!cal.calendarMonths && ` · ${t("period {range}", { range: cal.label(curKey).range })}`}
+              {!cal.calendarMonths && ` · ${t("period {range}", { range: cal.label(curKey).range || cal.label(curKey).primary })}`}
             </span>
             <h1 data-tauri-drag-region style={{ ...TYPE.tagline, margin: 0, color: theme.outerText, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {tab === "dashboard" ? greeting(new Date()) : t(TABS.find((tb) => tb.id === tab)?.label || "")}
@@ -886,7 +887,7 @@ export default function App() {
                 <>
                   <TableHeader columns={ENTRY_COLUMNS.recurring} sorts={recurringView.sorts} onSort={onSortRecurring} />
                   {filteredRecurring.map((r) => (
-                    <RecurringRow key={r.id} entry={r} categories={data.categories}
+                    <RecurringRow key={r.id} entry={r} categories={data.categories} dated={cal.kindOf(curKey) === "weeks"}
                       onEdit={() => setModal({ type: "recurring", editId: r.id })}
                       onDelete={() => save(deleteRecurringCopy(data, "recurring", curKey, r))} />
                   ))}
@@ -908,7 +909,7 @@ export default function App() {
               <div style={{ ...s.card, marginBottom: 16 }}>
                 <div style={s.cardTitle}>{t("Calendar")}</div>
                 <BillCalendar data={data} periodKey={curKey} today={today}
-                  onOpen={(it) => setModal({ type: it.kind, editId: it.id, monthKey: curKey })} />
+                  onOpen={(it) => setModal({ type: editFormFor(it.kind, (cur.credits || []).find((c) => c.id === it.id)), editId: it.id, monthKey: curKey })} />
               </div>
             </>
           )}
@@ -949,7 +950,7 @@ export default function App() {
                 <EntryName name={c.name} note={c.note} schedule={c} />
                 <div style={{ flex: 1.2 }}><CategoryPill categoryName={c.category || c.source} categories={data.creditCategories || []} fallback={CREDIT_UNCATEGORIZED} /></div>
                 {kind === "recurring"
-                  ? <div style={{ flex: 1, textAlign: "center", color: theme.textMuted, fontSize: 13 }}>{isWeekly(c) ? shortDate(c.date) : (c.dayOfMonth || "—")}</div>
+                  ? <div style={{ flex: 1, textAlign: "center", color: theme.textMuted, fontSize: 13 }}>{isWeekly(c) || cal.kindOf(curKey) === "weeks" ? shortDate(c.date) : (c.dayOfMonth || "—")}</div>
                   : <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }} title={c.date}>{shortDate(c.date)}</div>}
                 <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: isReceived(c) ? theme.success : theme.textMuted }}>+{fmt(c.amount)}</div>
                 <RowActions
@@ -1136,7 +1137,7 @@ export default function App() {
                     <>
                       <TableHeader columns={ENTRY_COLUMNS.recurring} />
                       {m.recurring.map((r) => (
-                        <RecurringRow key={r.id} entry={r} categories={data.categories}
+                        <RecurringRow key={r.id} entry={r} categories={data.categories} dated={cal.kindOf(historyKey) === "weeks"}
                           onEdit={() => setModal({ type: "recurring", editId: r.id, monthKey: historyKey })}
                           // Past-period deletion removes only this period's instance -
                           // the live template keeps governing future periods.
@@ -1178,7 +1179,7 @@ export default function App() {
                           <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: theme.success }}>+{fmt(c.amount)}</div>
                           <RowActions
                             id={c.id}
-                            onEdit={() => setModal({ type: "credit", editId: c.id, monthKey: historyKey })}
+                            onEdit={() => setModal({ type: editFormFor("credit", c), editId: c.id, monthKey: historyKey })}
                             onDelete={() => patchMonth(historyKey, { credits: (m.credits || []).filter((x) => x.id !== c.id) })}
                           />
                         </div>
@@ -1279,7 +1280,7 @@ export default function App() {
         const touchesTemplate = targetKey === curKey;
         const editing = modal.editId ? targetMonth.recurring.find((x) => x.id === modal.editId) : null;
         // A weekly copy corrected in a past period keeps its own date.
-        const dated = !touchesTemplate && isWeekly(editing);
+        const dated = !touchesTemplate && (isWeekly(editing) || cal.kindOf(targetKey) === "weeks");
         // A bill not due this period has no instance here, only its template.
         const editingTpl = modal.templateId ? (data.recurringTemplate || []).find((x) => x.id === modal.templateId) : null;
         const tplOf = editing ? (data.recurringTemplate || []).find((x) => x.id === editing.templateId) : null;
@@ -1297,7 +1298,7 @@ export default function App() {
             // template is being edited - not on a correction to a past period.
             ...(touchesTemplate ? [
               { key: "repeats", label: t("Repeats"), type: "select", options: REPEAT_OPTIONS.map((o) => o.label), defaultValue: repeatLabel(sched) },
-              { key: "anchor", label: t("First due in"), type: "month", defaultValue: sched.anchor || targetKey, when: (vals) => !weeklyChoice(vals) },
+              { key: "anchor", label: t("First due in"), type: "month", defaultValue: sched.anchor || monthKey(cal.range(targetKey).start), when: (vals) => !weeklyChoice(vals) },
               { key: "startDate", label: t("First date"), type: "date", defaultValue: sched.startDate || cal.newEntryDate(curKey, today),
                 when: (vals) => !!weeklyChoice(vals) },
             ] : []),
@@ -1309,7 +1310,8 @@ export default function App() {
             // A dated copy keeps its date; anything else falls on a day of the month.
             const fields = { name: v.name, amount: +v.amount, ...(dated ? { date: v.date || editing.date } : { dayOfMonth: dayOfMonthFrom(v.dayOfMonth) }),
                              category: category.name, autoPay: !!v.autoPay, note: cleanNote(v.note) };
-            const schedule = scheduleFromForm(v, sched, targetKey, cal.newEntryDate(curKey, today));
+            // A cycle counts in months: from the month this period starts in.
+            const schedule = scheduleFromForm(v, sched, monthKey(cal.range(targetKey).start), cal.newEntryDate(curKey, today));
             save({ ...saveRecurring(data, "recurring", { cal, curKey, targetKey, editing, editingTpl, fields, schedule, newId: uid, today }), categories });
             setModal(null);
           }} />
@@ -1361,7 +1363,7 @@ export default function App() {
         const targetMonth = data.months[targetKey] || emptyMonth();
         const touchesTemplate = targetKey === curKey;
         const editing = modal.editId ? (targetMonth.credits || []).find((x) => x.id === modal.editId) : null;
-        const dated = !touchesTemplate && isWeekly(editing);
+        const dated = !touchesTemplate && (isWeekly(editing) || cal.kindOf(targetKey) === "weeks");
         const editingTpl = modal.templateId ? (data.creditTemplate || []).find((x) => x.id === modal.templateId) : null;
         const tplOf = editing ? (data.creditTemplate || []).find((x) => x.id === editing.templateId) : null;
         const source = editingTpl || editing;
@@ -1378,7 +1380,7 @@ export default function App() {
             // template is being edited - not on a correction to a past period.
             ...(touchesTemplate ? [
               { key: "repeats", label: t("Repeats"), type: "select", options: REPEAT_OPTIONS.map((o) => o.label), defaultValue: repeatLabel(sched) },
-              { key: "anchor", label: t("First due in"), type: "month", defaultValue: sched.anchor || targetKey, when: (vals) => !weeklyChoice(vals) },
+              { key: "anchor", label: t("First due in"), type: "month", defaultValue: sched.anchor || monthKey(cal.range(targetKey).start), when: (vals) => !weeklyChoice(vals) },
               { key: "startDate", label: t("First date"), type: "date", defaultValue: sched.startDate || cal.newEntryDate(curKey, today),
                 when: (vals) => !!weeklyChoice(vals) },
             ] : []),
@@ -1389,7 +1391,8 @@ export default function App() {
             const { categories: creditCategories, category } = ensureCreditCategory(data.creditCategories || [], v.category);
             const fields = { name: v.name, amount: amt, ...(dated ? { date: v.date || editing.date } : { dayOfMonth: dayOfMonthFrom(v.dayOfMonth) }),
                              category: category.name, note: cleanNote(v.note) };
-            const schedule = scheduleFromForm(v, sched, targetKey, cal.newEntryDate(curKey, today));
+            // A cycle counts in months: from the month this period starts in.
+            const schedule = scheduleFromForm(v, sched, monthKey(cal.range(targetKey).start), cal.newEntryDate(curKey, today));
             save({ ...saveRecurring(data, "credits", { cal, curKey, targetKey, editing, editingTpl, fields, schedule, newId: uid, today }), creditCategories });
             setModal(null);
           }} />
@@ -1444,7 +1447,7 @@ export default function App() {
           onClose={() => setSearchOpen(false)}
           onOpen={(r) => {
             // Each kind opens in its own dialog, in the period it belongs to.
-            const type = { expense: "expense", recurring: "recurring", upcoming: "upcoming", credit: "credit" }[r.kind];
+            const type = editFormFor({ expense: "expense", recurring: "recurring", upcoming: "upcoming", credit: "credit" }[r.kind], r.entry);
             setSearchOpen(false);
             setModal({ type, editId: r.entry.id, monthKey: r.periodKey });
           }} />

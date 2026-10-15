@@ -3,10 +3,13 @@
 // loads this behind import.meta.env.DEV.
 //
 // Everything is placed relative to `today`, so it always looks current: three
-// finished months and this one up to today.
+// finished months and this one up to today. `?demo&pay=fortnightly` gives the
+// same budget paid every two weeks for the last two months.
 
 import { addMonths } from "./lib/schedule.js";
 import { isoDay, periodKeyFor } from "./lib/periods.js";
+import { calendarFor } from "./lib/calendar.js";
+import { copiesFor } from "./lib/occurrences.js";
 
 // Same budget every time: a small deterministic random number generator.
 function rng(seed) {
@@ -110,4 +113,34 @@ export function demoData(today, language = "en") {
       { id: "a-card", name: "Credit card", kind: "card", balances: balances([420, 310, 560, 280]) },
     ],
   };
+}
+
+// The same budget, paid every two weeks from a Friday eight or nine weeks
+// back: the months before stay months, the rest are fortnights, each with
+// its paycheck and its bills.
+export function fortnightlyDemo(today, language = "en") {
+  const base = demoData(today, language);
+  const day0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const firstPayday = new Date(day0.getFullYear(), day0.getMonth(), day0.getDate() - 56 - ((day0.getDay() + 2) % 7));
+  const paySchedule = [{ kind: "monthly", cutoffDay: 1 }, { kind: "weeks", every: 2, from: isoDay(firstPayday) }];
+  const cal = calendarFor({ paySchedule });
+  const months = {};
+  const period = (k) => {
+    if (!months[k]) months[k] = { income: cal.kindOf(k) === "weeks" ? 1940 : 4200, expenses: [], recurring: [], upcoming: [], credits: [] };
+    return months[k];
+  };
+  // A payment due after the running fortnight stays in it, as one added
+  // today would; a later period is made when it begins.
+  const running = cal.current(today);
+  const upTo = (k) => (k > running ? running : k);
+  for (const m of Object.values(base.months)) {
+    for (const e of m.expenses) period(cal.keyFor(e.date)).expenses.push(e);
+    for (const u of m.upcoming) period(upTo(cal.keyFor(u.dueDate))).upcoming.push(u);
+    for (const c of m.credits) period(upTo(cal.keyFor(c.date))).credits.push(c);
+  }
+  let n = 0;
+  for (let k = Object.keys(months).sort()[0]; k <= running; k = cal.next(k)) {
+    period(k).recurring = base.recurringTemplate.flatMap((t) => copiesFor(t, cal, k, () => `fr-${++n}`));
+  }
+  return { ...base, months, paySchedule };
 }

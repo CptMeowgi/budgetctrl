@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Editing a recurring credit from History, search or the bill calendar now
+  opens the recurring credit form, instead of the one for one-off credits,
+  which could leave a stray date on it.
 - Recurring bills and credits can repeat every week or every two weeks:
   choose it under Repeats and give the first date. Each payment shows on
   its own date in Recurring, the forecast, the bill calendar and

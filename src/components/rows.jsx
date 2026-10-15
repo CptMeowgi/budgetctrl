@@ -102,7 +102,7 @@ export function ExpenseRow({ entry: e, categories, onEdit, onDelete }) {
   );
 }
 
-export function RecurringRow({ entry: r, categories, onEdit, onDelete }) {
+export function RecurringRow({ entry: r, categories, onEdit, onDelete, dated }) {
   const { theme, s } = useThemed();
   return (
     <div style={s.tableRow}>
@@ -110,7 +110,8 @@ export function RecurringRow({ entry: r, categories, onEdit, onDelete }) {
         {r.autoPay && <span title={t("Pays itself")} style={{ ...TYPE.microLegal, color: theme.textFaint, marginLeft: 6 }}>{t("auto")}</span>}
       </EntryName>
       <div style={{ flex: 1.2 }}><CategoryPill categoryName={r.category} categories={categories} /></div>
-      <div style={{ flex: 0.5, textAlign: "center", color: theme.textMuted, ...TYPE.caption }}>{isWeekly(r) ? shortDate(r.date) : (r.dayOfMonth || "—")}</div>
+      {/* In a fortnight every copy carries its date. */}
+      <div style={{ flex: 0.5, textAlign: "center", color: theme.textMuted, ...TYPE.caption }}>{isWeekly(r) || dated ? shortDate(r.date) : (r.dayOfMonth || "—")}</div>
       <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: theme.accent }}>{fmt(r.amount)}</div>
       <RowActions id={r.id} onEdit={onEdit} onDelete={onDelete} />
     </div>

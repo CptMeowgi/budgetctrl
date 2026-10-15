@@ -119,7 +119,7 @@ function MoneyLeftCard({ data, curKey, today, cal, fc, remaining, sub, stillToPa
           </AreaChart>
         </ResponsiveContainer>
       </div>
-      {!monthly && <div style={{ fontSize: 11, color: theme.textSoft, marginTop: 2 }}>{cal.label(curKey).range}</div>}
+      {!monthly && <div style={{ fontSize: 11, color: theme.textSoft, marginTop: 2 }}>{cal.label(curKey).range || cal.label(curKey).primary}</div>}
     </article>
   );
 }

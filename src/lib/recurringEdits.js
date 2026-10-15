@@ -7,7 +7,7 @@
 // redoes or removes them all: they are the same bill. Past periods are
 // history, and only ever change one copy at a time.
 
-import { copiesFor, isWeekly, missingCopies, occursIn } from "./occurrences.js";
+import { copiesFor, isRecurringItem, isWeekly, missingCopies, occursIn } from "./occurrences.js";
 
 const KINDS = {
   recurring: { list: "recurring", template: "recurringTemplate" },
@@ -88,4 +88,11 @@ export function deleteRecurringCopy(data, kind, curKey, copy) {
     months: { ...data.months, [curKey]: { ...cur, [list]: (cur[list] || []).filter((x) => !sameItem(x)) } },
     [template]: (data[template] || []).filter((x) => x.id !== copy.templateId),
   };
+}
+
+// The form that edits an entry. A recurring credit opens in its own form
+// wherever it's opened from (History, search, the bill calendar); the
+// one-off form would leave a stray date on it.
+export function editFormFor(kind, entry) {
+  return kind === "credit" && isRecurringItem(entry) ? "creditRecurring" : kind;
 }
