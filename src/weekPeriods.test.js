@@ -161,6 +161,19 @@ describe("reports on a budget that switched", () => {
     expect(comparisonFor(switched(), "last:3", "2026-12-18")).toBeNull();
   });
 
+  it("comparisons: a partly tracked stretch of fortnights is named by its days", () => {
+    // Fortnights from 11 Sep; "last 3" before 6 Nov has only 11 Sep to compare with.
+    const fortnights = [{ kind: "weeks", every: 2, from: "2026-09-11" }];
+    const fcal = calendarFor({ paySchedule: fortnights });
+    const months = {};
+    for (let k = "2026-09-11"; k <= "2026-11-06"; k = fcal.next(k)) {
+      months[k] = { income: 1900, expenses: [{ id: k, name: "Shop", amount: 100, date: k, category: "Food" }], recurring: [], upcoming: [], credits: [] };
+    }
+    const cmp = comparisonFor({ paySchedule: fortnights, months }, "last:3", "2026-11-06");
+    expect(cmp.keys).toEqual(["2026-09-11"]);
+    expect(cmp.label.replace(/\s/g, " ")).toBe("Sep 11 – 24, 2026");
+  });
+
   it("comparisons: a year against the periods a year earlier, by date", () => {
     // Fortnights since 20 Dec 2024, 100 spent in each.
     const fortnights = [{ kind: "weeks", every: 2, from: "2024-12-20" }];

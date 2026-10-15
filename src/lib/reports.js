@@ -5,7 +5,7 @@
 
 import { periodSpending, periodIncome } from "./totals.js";
 import { asCalendar, calendarFor } from "./calendar.js";
-import { monthLabel } from "./periods.js";
+import { dayRangeLabel, monthLabel } from "./periods.js";
 import { csvDialect, csvEscape, guardText, formatAmount } from "./csv.js";
 
 export const BASE_INCOME_NAME = "Base income";
@@ -94,7 +94,10 @@ export function comparisonFor(data, rangeId, curKey) {
   // Say exactly what is compared when the earlier stretch was only partly
   // tracked - "vs 2025" would claim a whole year that isn't there.
   const complete = keys.length === closed.length;
-  const label = !complete ? spanLabel(keys)
+  // Months by name; fortnights by their days.
+  const partly = () => (keys.every((k) => /^\d{4}-\d{2}$/.test(k)) ? spanLabel(keys)
+    : dayRangeLabel(cal.range(keys[0]).start, cal.range(keys[keys.length - 1]).end));
+  const label = !complete ? partly()
     : r.kind === "year" ? String(Number(r.year) - 1)
     : `the ${r.n} ${periodNoun(cal, r.n)} before`;
   return { closed, keys, label };
