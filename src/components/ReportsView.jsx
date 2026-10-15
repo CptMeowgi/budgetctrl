@@ -1,4 +1,4 @@
-import { monthLabel } from "../lib/periods.js";
+import { dayRangeLabel, isoDay, monthKey, monthLabel } from "../lib/periods.js";
 import { calendarFor } from "../lib/calendar.js";
 import { BASE_INCOME_NAME, buildReport, categoryChanges, comparisonFor, percentChange, rangeKeys, rangeOptions, reportToCsv } from "../lib/reports.js";
 import { downloadText, fileDate } from "../exportFiles.js";
@@ -15,16 +15,16 @@ function alphaHex(a) {
   return Math.round(Math.max(0, Math.min(1, a)) * 255).toString(16).padStart(2, "0");
 }
 
-function shortPeriod(key, withYear) {
-  const m = monthLabel(key).slice(0, 3);
-  return withYear ? `${m} ’${key.slice(2, 4)}` : m;
+function shortPeriod(cal, key, withYear) {
+  const s = cal.shortLabel(key);
+  return withYear ? `${s} ’${isoDay(cal.range(key).start).slice(2, 4)}` : s;
 }
 
 // Category by period. Each cell is shaded by where it sits between its own
 // row's quietest and busiest period, so a category's rhythm shows at a glance
 // whatever its size - and a bill that never changes stays pale instead of
 // lighting up the whole row.
-function CategoryTrends({ report, categories, curKey, onOpenPeriod }) {
+function CategoryTrends({ report, categories, curKey, cal, onOpenPeriod }) {
   const { theme } = useThemed();
   const withYear = report.keys.length > 0 && report.keys[0].slice(0, 4) !== report.keys[report.keys.length - 1].slice(0, 4);
   const line = `1px solid ${theme.border}`;
@@ -51,7 +51,7 @@ function CategoryTrends({ report, categories, curKey, onOpenPeriod }) {
                 <button onClick={() => onOpenPeriod(k)}
                   title={k === curKey ? t("Still running · open on the Dashboard") : t("Open in History")}
                   style={{ all: "unset", cursor: "pointer" }}>
-                  {shortPeriod(k, withYear)}{k === curKey ? " •" : ""}
+                  {shortPeriod(cal, k, withYear)}{k === curKey ? " •" : ""}
                 </button>
               </th>
             ))}
@@ -150,20 +150,30 @@ export function ReportsView({ data, today, curKey, range, onRange, onOpenPeriod 
     downloadText(csv, `budget-ctrl-report-${rangeId.replace(":", "-")}-${fileDate()}.csv`, "text/csv;charset=utf-8");
   };
 
+  // Months are named; a run of fortnights is given by its days.
+  const allMonths = keys.every((k) => cal.kindOf(k) === "monthly");
+  const runningName = cal.kindOf(curKey) === "monthly"
+    ? monthLabel(monthKey(cal.range(curKey).start)).split(" ")[0]
+    : cal.label(curKey).primary;
   const span = keys.length
-    ? `${monthLabel(keys[0])}${keys.length > 1 ? ` – ${monthLabel(keys[keys.length - 1])}` : ""} · `
+    ? (allMonths
+      ? `${monthLabel(keys[0])}${keys.length > 1 ? ` – ${monthLabel(keys[keys.length - 1])}` : ""}`
+      : dayRangeLabel(cal.range(keys[0]).start, cal.range(keys[keys.length - 1]).end))
+      + " · "
       + (monthly ? tn(keys.length, "{n} month tracked", "{n} months tracked") : tn(keys.length, "{n} period tracked", "{n} periods tracked"))
-      + (running ? ` · ${t("{month} still running", { month: monthLabel(curKey).split(" ")[0] })}` : "")
+      + (running ? ` · ${t("{month} still running", { month: runningName })}` : "")
     : "";
 
   const year = rangeId.startsWith("year:") ? rangeId.slice(5) : null;
   const multiYear = keys.length > 0 && keys[0].slice(0, 4) !== keys[keys.length - 1].slice(0, 4);
   const byKey = new Map(report.periods.map((p) => [p.key, p]));
   // A calendar year always shows January to December, so a gap reads as a gap.
-  const bars = (year
+  // Fortnights are shown as they are.
+  const monthBars = year && keys.every((k) => /^\d{4}-\d{2}$/.test(k));
+  const bars = (monthBars
     ? Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, "0")}`)
     : keys
-  ).map((k) => ({ key: k, label: shortPeriod(k, multiYear), spent: byKey.get(k)?.spent || 0, income: byKey.get(k)?.income || 0 }));
+  ).map((k) => ({ key: k, label: shortPeriod(cal, k, multiYear), spent: byKey.get(k)?.spent || 0, income: byKey.get(k)?.income || 0 }));
 
   const catDonut = categoryBreakdown(new Map(report.categories.map((c) => [c.name, c.total])), data.categories || []);
   const incomeDonut = report.incomeSources.map(({ name, value }) => {
@@ -221,7 +231,7 @@ export function ReportsView({ data, today, curKey, range, onRange, onOpenPeriod 
             </div>
             {report.categories.length === 0
               ? <div style={s.emptySmall}>{t("Nothing spent in this range.")}</div>
-              : <CategoryTrends report={report} categories={data.categories || []} curKey={curKey} onOpenPeriod={onOpenPeriod} />}
+              : <CategoryTrends report={report} categories={data.categories || []} curKey={curKey} cal={cal} onOpenPeriod={onOpenPeriod} />}
           </div>
 
           <div style={grid}>

@@ -5,6 +5,9 @@ import { saveRecurring } from "./lib/recurringEdits.js";
 import { convertToRecurring } from "./lib/regular.js";
 import { hydrate, migrate } from "./model.js";
 import { isoDay } from "./lib/periods.js";
+import { comparisonFor, rangeKeys, rangeOptions } from "./lib/reports.js";
+import { budgetPace, leftOverHistory } from "./lib/goals.js";
+import { categoryAverage } from "./lib/totals.js";
 
 // Paid on the 1st until 6 Nov 2026, every two weeks from then. "2026-10" is
 // October, "2026-11" is cut short to 1-5 Nov, then the fortnights
@@ -131,5 +134,61 @@ describe("turning a regular payment into a bill in a fortnight", () => {
     expect(out.removed).toBe(0);
     expect(out.data.months["2026-11-06"].expenses.map((e) => e.id)).toEqual(["e1"]);
     expect(out.data.months["2026-11-06"].recurring).toEqual([]);
+  });
+});
+
+// Food every period: 300 a month before the switch, 100 a fortnight after.
+function switched() {
+  const keys = ["2026-08", "2026-09", "2026-10", "2026-11", "2026-11-06", "2026-11-20", "2026-12-04", "2026-12-18"];
+  const months = {};
+  for (const k of keys) {
+    const fortnight = k.length === 10;
+    months[k] = { income: fortnight ? 1900 : 4000, recurring: [], upcoming: [], credits: [],
+      expenses: [{ id: `e-${k}`, name: "Shop", amount: fortnight ? 100 : 300, date: isoDay(cal.range(k).start), category: "Food" }] };
+  }
+  return { cutoffDay: 1, paySchedule: SCHEDULE, months, categories: [{ name: "Food" }] };
+}
+const TODAY = new Date(2026, 11, 20, 12); // in the fortnight "2026-12-18"
+
+describe("reports on a budget that switched", () => {
+  it("speaks of periods and counts back by period", () => {
+    const data = switched();
+    expect(rangeOptions(data, "2026-12-18").find((o) => o.id === "last:3").label).toBe("Last 3 periods");
+    expect(rangeKeys(data, "last:3", "2026-12-18")).toEqual(["2026-11-06", "2026-11-20", "2026-12-04"]);
+  });
+
+  it("comparisons: never a fortnight against a month", () => {
+    expect(comparisonFor(switched(), "last:3", "2026-12-18")).toBeNull();
+  });
+
+  it("comparisons: a year against the periods a year earlier, by date", () => {
+    // Fortnights since 20 Dec 2024, 100 spent in each.
+    const fortnights = [{ kind: "weeks", every: 2, from: "2024-12-20" }];
+    const fcal = calendarFor({ paySchedule: fortnights });
+    const months = {};
+    for (let k = "2024-12-20"; k <= "2026-12-18"; k = fcal.next(k)) {
+      months[k] = { income: 1900, expenses: [{ id: k, name: "Shop", amount: 100, date: k, category: "Food" }], recurring: [], upcoming: [], credits: [] };
+    }
+    const cmp = comparisonFor({ paySchedule: fortnights, months }, "year:2026", "2026-12-18");
+    expect(cmp.label).toBe("2025");
+    expect(cmp.keys).toHaveLength(cmp.closed.length);
+    expect(cmp.closed[0]).toBe("2026-01-02");
+    expect(cmp.keys[0]).toBe("2024-12-20");
+  });
+});
+
+describe("goals and averages on a budget that switched", () => {
+  it("label the fortnights by their days", () => {
+    const h = leftOverHistory(switched(), TODAY);
+    expect(h.series.slice(1).map((r) => r.label)).toEqual(["Aug", "Sep", "Oct", "Nov", "Nov 6", "Nov 20", "Dec 4"]);
+  });
+
+  it("count what fortnights leave over per month", () => {
+    // Each fortnight leaves 1800: about 3900 a month.
+    expect(budgetPace(leftOverHistory(switched(), TODAY))).toBeCloseTo(1800 * 26 / 12);
+  });
+
+  it("average a category over periods of the same kind only", () => {
+    expect(categoryAverage(switched(), "Food", "2026-12-18", TODAY)).toBe(100);
   });
 });

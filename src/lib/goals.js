@@ -10,7 +10,7 @@
 // on its date, or when it will get there at the rate you are going.
 
 import { periodSpending, periodIncome } from "./totals.js";
-import { monthLabel, isoDay } from "./periods.js";
+import { isoDay, monthKey } from "./periods.js";
 import { calendarFor } from "./calendar.js";
 import { addMonths, monthsBetween } from "./schedule.js";
 import { balanceAsOf, isLiability, addDays, daysBetweenISO, sortedBalances } from "./accounts.js";
@@ -32,7 +32,11 @@ export function leftOverHistory(data, today) {
     const spent = periodSpending(m, k, today, cal).total;
     const delta = income - spent;
     total += delta;
-    series.push({ key: k, label: monthLabel(k).slice(0, 3), balance: total, delta, income, spent, editedAt: m.editedAt || null });
+    // A week-based period also says what it left over per month; a month's
+    // `delta` already is that.
+    const perMonth = cal.periodsPerMonth(k);
+    series.push({ key: k, label: cal.shortLabel(k), balance: total, delta, income, spent, editedAt: m.editedAt || null,
+                  ...(perMonth !== 1 ? { perMonth: delta * perMonth } : {}) });
   }
   return { total, series, monthsCounted: keys.length };
 }
@@ -49,11 +53,12 @@ export function accountPace(account, todayIso, days = 90) {
   return (latest.amount - base.amount) / (elapsed / 30.44);
 }
 
-// Average left over across the last `n` closed periods.
+// Average left over per month across the last `n` closed periods. A
+// fortnight's leftover counts as 26/12 of that a month.
 export function budgetPace(history, n = 3) {
   const closed = history.series.slice(1).slice(-n);
   if (!closed.length) return null;
-  return closed.reduce((a, r) => a + r.delta, 0) / closed.length;
+  return closed.reduce((a, r) => a + (r.perMonth ?? r.delta), 0) / closed.length;
 }
 
 export function goalAccount(goal, data) {
@@ -72,7 +77,10 @@ export function goalSaved(goal, data, today, history = leftOverHistory(data, tod
 }
 
 export function goalStatus(goal, data, today, history = leftOverHistory(data, today)) {
-  const cur = calendarFor(data).current(today);
+  const cal = calendarFor(data);
+  // Goals count in calendar months, whatever the pay period: from the month
+  // the running period started in.
+  const cur = monthKey(cal.range(cal.current(today)).start);
   const saved = goalSaved(goal, data, today, history);
   const target = Number(goal.target) || 0;
   const known = saved != null;

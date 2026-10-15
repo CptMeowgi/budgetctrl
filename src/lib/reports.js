@@ -4,16 +4,17 @@
 // never disagree with the Dashboard about a period.
 
 import { periodSpending, periodIncome } from "./totals.js";
-import { calendarFor } from "./calendar.js";
+import { asCalendar, calendarFor } from "./calendar.js";
 import { monthLabel } from "./periods.js";
 import { csvDialect, csvEscape, guardText, formatAmount } from "./csv.js";
 
 export const BASE_INCOME_NAME = "Base income";
 
-// "months" when periods are calendar months, "periods" when a custom start day
-// makes them straddle two.
-export function periodNoun(cutoffDay, n = 2) {
-  const word = (cutoffDay || 1) === 1 ? "month" : "period";
+// "months" when periods are calendar months, "periods" otherwise: a custom
+// payday, or pay every week or two. Takes the budget's calendar, or its
+// payday day.
+export function periodNoun(calendar, n = 2) {
+  const word = asCalendar(calendar).calendarMonths ? "month" : "period";
   return n === 1 ? word : `${word}s`;
 }
 
@@ -23,7 +24,7 @@ export function periodNoun(cutoffDay, n = 2) {
 export function rangeOptions(data, curKey) {
   const keys = Object.keys(data.months || {}).filter((k) => k <= curKey);
   const closed = keys.filter((k) => k < curKey).length;
-  const noun = periodNoun(data.cutoffDay);
+  const noun = periodNoun(calendarFor(data));
   const curYear = curKey.slice(0, 4);
   const years = [...new Set(keys.map((k) => k.slice(0, 4)))].sort().reverse();
   const out = [];
@@ -79,16 +80,23 @@ export function comparisonFor(data, rangeId, curKey) {
   const r = parseRange(rangeId);
   if (!r || r.kind === "all") return null;
   const closed = rangeKeys(data, rangeId, curKey).filter((k) => k < curKey);
-  const shift = r.kind === "year" ? 12 : r.n;
   const cal = calendarFor(data);
-  const keys = closed.map((k) => cal.shift(k, -shift)).filter((k) => data.months?.[k]);
+  // A year is compared with the periods a year earlier, by date; "last N"
+  // with the N before. Only like with like: a fortnight against a month says
+  // nothing.
+  const earlier = r.kind === "year"
+    ? (k) => { const s = cal.range(k).start; return cal.keyFor(new Date(s.getFullYear() - 1, s.getMonth(), s.getDate())); }
+    : (k) => cal.shift(k, -r.n);
+  const keys = [...new Set(closed.map((c) => [c, earlier(c)])
+    .filter(([c, k]) => data.months?.[k] && cal.sameKind(c, k))
+    .map(([, k]) => k))];
   if (!closed.length || !keys.length) return null;
   // Say exactly what is compared when the earlier stretch was only partly
   // tracked - "vs 2025" would claim a whole year that isn't there.
   const complete = keys.length === closed.length;
   const label = !complete ? spanLabel(keys)
     : r.kind === "year" ? String(Number(r.year) - 1)
-    : `the ${r.n} ${periodNoun(data.cutoffDay, r.n)} before`;
+    : `the ${r.n} ${periodNoun(cal, r.n)} before`;
   return { closed, keys, label };
 }
 

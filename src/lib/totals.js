@@ -81,11 +81,12 @@ export function periodIncome(month, periodKey, today, calendar) {
   return { total: base + credits, base, credits, pending, bySource };
 }
 
-// Average spending per period in one category, over periods strictly before
-// `beforeKey` - "what you usually spend here", for comparing against now.
+// Average spending per period in one category, over periods of the same kind
+// strictly before `beforeKey` - what you usually spend here, for comparing
+// against now. A month's spending says nothing about a fortnight's.
 export function categoryAverage(data, category, beforeKey, today) {
   const cal = calendarFor(data);
-  const keys = Object.keys(data.months || {}).filter((k) => k < beforeKey);
+  const keys = Object.keys(data.months || {}).filter((k) => k < beforeKey && cal.sameKind(k, beforeKey));
   if (!keys.length) return null;
   let total = 0;
   for (const k of keys) total += periodSpending(data.months[k], k, today, cal).byCategory.get(category) || 0;
