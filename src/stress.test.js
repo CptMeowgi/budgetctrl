@@ -9,6 +9,8 @@ import { forecast, balanceHistory, spendingByDay } from "./lib/forecast.js";
 import { findRegularPayments } from "./lib/regular.js";
 import { goalsMonthlyNeed, leftOverHistory } from "./lib/goals.js";
 import { analyzeImport } from "./lib/importer.js";
+import { calendarFor } from "./lib/calendar.js";
+import { copiesFor } from "./lib/occurrences.js";
 
 // Five years of heavy use: 60 payday periods, 150 purchases in each, bills,
 // credits, upcoming payments, rollover budgets, accounts and import rules.
@@ -161,5 +163,94 @@ describe("five years of data", () => {
     let analysed;
     expect(time(() => { analysed = analyzeImport(rows, data); })).toBeLessThan(LIMIT_MS);
     expect(analysed.length).toBe(300);
+  });
+});
+
+// The same load paid every two weeks: 131 fortnights since 8 Oct 2021, so
+// anything that counts periods instead of months shows up too.
+const FORTNIGHTS = [{ kind: "monthly", cutoffDay: 1 }, { kind: "weeks", every: 2, from: "2021-10-08" }];
+const FCAL = calendarFor({ paySchedule: FORTNIGHTS });
+const FCUR = FCAL.current(TODAY);
+
+function fiveYearsOfFortnights() {
+  const rnd = random(43);
+  const pick = (list) => list[Math.floor(rnd() * list.length)];
+  const money = (lo, hi) => Math.round((lo + rnd() * (hi - lo)) * 100) / 100;
+  const categories = Array.from({ length: 20 }, (_, i) => ({
+    name: `Category ${i}`, color: "#10b981", icon: "·",
+    ...(i < 12 ? { cap: 200 + i * 25 } : {}),
+    ...(i < 8 ? { rollover: { from: "2021-10-08" } } : {}),
+  }));
+  const templates = [
+    ...Array.from({ length: 10 }, (_, i) => ({
+      id: `t${i}`, name: `Bill ${i}`, amount: money(30, 900), dayOfMonth: 1 + i * 2, category: categories[i].name,
+      ...(i % 4 === 3 ? { every: 3, anchor: "2021-10" } : {}),
+    })),
+    { id: "tw", name: "Cleaner", amount: 40, repeat: "weeks", every: 1, startDate: "2021-10-04", category: categories[10].name },
+  ];
+  const months = {};
+  let id = 0;
+  for (let k = "2021-10-08"; k <= FCUR; k = FCAL.next(k)) {
+    const days = FCAL.days(k);
+    months[k] = {
+      income: 4200,
+      expenses: Array.from({ length: 75 }, () => ({ id: `e${id++}`, name: `Shop ${Math.floor(rnd() * 15)}`, amount: money(5, 400), date: pick(days), category: pick(categories).name })),
+      recurring: templates.flatMap((t) => copiesFor(t, FCAL, k, () => `r${id++}`)),
+      upcoming: Array.from({ length: 4 }, (_, i) => ({ id: `u${id++}`, name: `Payment ${i}`, amount: money(20, 600), dueDate: days[i * 3], category: pick(categories).name, paid: rnd() < 0.8 })),
+      credits: [{ id: `c${id++}`, name: "Refund", amount: money(10, 300), date: days[5], category: "Refund" }],
+    };
+  }
+  return hydrate(migrate({
+    months, cutoffDay: 1, paySchedule: FORTNIGHTS, categories, recurringTemplate: templates, creditTemplate: [], accounts: [],
+    creditCategories: [{ name: "Refund", color: "#10b981", icon: "↩" }, { name: "Other", color: "#9ca3af", icon: "·" }],
+    goals: [{ id: "g2", name: "Cushion", target: 20000, startAmount: 3500, source: "budget" }],
+    reminders: { enabled: true, leadDays: 3 },
+  }));
+}
+
+describe("five years of fortnights", () => {
+  let data;
+  beforeAll(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(TODAY); data = fiveYearsOfFortnights(); });
+  afterAll(() => vi.useRealTimers());
+
+  it("has the size it claims", () => {
+    const keys = Object.keys(data.months).sort();
+    expect(keys).toHaveLength(131);
+    expect(keys[keys.length - 1]).toBe(FCUR);
+  });
+
+  it("totals every period quickly", () => {
+    let total = 0;
+    expect(time(() => {
+      for (const [k, m] of Object.entries(data.months)) { total += periodSpending(m, k, TODAY, FCAL).total; periodIncome(m, k, TODAY, FCAL); }
+    })).toBeLessThan(LIMIT_MS);
+    expect(total).toBeGreaterThan(1e6);
+  });
+
+  it("works out every rollover budget quickly", () => {
+    const spent = periodSpending(data.months[FCUR], FCUR, TODAY, FCAL).byCategory;
+    const carries = [];
+    expect(time(() => {
+      for (const c of data.categories) carries.push(envelope(data, c, FCUR, TODAY, spent.get(c.name) || 0)?.carry || 0);
+    })).toBeLessThan(LIMIT_MS);
+    expect(carries.some((c) => c !== 0)).toBe(true);
+  });
+
+  it("builds an all-time report quickly", () => {
+    let report;
+    expect(time(() => { report = buildReport(data, rangeKeys(data, "all", FCUR), TODAY, { runningKey: FCUR }); })).toBeLessThan(LIMIT_MS);
+    expect(report.periods.length).toBe(131);
+  });
+
+  it("forecasts the running period quickly", () => {
+    let days;
+    expect(time(() => { forecast(data, FCUR, TODAY); balanceHistory(data, FCUR, TODAY); days = spendingByDay(data, FCUR, TODAY); })).toBeLessThan(LIMIT_MS);
+    expect(days.length).toBeGreaterThan(0);
+  });
+
+  it("works out goals quickly", () => {
+    let history;
+    expect(time(() => { history = leftOverHistory(data, TODAY); goalsMonthlyNeed(data.goals, data, TODAY, history); })).toBeLessThan(LIMIT_MS);
+    expect(history.monthsCounted).toBe(130);
   });
 });
