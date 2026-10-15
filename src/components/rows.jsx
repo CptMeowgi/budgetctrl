@@ -111,7 +111,7 @@ export function RecurringRow({ entry: r, categories, onEdit, onDelete, dated }) 
       </EntryName>
       <div style={{ flex: 1.2 }}><CategoryPill categoryName={r.category} categories={categories} /></div>
       {/* In a fortnight every copy carries its date. */}
-      <div style={{ flex: 0.5, textAlign: "center", color: theme.textMuted, ...TYPE.caption }}>{isWeekly(r) || dated ? shortDate(r.date) : (r.dayOfMonth || "—")}</div>
+      <div style={{ flex: 0.5, textAlign: "center", color: theme.textMuted, ...TYPE.caption }}>{(isWeekly(r) || dated) && r.date ? shortDate(r.date) : (r.dayOfMonth || "—")}</div>
       <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: theme.accent }}>{fmt(r.amount)}</div>
       <RowActions id={r.id} onEdit={onEdit} onDelete={onDelete} />
     </div>

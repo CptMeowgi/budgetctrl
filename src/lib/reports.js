@@ -87,10 +87,9 @@ export function comparisonFor(data, rangeId, curKey) {
   const earlier = r.kind === "year"
     ? (k) => { const s = cal.range(k).start; return cal.keyFor(new Date(s.getFullYear() - 1, s.getMonth(), s.getDate())); }
     : (k) => cal.shift(k, -r.n);
-  const keys = [...new Set(closed.map((c) => [c, earlier(c)])
-    .filter(([c, k]) => data.months?.[k] && cal.sameKind(c, k))
-    .map(([, k]) => k))];
-  if (!closed.length || !keys.length) return null;
+  const alike = closed.filter((c) => cal.sameKind(c, earlier(c)));
+  const keys = [...new Set(alike.map(earlier).filter((k) => data.months?.[k]))];
+  if (!alike.length || !keys.length) return null;
   // Say exactly what is compared when the earlier stretch was only partly
   // tracked - "vs 2025" would claim a whole year that isn't there.
   const complete = keys.length === closed.length;
@@ -100,7 +99,7 @@ export function comparisonFor(data, rangeId, curKey) {
   const label = !complete ? partly()
     : r.kind === "year" ? String(Number(r.year) - 1)
     : `the ${r.n} ${periodNoun(cal, r.n)} before`;
-  return { closed, keys, label };
+  return { closed: alike, keys, label };
 }
 
 const sum = (xs, f) => xs.reduce((a, x) => a + f(x), 0);

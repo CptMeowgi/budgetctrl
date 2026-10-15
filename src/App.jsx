@@ -5,7 +5,7 @@ import { goalStatus, goalsMonthlyNeed, leftOverHistory } from "./lib/goals.js";
 import { convertToRecurring, dismissRegular, findRegularPayments } from "./lib/regular.js";
 import { forecast } from "./lib/forecast.js";
 import { applySetup } from "./lib/setup.js";
-import { isoDay, monthKey, setLabelLocale } from "./lib/periods.js";
+import { isoDay, setLabelLocale } from "./lib/periods.js";
 import { calendarFor } from "./lib/calendar.js";
 import { collectDueBills, OVERDUE_GRACE_DAYS, upcomingSettled } from "./lib/reminders.js";
 import { dayOfMonthFrom, REPEAT_OPTIONS, repeatLabel, scheduleFromForm } from "./lib/schedule.js";
@@ -950,7 +950,7 @@ export default function App() {
                 <EntryName name={c.name} note={c.note} schedule={c} />
                 <div style={{ flex: 1.2 }}><CategoryPill categoryName={c.category || c.source} categories={data.creditCategories || []} fallback={CREDIT_UNCATEGORIZED} /></div>
                 {kind === "recurring"
-                  ? <div style={{ flex: 1, textAlign: "center", color: theme.textMuted, fontSize: 13 }}>{isWeekly(c) || cal.kindOf(curKey) === "weeks" ? shortDate(c.date) : (c.dayOfMonth || "—")}</div>
+                  ? <div style={{ flex: 1, textAlign: "center", color: theme.textMuted, fontSize: 13 }}>{(isWeekly(c) || cal.kindOf(curKey) === "weeks") && c.date ? shortDate(c.date) : (c.dayOfMonth || "—")}</div>
                   : <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }} title={c.date}>{shortDate(c.date)}</div>}
                 <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: isReceived(c) ? theme.success : theme.textMuted }}>+{fmt(c.amount)}</div>
                 <RowActions
@@ -1279,8 +1279,9 @@ export default function App() {
         // the live template, which governs future months.
         const touchesTemplate = targetKey === curKey;
         const editing = modal.editId ? targetMonth.recurring.find((x) => x.id === modal.editId) : null;
-        // A weekly copy corrected in a past period keeps its own date.
-        const dated = !touchesTemplate && (isWeekly(editing) || cal.kindOf(targetKey) === "weeks");
+        // A copy corrected in a past period keeps its own date when it has one:
+        // a weekly copy, or any copy in a fortnight. A new one gets a day of the month.
+        const dated = !touchesTemplate && !!editing && (isWeekly(editing) || cal.kindOf(targetKey) === "weeks");
         // A bill not due this period has no instance here, only its template.
         const editingTpl = modal.templateId ? (data.recurringTemplate || []).find((x) => x.id === modal.templateId) : null;
         const tplOf = editing ? (data.recurringTemplate || []).find((x) => x.id === editing.templateId) : null;
@@ -1298,7 +1299,7 @@ export default function App() {
             // template is being edited - not on a correction to a past period.
             ...(touchesTemplate ? [
               { key: "repeats", label: t("Repeats"), type: "select", options: REPEAT_OPTIONS.map((o) => o.label), defaultValue: repeatLabel(sched) },
-              { key: "anchor", label: t("First due in"), type: "month", defaultValue: sched.anchor || monthKey(cal.range(targetKey).start), when: (vals) => !weeklyChoice(vals) },
+              { key: "anchor", label: t("First due in"), type: "month", defaultValue: sched.anchor || cal.cycleKey(cal.range(targetKey).start), when: (vals) => !weeklyChoice(vals) },
               { key: "startDate", label: t("First date"), type: "date", defaultValue: sched.startDate || cal.newEntryDate(curKey, today),
                 when: (vals) => !!weeklyChoice(vals) },
             ] : []),
@@ -1308,10 +1309,10 @@ export default function App() {
           ]} onClose={() => setModal(null)} onSave={(v) => {
             const { categories, category } = ensureCategory(data.categories, v.category);
             // A dated copy keeps its date; anything else falls on a day of the month.
-            const fields = { name: v.name, amount: +v.amount, ...(dated ? { date: v.date || editing.date } : { dayOfMonth: dayOfMonthFrom(v.dayOfMonth) }),
+            const fields = { name: v.name, amount: +v.amount, ...(dated ? { date: v.date || editing?.date } : { dayOfMonth: dayOfMonthFrom(v.dayOfMonth) }),
                              category: category.name, autoPay: !!v.autoPay, note: cleanNote(v.note) };
-            // A cycle counts in months: from the month this period starts in.
-            const schedule = scheduleFromForm(v, sched, monthKey(cal.range(targetKey).start), cal.newEntryDate(curKey, today));
+            // A cycle counts in the budget's monthly periods: from the one this period starts in.
+            const schedule = scheduleFromForm(v, sched, cal.cycleKey(cal.range(targetKey).start), cal.newEntryDate(curKey, today));
             save({ ...saveRecurring(data, "recurring", { cal, curKey, targetKey, editing, editingTpl, fields, schedule, newId: uid, today }), categories });
             setModal(null);
           }} />
@@ -1363,7 +1364,7 @@ export default function App() {
         const targetMonth = data.months[targetKey] || emptyMonth();
         const touchesTemplate = targetKey === curKey;
         const editing = modal.editId ? (targetMonth.credits || []).find((x) => x.id === modal.editId) : null;
-        const dated = !touchesTemplate && (isWeekly(editing) || cal.kindOf(targetKey) === "weeks");
+        const dated = !touchesTemplate && !!editing && (isWeekly(editing) || cal.kindOf(targetKey) === "weeks");
         const editingTpl = modal.templateId ? (data.creditTemplate || []).find((x) => x.id === modal.templateId) : null;
         const tplOf = editing ? (data.creditTemplate || []).find((x) => x.id === editing.templateId) : null;
         const source = editingTpl || editing;
@@ -1380,7 +1381,7 @@ export default function App() {
             // template is being edited - not on a correction to a past period.
             ...(touchesTemplate ? [
               { key: "repeats", label: t("Repeats"), type: "select", options: REPEAT_OPTIONS.map((o) => o.label), defaultValue: repeatLabel(sched) },
-              { key: "anchor", label: t("First due in"), type: "month", defaultValue: sched.anchor || monthKey(cal.range(targetKey).start), when: (vals) => !weeklyChoice(vals) },
+              { key: "anchor", label: t("First due in"), type: "month", defaultValue: sched.anchor || cal.cycleKey(cal.range(targetKey).start), when: (vals) => !weeklyChoice(vals) },
               { key: "startDate", label: t("First date"), type: "date", defaultValue: sched.startDate || cal.newEntryDate(curKey, today),
                 when: (vals) => !!weeklyChoice(vals) },
             ] : []),
@@ -1389,10 +1390,10 @@ export default function App() {
             const amt = +v.amount;
             if (!v.name || !(amt > 0)) { setModal(null); return; }
             const { categories: creditCategories, category } = ensureCreditCategory(data.creditCategories || [], v.category);
-            const fields = { name: v.name, amount: amt, ...(dated ? { date: v.date || editing.date } : { dayOfMonth: dayOfMonthFrom(v.dayOfMonth) }),
+            const fields = { name: v.name, amount: amt, ...(dated ? { date: v.date || editing?.date } : { dayOfMonth: dayOfMonthFrom(v.dayOfMonth) }),
                              category: category.name, note: cleanNote(v.note) };
-            // A cycle counts in months: from the month this period starts in.
-            const schedule = scheduleFromForm(v, sched, monthKey(cal.range(targetKey).start), cal.newEntryDate(curKey, today));
+            // A cycle counts in the budget's monthly periods: from the one this period starts in.
+            const schedule = scheduleFromForm(v, sched, cal.cycleKey(cal.range(targetKey).start), cal.newEntryDate(curKey, today));
             save({ ...saveRecurring(data, "credits", { cal, curKey, targetKey, editing, editingTpl, fields, schedule, newId: uid, today }), creditCategories });
             setModal(null);
           }} />

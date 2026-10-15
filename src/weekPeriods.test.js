@@ -106,6 +106,18 @@ describe("editing a bill in a fortnight", () => {
     expect(out.months["2026-11-06"].recurring.map((r) => [r.date, r.dayOfMonth])).toEqual([["2026-11-15", 15]]);
   });
 
+  it("moved after it was paid, it keeps one copy, on its new day, as a monthly budget would", () => {
+    const b = base();
+    const out = saveRecurring(b, "recurring", opts({ today: new Date(2026, 10, 12, 12), editing: b.months["2026-11-06"].recurring[0], fields: { name: "Rent", amount: 900, dayOfMonth: 15 }, schedule: MONTHLY }));
+    expect(out.months["2026-11-06"].recurring.map((r) => [r.id, r.date])).toEqual([["c1", "2026-11-15"]]);
+  });
+
+  it("moved after it was paid to a day in the next fortnight, it leaves this one, so the month pays it once", () => {
+    const b = base();
+    const out = saveRecurring(b, "recurring", opts({ today: new Date(2026, 10, 12, 12), editing: b.months["2026-11-06"].recurring[0], fields: { name: "Rent", amount: 900, dayOfMonth: 25 }, schedule: MONTHLY }));
+    expect(out.months["2026-11-06"].recurring).toEqual([]);
+  });
+
   it("drops its copy when the new day falls in another fortnight", () => {
     const b = base();
     const out = saveRecurring(b, "recurring", opts({ editing: b.months["2026-11-06"].recurring[0], fields: { name: "Rent", amount: 900, dayOfMonth: 25 }, schedule: MONTHLY }));
@@ -174,6 +186,22 @@ describe("reports on a budget that switched", () => {
     expect(cmp.label.replace(/\s/g, " ")).toBe("Sep 11 – 24, 2026");
   });
 
+  it("comparisons: the month cut short by the switch isn't set against a whole month", () => {
+    // "Last 3" on 4 Dec: the 1-5 Nov stub and two fortnights; none has a like before it.
+    expect(comparisonFor(switched(), "last:3", "2026-12-04")).toBeNull();
+  });
+
+  it("comparisons: both sides hold the same kind of period", () => {
+    const data = switched();
+    for (const k of ["2025-08", "2025-09", "2025-10", "2025-11"]) {
+      data.months[k] = { income: 4000, recurring: [], upcoming: [], credits: [], expenses: [{ id: `e-${k}`, name: "Shop", amount: 300, date: `${k}-01`, category: "Food" }] };
+    }
+    const cmp = comparisonFor(data, "year:2026", "2026-12-18");
+    expect(cmp.closed).toEqual(["2026-08", "2026-09", "2026-10"]);
+    expect(cmp.keys).toEqual(["2025-08", "2025-09", "2025-10"]);
+    expect(cmp.label).toBe("Aug–Oct 2025");
+  });
+
   it("comparisons: a year against the periods a year earlier, by date", () => {
     // Fortnights since 20 Dec 2024, 100 spent in each.
     const fortnights = [{ kind: "weeks", every: 2, from: "2024-12-20" }];
@@ -203,5 +231,22 @@ describe("goals and averages on a budget that switched", () => {
 
   it("average a category over periods of the same kind only", () => {
     expect(categoryAverage(switched(), "Food", "2026-12-18", TODAY)).toBe(100);
+  });
+});
+
+describe("every-N-months bills across a switch", () => {
+  it("fall on the same dates as if the budget had never switched", () => {
+    // Paid on the 25th, then every two weeks from 6 Nov 2026.
+    const switchedCal = calendarFor({ paySchedule: [{ kind: "monthly", cutoffDay: 25 }, { kind: "weeks", every: 2, from: "2026-11-06" }] });
+    const neverSwitched = calendarFor({ cutoffDay: 25 });
+    const datesOf = (c, bill) => {
+      const out = [];
+      for (let k = "2026-08"; c.range(k).start < new Date(2027, 6, 1); k = c.next(k)) out.push(...c.occurrences(bill, k).map(isoDay));
+      return out;
+    };
+    for (const anchor of ["2026-07", "2026-08", "2026-09"]) {
+      const bill = { id: "q", dayOfMonth: 1, every: 3, anchor };
+      expect(datesOf(switchedCal, bill)).toEqual(datesOf(neverSwitched, bill));
+    }
   });
 });

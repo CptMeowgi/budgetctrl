@@ -51,9 +51,14 @@ export function saveRecurring(data, kind, { cal, curKey, targetKey, editing, edi
       const tpl = nextTmpl.find((x) => x.id === editing.templateId) || { ...editing, ...fields, ...schedule, id: editing.templateId };
       const mine = items.filter((x) => x.templateId === editing.templateId);
       const idOn = new Map(mine.filter((x) => x.date).map((x) => [x.date, x.id]));
-      const redone = copiesFor(tpl, cal, targetKey, newId).map((c) => (idOn.has(c.date) ? { ...c, id: idOn.get(c.date) } : c));
+      // A monthly bill is paid once a month: moved, it stands on its new day
+      // only, as in a monthly budget. A weekly one's past dates were each paid.
+      const monthly = !isWeekly(editing) && !isWeekly(schedule);
+      const fresh = copiesFor(tpl, cal, targetKey, newId);
+      const redone = fresh.map((c) => (idOn.has(c.date) ? { ...c, id: idOn.get(c.date) }
+        : monthly && fresh.length === 1 ? { ...c, id: editing.id } : c));
       const redoneDates = new Set(redone.map((c) => c.date));
-      const paid = today ? mine.filter((x) => !redoneDates.has(x.date) && cal.isDue(x, targetKey, today)) : [];
+      const paid = today && !monthly ? mine.filter((x) => !redoneDates.has(x.date) && cal.isDue(x, targetKey, today)) : [];
       const kept = items.filter((x) => x.templateId !== editing.templateId);
       return { ...data, [template]: nextTmpl, months: put(targetKey, target, [...kept, ...paid, ...redone]) };
     }

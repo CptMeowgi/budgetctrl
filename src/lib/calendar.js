@@ -73,11 +73,13 @@ export function monthlyCalendar(cutoffDay) {
     itemDate: (item, key) => itemDateInPeriod(item, key, cd),
     isDue: (item, key, today) => isRecurringDue(item, key, today, cd),
     newEntryDate: (key, today) => newEntryDate(key, cd, today),
+    // The monthly period an every-N-months bill counts its cycle by.
+    cycleKey: (date) => periodKeyFor(date, cd),
     // The dates an item falls on in a period.
     occurrences: (item, key) => {
       const r = range(key);
       if (isWeekly(item)) return weeklyDates(item, r.start, r.end);
-      if (isDayKey(key)) return monthlyDates(item, r.start, r.end);
+      if (isDayKey(key)) return monthlyDates(item, r.start, r.end, (d) => periodKeyFor(d, cd));
       return isOnCycle(item, key) ? [recurringDateInPeriod(item?.dayOfMonth, key, cd)] : [];
     },
   });
@@ -145,16 +147,19 @@ function scheduleCalendar(schedule) {
     end: s.end && s.end < end ? s.end : end,
   });
 
-  // The period of stretch `s` that day `d` falls in: { key, start, end, s }.
+  // The period of stretch `s` that day `d` falls in: { key, start, end, part, s }.
+  // `part` marks one cut short by a switch: it is never compared with a whole one.
   const periodIn = (s, d) => {
     if (s.kind === "weeks") {
       const first = addDays(s.anchor, Math.floor(daysBetween(s.anchor, d) / s.step) * s.step);
-      return { key: isoDay(first), ...clip(s, first, addDays(first, s.step - 1)), s };
+      const last = addDays(first, s.step - 1);
+      const r = clip(s, first, last);
+      return { key: isoDay(first), ...r, part: r.end < last, s };
     }
     const month = periodKeyFor(d, s.cd);
     const { start, end } = periodRange(month, s.cd);
     const r = clip(s, start, end);
-    return { key: s.monthKeys ? month : isoDay(r.start), ...r, s };
+    return { key: s.monthKeys ? month : isoDay(r.start), ...r, part: r.start > start || r.end < end, s };
   };
 
   // The period a key names, when this schedule has one; null otherwise.
@@ -170,7 +175,7 @@ function scheduleCalendar(schedule) {
       const s = stretches[0];
       const { start, end } = periodRange(key, s.cd);
       const r = clip(s, start, end);
-      if (r.start <= r.end) p = { key, ...r, s };
+      if (r.start <= r.end) p = { key, ...r, part: r.start > start || r.end < end, s };
     }
     cache.set(key, p);
     return p;
@@ -196,8 +201,14 @@ function scheduleCalendar(schedule) {
   const kindOf = (key) => owned(key)?.s.kind || (isDayKey(key) ? "weeks" : "monthly");
   const stepOf = (key) => {
     const p = owned(key);
-    return p?.s.kind === "weeks" ? `weeks:${p.s.every}` : kindOf(key);
+    if (!p) return kindOf(key);
+    const kind = p.s.kind === "weeks" ? `weeks:${p.s.every}` : "monthly";
+    return p.part ? `${kind}:part` : kind;
   };
+  // Every-N-months bills count their cycle in the monthly periods the budget
+  // began with, so a switch neither moves nor drops one of their payments.
+  const cycleCd = stretches[0].kind === "monthly" ? stretches[0].cd : 1;
+  const cycleKey = (date) => periodKeyFor(date, cycleCd);
   const next = (key) => keyFor(addDays(range(key).end, 1));
   const prev = (key) => keyFor(addDays(range(key).start, -1));
   const dateOf = (dayOfMonth, key) => {
@@ -276,8 +287,10 @@ function scheduleCalendar(schedule) {
       const r = range(key);
       if (isWeekly(item)) return weeklyDates(item, r.start, r.end);
       if (owned(key)?.s.monthKeys) return isOnCycle(item, key) ? datesOnDay(item?.dayOfMonth, r.start, r.end).slice(0, 1) : [];
-      return monthlyDates(item, r.start, r.end);
+      return monthlyDates(item, r.start, r.end, cycleKey);
     },
+    // The monthly period an every-N-months bill counts its cycle by.
+    cycleKey,
   });
 }
 

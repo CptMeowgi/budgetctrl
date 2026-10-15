@@ -36,9 +36,11 @@ export function weeklyDates(item, start, end) {
 }
 
 // The dates a monthly item falls on from `start` to `end`: its day of each
-// month (the month's last day, when shorter), in the months on its cycle.
-export function monthlyDates(item, start, end) {
-  return datesOnDay(item?.dayOfMonth, start, end).filter((d) => isOnCycle(item, monthKey(d)));
+// month (the month's last day, when shorter), on its cycle. `cycleKey` names
+// the period a date's cycle counts in: its month, unless the budget's
+// calendar says otherwise.
+export function monthlyDates(item, start, end, cycleKey = monthKey) {
+  return datesOnDay(item?.dayOfMonth, start, end).filter((d) => isOnCycle(item, cycleKey(d)));
 }
 
 // A period's copies carry their date when the day of the month can't say it:
