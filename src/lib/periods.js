@@ -41,6 +41,19 @@ export function monthLabel(key) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+// "Oct 25" or "25 paź": a day and its month, short, in the label language.
+export function shortDay(d) {
+  return d.toLocaleDateString(labelLocale, { day: "numeric", month: "short" });
+}
+
+// "Nov 6 – 19, 2026", "6–19 lis 2026": a run of days written the reader's
+// own way, as a pay period's name. Never throws: a broken range has no name.
+export function dayRangeLabel(start, end) {
+  if (isNaN(start?.getTime()) || isNaN(end?.getTime())) return "";
+  const format = new Intl.DateTimeFormat(labelLocale, { day: "numeric", month: "short", year: "numeric" });
+  return end > start ? format.formatRange(start, end) : format.format(start);
+}
+
 export function daysInCalMonth(year, month1) {
   return new Date(year, month1, 0).getDate();
 }
@@ -83,8 +96,7 @@ export function periodLabel(periodKey, cutoffDay) {
   const primary = monthLabel(periodKey);
   if (!cutoffDay || cutoffDay <= 1) return { primary, range: null };
   const { start, end } = periodRange(periodKey, cutoffDay);
-  const short = (d) => d.toLocaleDateString(labelLocale, { day: "numeric", month: "short" });
-  return { primary, range: `${short(start)} – ${short(end)}` };
+  return { primary, range: `${shortDay(start)} – ${shortDay(end)}` };
 }
 
 // Resolves which actual date inside the period a given dayOfMonth lands on.
@@ -98,6 +110,18 @@ export function recurringDateInPeriod(dayOfMonth, periodKey, cutoffDay) {
   c = tryIn(end.getFullYear(), end.getMonth() + 1);
   if (c >= start && c <= end) return c;
   return start;
+}
+
+// Every date from `start` to `end` that falls on day `dayOfMonth` of its
+// month, or on the month's last day when it is shorter.
+export function datesOnDay(dayOfMonth, start, end) {
+  const day = Number(dayOfMonth || 1);
+  const out = [];
+  for (let y = start.getFullYear(), m = start.getMonth(); new Date(y, m, 1) <= end; m++) {
+    const d = new Date(y, m, Math.min(day, daysInCalMonth(y, m + 1)));
+    if (d >= start && d <= end) out.push(d);
+  }
+  return out;
 }
 
 // The date a recurring copy falls on in its period. A weekly copy carries
