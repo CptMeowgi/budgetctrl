@@ -32,6 +32,15 @@ export function payKindNow(data, today) {
   return e.kind === "weeks" ? `weeks:${e.every}` : "monthly";
 }
 
+// How the budget is set to be paid: its latest schedule entry, whether or
+// not that has begun. Settings shows this, so a switch still to come can be
+// changed or taken back there.
+export function payKindChosen(data) {
+  const schedule = readSchedule(data);
+  const e = schedule?.[schedule.length - 1];
+  return e?.kind === "weeks" ? `weeks:${e.every}` : "monthly";
+}
+
 // The first day `cutoffDay` after the running period ends: where a monthly
 // schedule picks up, so the running period runs on to it.
 export function firstPaydayFor(data, cutoffDay, today) {
@@ -41,14 +50,48 @@ export function firstPaydayFor(data, cutoffDay, today) {
   return isoDay(d);
 }
 
+// The set-aside is kept per month and shown per period: a fortnight sets
+// aside 12/26 of the monthly figure. Monthly periods use it as it is.
+export function perPeriodOf(monthly, cal, key) {
+  const ppm = cal.periodsPerMonth(key);
+  const m = Number(monthly) || 0;
+  return ppm === 1 ? m : Math.round(m / ppm);
+}
+export function perMonthOf(perPeriod, cal, key) {
+  const ppm = cal.periodsPerMonth(key);
+  const v = Number(perPeriod) || 0;
+  return ppm === 1 ? v : Math.round(v * ppm * 100) / 100;
+}
+
+// The budget as if a switch still to come had never been made: the schedule
+// entries that begin after the running period started are dropped. Back to a
+// single monthly stretch, it never switched at all. (The periods and budgets
+// that switch made ahead of time are cleared by switchSchedule.)
+function withoutPending(data, today) {
+  const schedule = readSchedule(data);
+  if (!schedule) return data;
+  const cal = calendarFor(data);
+  const start = isoDay(cal.range(cal.current(today)).start);
+  const kept = schedule.filter((e, i) => i === 0 || e.from <= start);
+  if (kept.length === schedule.length) return data;
+  if (kept.length === 1 && kept[0].kind === "monthly") {
+    const { paySchedule: _gone, ...rest } = data;
+    return { ...rest, cutoffDay: kept[0].cutoffDay };
+  }
+  return { ...data, paySchedule: kept };
+}
+
 // options: { kind: "monthly" | "weeks", every: 1 | 2, cutoffDay, firstPayday, paycheck }.
 // Returns { data, preview }; on an error, `data` is the budget it was given.
 export function switchSchedule(data, options, today) {
   const { kind, every, cutoffDay } = options;
-  const oldCal = calendarFor(data);
+  // A switch still to come is cleared first, so a new one replaces it.
+  const nowCal = calendarFor(data);
+  const base = withoutPending(data, today);
+  const oldCal = calendarFor(base);
   const curKey = oldCal.current(today);
   const cur = oldCal.range(curKey);
-  const first = kind === "monthly" ? firstPaydayFor(data, cutoffDay, today) : options.firstPayday;
+  const first = kind === "monthly" ? firstPaydayFor(base, cutoffDay, today) : options.firstPayday;
   const firstDay = parseDay(first);
 
   // The first payday falls after the running period starts (on its first day
@@ -57,21 +100,24 @@ export function switchSchedule(data, options, today) {
     : firstDay > addDays(cur.end, 31) ? "too-late" : null;
   if (error) return { data, preview: { error, firstPayday: first } };
 
-  // A switch made before the last one begins replaces it.
   const startIso = isoDay(cur.start);
-  const kept = (readSchedule(data) || [{ kind: "monthly", cutoffDay: data.cutoffDay || 1 }])
-    .filter((e, i) => i === 0 || e.from <= startIso);
+  const baseSchedule = readSchedule(base) || [{ kind: "monthly", cutoffDay: base.cutoffDay || 1 }];
+  const last = baseSchedule[baseSchedule.length - 1];
+  // Monthly on the payday the budget already follows, from its usual next
+  // payday: nothing to switch to; only a switch still to come is taken back.
+  const nothingNew = kind === "monthly" && last.kind === "monthly" && last.cutoffDay === cutoffDay
+    && first === isoDay(addDays(cur.end, 1));
   const entry = kind === "monthly"
     ? { kind: "monthly", cutoffDay, from: first, after: startIso }
     : { kind: "weeks", every, from: first, after: startIso };
-  const paySchedule = [...kept, entry];
-  const newCal = calendarFor({ paySchedule });
+  const paySchedule = nothingNew ? null : [...baseSchedule, entry];
+  const newCal = nothingNew ? oldCal : calendarFor({ paySchedule });
   const firstKey = newCal.keyFor(firstDay);
   const running = newCal.current(today);
-  const lastNew = running > firstKey ? running : firstKey;
+  const lastNew = nothingNew || running > firstKey ? running : firstKey;
 
-  // Budgets, the set-aside and the paycheck, per new period.
-  const factor = oldCal.periodsPerMonth(curKey) / newCal.periodsPerMonth(firstKey);
+  // Budgets and the suggested paycheck, per new period.
+  const factor = nothingNew ? 1 : oldCal.periodsPerMonth(curKey) / newCal.periodsPerMonth(firstKey);
   const convert = (x) => Math.round((Number(x) || 0) * factor);
   const paycheckDefault = convert(data.months?.[curKey]?.income);
   const paycheck = Number.isFinite(options.paycheck) ? options.paycheck : paycheckDefault;
@@ -87,7 +133,7 @@ export function switchSchedule(data, options, today) {
     const k = newCal.keyFor(date);
     return k > lastNew ? lastNew : k;
   };
-  const into = (k) => (moved[k] ||= emptyMonth());
+  const into = (k) => (k === curKey ? stay : (moved[k] ||= emptyMonth()));
   const later = Object.keys(data.months || {}).filter((k) => k > curKey);
   for (const k of [curKey, ...later]) {
     const m = data.months?.[k];
@@ -113,27 +159,38 @@ export function switchSchedule(data, options, today) {
 
   const months = { ...data.months };
   for (const k of later) delete months[k];
-  months[curKey] = { ...data.months[curKey], ...stay };
+  // Only the entries change: the running period keeps its income and fields.
+  months[curKey] = { ...data.months[curKey], expenses: stay.expenses, recurring: stay.recurring, upcoming: stay.upcoming, credits: stay.credits };
 
-  const categories = (data.categories || []).map((c) => {
+  // Budgets a switch still to come set for its periods go with it; the rest
+  // convert from the first new period on.
+  const trimmed = (c) => {
+    if (!c.capHistory?.some((h) => h.from > curKey)) return c;
+    const capHistory = c.capHistory.filter((h) => h.from <= curKey);
+    const out = { ...c, capHistory };
+    const cap = capAt(out, curKey);
+    if (cap == null) delete out.cap;
+    else out.cap = cap;
+    return out;
+  };
+  const categories = (base.categories || []).map((c0) => {
+    const c = trimmed(c0);
     const before = capAt(c, curKey);
     return before == null || convert(before) === before ? c : withCap(c, convert(before), firstKey);
   });
-  const next = {
-    ...data,
-    paySchedule,
-    cutoffDay: kind === "monthly" ? cutoffDay : data.cutoffDay,
-    categories,
-    savingsGoal: { ...(data.savingsGoal || {}), monthly: convert(data.savingsGoal?.monthly) },
-    months,
-  };
+  const next = nothingNew
+    ? { ...base, categories, months }
+    : { ...base, paySchedule, cutoffDay: kind === "monthly" ? cutoffDay : base.cutoffDay, categories, months };
   // Each new period up to today's, with its bills; the first with the paycheck.
-  for (let k = firstKey; k <= lastNew; k = newCal.next(k)) {
-    const p = startPeriod(next, newCal, k, moved[k] || emptyMonth());
-    next.months[k] = k === firstKey ? { ...p, income: paycheck } : p;
+  if (!nothingNew) {
+    for (let k = firstKey; k <= lastNew; k = newCal.next(k)) {
+      const p = startPeriod(next, newCal, k, moved[k] || emptyMonth());
+      next.months[k] = k === firstKey ? { ...p, income: paycheck } : p;
+    }
   }
 
   const newEnd = newCal.range(curKey).end;
+  const nowEnd = nowCal.range(curKey).end;
   const labels = [firstKey];
   while (labels.length < 3) labels.push(newCal.next(labels[labels.length - 1]));
   return {
@@ -147,13 +204,13 @@ export function switchSchedule(data, options, today) {
         key: curKey,
         start: startIso,
         end: isoDay(newEnd),
-        change: newEnd < cur.end ? "shortened" : newEnd > cur.end ? "lengthened" : "same",
+        change: newEnd < nowEnd ? "shortened" : newEnd > nowEnd ? "lengthened" : "same",
       },
       moved: movedCount,
       paycheck: paycheckDefault,
-      budgets: (data.categories || []).filter((c) => capAt(c, curKey) != null)
+      budgets: categories.filter((c) => capAt(c, curKey) != null)
         .map((c) => ({ name: c.name, before: capAt(c, curKey), after: convert(capAt(c, curKey)) })),
-      setAside: { before: Number(data.savingsGoal?.monthly) || 0, after: convert(data.savingsGoal?.monthly) },
+      setAside: { before: perPeriodOf(data.savingsGoal?.monthly, oldCal, curKey), after: perPeriodOf(data.savingsGoal?.monthly, newCal, firstKey) },
     },
   };
 }

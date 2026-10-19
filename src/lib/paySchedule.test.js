@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { firstPaydayFor, payKindNow, switchSchedule } from "./paySchedule.js";
+import { firstPaydayFor, payKindChosen, payKindNow, switchSchedule } from "./paySchedule.js";
 import { calendarFor } from "./calendar.js";
 import { capAt, carryInto } from "./envelopes.js";
 
@@ -45,6 +45,8 @@ describe("switching to fortnights", () => {
     expect(preview.moved).toBe(4);
     const oct = data.months["2026-10"];
     expect([ids(oct.expenses), ids(oct.recurring), oct.upcoming, oct.credits]).toEqual([["e2"], ["r1"], [], []]);
+    // The running month keeps its income and its own fields; only entries move.
+    expect(oct.income).toBe(4000);
     const first = data.months["2026-11-06"];
     expect([ids(first.expenses), ids(first.upcoming), ids(first.credits)]).toEqual([["e3"], ["u1"], ["c1"]]);
     expect(first.recurring.map((r) => [r.name, r.date])).toEqual([["Phone", "2026-11-10"]]);
@@ -61,8 +63,9 @@ describe("switching to fortnights", () => {
     const { data, preview } = fortnights();
     expect(preview.budgets).toEqual([{ name: "Food", before: 1300, after: 600 }, { name: "Fun", before: 260, after: 120 }]);
     expect([capAt(food(data), "2026-10"), capAt(food(data), "2026-11-06")]).toEqual([1300, 600]);
+    // The set-aside is kept per month and shown per period, so it needs no converting.
     expect(preview.setAside).toEqual({ before: 650, after: 300 });
-    expect(data.savingsGoal.monthly).toBe(300);
+    expect(data.savingsGoal.monthly).toBe(650);
   });
 
   it("rollover carries into the first fortnight", () => {
@@ -111,6 +114,18 @@ describe("switching to fortnights", () => {
     expect(Object.keys(data.months).sort()).toEqual(["2026-09", "2026-10", "2026-11-12"]);
     for (const k of Object.keys(data.months)) expect(cal.keyFor(cal.range(k).start)).toBe(k);
     expect(ids(data.months["2026-11-12"].credits)).toEqual(["c1"]);
+    // The replaced switch leaves no budgets behind.
+    expect(food(data).capHistory.map((h) => h.from).filter((f) => f > "2026-10")).toEqual(["2026-11-12"]);
+  });
+
+  it("taking back a switch still to come restores the month as it was", () => {
+    const pending = fortnights("2026-11-27").data;
+    const { data, preview } = switchSchedule(pending, { kind: "monthly", cutoffDay: 25 }, TODAY);
+    expect("paySchedule" in data).toBe(false);
+    expect(Object.keys(data.months).sort()).toEqual(["2026-09", "2026-10"]);
+    expect([preview.current.end, preview.current.change]).toEqual(["2026-11-24", "shortened"]);
+    expect(capAt(food(data), "2026-11")).toBe(1300);
+    expect(data.months["2026-10"].income).toBe(4000);
   });
 
   it("a budget in its first period switches", () => {
@@ -119,6 +134,11 @@ describe("switching to fortnights", () => {
     const { data, preview } = switchSchedule(b, { kind: "weeks", every: 2, firstPayday: "2026-11-06" }, TODAY);
     expect(preview.moved).toBe(4);
     expect(Object.keys(data.months).sort()).toEqual(["2026-10", "2026-11-06"]);
+  });
+
+  it("says how the budget is set to be paid, whether or not that has begun", () => {
+    expect(payKindChosen(B())).toBe("monthly");
+    expect(payKindChosen(fortnights("2026-11-27").data)).toBe("weeks:2");
   });
 
   it("says how the running period is paid", () => {

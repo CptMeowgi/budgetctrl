@@ -52,6 +52,7 @@ export function backupLabel(name) {
     : b.tag === "before-import" ? t("before loading a backup file")
     : b.tag === "before-statement-import" ? t("before a statement import")
     : b.tag === "before-restore" ? t("before a restore")
+    : b.tag === "before-pay-schedule" ? t("before changing pay schedule")
     : update ? t("before updating to {version}", { version: update[1] })
     : b.tag;
   return `${when} · ${why}`;

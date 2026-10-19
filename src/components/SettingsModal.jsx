@@ -8,13 +8,19 @@ import { SettingRow, Switch } from "./controls.jsx";
 import { Modal } from "./Modal.jsx";
 import { LicensesModal } from "./LicensesModal.jsx";
 import { ago, backupLabel, ordinal } from "../text.js";
-import { LANGUAGES, t, tk, tn } from "../i18n.js";
+import { fmtDate, LANGUAGES, t, tk, tn } from "../i18n.js";
+import { calendarFor, readSchedule } from "../lib/calendar.js";
+import { PAY_KINDS, payKindChosen } from "../lib/paySchedule.js";
 
 export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onChangeLocale, onRestore, onManageCategories, updater, onChangeUpdates, onInstallUpdate,
-  onChangeCutoff, onExport, onExportCsv, onImport, onImportStatement, onReset, onManageRules, lockCfg, onPinAction, onChangeLock, onChangeLanguage }) {
+  onChangeCutoff, onChangePay, today, onExport, onExportCsv, onImport, onImportStatement, onReset, onManageRules, lockCfg, onPinAction, onChangeLock, onChangeLanguage }) {
   const { theme, s } = useThemed();
   const [openedAt] = useState(() => Date.now());
   const rem = data.reminders || { enabled: true, leadDays: 3 };
+  const payKind = payKindChosen(data);
+  const switched = !!readSchedule(data);
+  const cal = calendarFor(data);
+  const nextPayday = cal.range(cal.next(cal.current(today))).start;
   // null until the plugin answers; the real registry entry is the source of
   // truth, so this is never persisted into `data` where it could desync.
   const [autostart, setAutostart] = useState(null);
@@ -100,13 +106,30 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
         </select>
       </SettingRow>
 
-      <SettingRow label={t("Month starts on")} hint={t("Your payday. Each budget period runs from this day to the day before it, a month later.")}>
-        <select value={data.cutoffDay || 1} onChange={(e) => onChangeCutoff(+e.target.value)} style={{ ...s.input, width: 200 }}>
-          {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
-            <option key={d} value={d}>{d === 1 ? t("1st (calendar month)") : ordinal(d)}</option>
-          ))}
+      <SettingRow label={t("You're paid")} hint={t("How often your pay arrives. Each budget period runs from one payday to the day before the next.")}>
+        <select value={payKind} onChange={(e) => e.target.value !== payKind && onChangePay({ kind: e.target.value })} style={{ ...s.input, width: 200 }}>
+          {PAY_KINDS.map((k) => <option key={k.id} value={k.id}>{t(k.label)}</option>)}
         </select>
       </SettingRow>
+
+      {payKind === "monthly" ? (
+        <SettingRow label={t("Month starts on")} hint={t("Your payday. Each budget period runs from this day to the day before it, a month later.")}>
+          {/* A budget that has switched before changes its payday through the
+              same preview as any switch; one that never has re-sorts as always. */}
+          <select value={data.cutoffDay || 1} onChange={(e) => (switched ? onChangePay({ kind: "monthly", cutoffDay: +e.target.value }) : onChangeCutoff(+e.target.value))} style={{ ...s.input, width: 200 }}>
+            {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+              <option key={d} value={d}>{d === 1 ? t("1st (calendar month)") : ordinal(d)}</option>
+            ))}
+          </select>
+        </SettingRow>
+      ) : (
+        <SettingRow label={t("Next payday")}>
+          <span style={{ display: "inline-flex", gap: 12, alignItems: "baseline" }}>
+            <span>{fmtDate(nextPayday, { weekday: "short", day: "numeric", month: "long" })}</span>
+            <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => onChangePay({ kind: payKind })}>{t("Change…")}</button>
+          </span>
+        </SettingRow>
+      )}
 
       <SettingRow label={t("Categories")} hint={t("Rename, merge, recolour or remove spending categories and income sources.")}>
         <button style={{ ...s.linkBtn, padding: 0 }} onClick={onManageCategories}>{t("Manage…")}</button>

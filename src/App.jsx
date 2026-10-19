@@ -26,6 +26,8 @@ import { ExpenseModal } from "./components/ExpenseModal.jsx";
 import { ReportsView } from "./components/ReportsView.jsx";
 import { EntryName, ExpenseRow, MissingFromTemplate, NotDueThisPeriod, RecurringRow, RowActions, UpcomingRow } from "./components/rows.jsx";
 import { SettingsModal } from "./components/SettingsModal.jsx";
+import { PayScheduleModal } from "./components/PayScheduleModal.jsx";
+import { perPeriodOf } from "./lib/paySchedule.js";
 import { StatementImport } from "./components/StatementImport.jsx";
 import { UpdateBanner } from "./components/UpdateBanner.jsx";
 import { WindowControls } from "./components/WindowControls.jsx";
@@ -118,6 +120,8 @@ export default function App() {
     try { return localStorage.getItem(THEME_KEY) || "dark"; } catch { return "dark"; }
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // The "Change how you're paid" dialog: { kind, cutoffDay } while open.
+  const [payDialog, setPayDialog] = useState(null);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   // The welcome screens: shown once, for a budget created on this launch.
@@ -480,11 +484,13 @@ export default function App() {
   const totalCommitted = totalActuallySpent;
   const availableAfterCommitted = Math.max(0, effectiveIncome - totalCommitted);
   const savingsGoal = data.savingsGoal || { monthly: 0 };
+  // Kept per month, set aside per period: a fortnight sets aside 12/26 of it.
+  const setAside = perPeriodOf(savingsGoal.monthly, cal, curKey);
   // Store what was typed, apply what the period can actually cover - the same
   // split the percentage version used, so a lean month cannot silently rewrite
   // the goal. The gap is surfaced rather than hidden.
-  const savingsTarget = Math.min(savingsGoal.monthly, availableAfterCommitted);
-  const savingsShortfall = Math.max(0, savingsGoal.monthly - availableAfterCommitted);
+  const savingsTarget = Math.min(setAside, availableAfterCommitted);
+  const savingsShortfall = Math.max(0, setAside - availableAfterCommitted);
   const leftToSpend = Math.max(0, availableAfterCommitted - savingsTarget);
   const remaining = effectiveIncome - totalCommitted;
   // Only bills due THIS period can be missing from it. Without the cycle check a
@@ -535,6 +541,19 @@ export default function App() {
       t("Choose Cancel to change the start day without moving anything.")
     );
     save(ok ? { ...rebucketData(data, clamped, today), cutoffDay: clamped } : { ...data, cutoffDay: clamped });
+  };
+
+  // A switch of pay schedule: a backup of the budget as it was, then one
+  // save, so Ctrl+Z undoes it.
+  const onSwitchSchedule = async (next) => {
+    if (isTauri) {
+      try {
+        const current = await window.storage.get(STORAGE_KEY);
+        if (current?.value) await writeBackup(current.value, "before-pay-schedule");
+      } catch { /* never block the switch on a failed snapshot */ }
+    }
+    save(next);
+    setPayDialog(null);
   };
 
   // Budget and rollover change together, as one undo step. A budget change
@@ -739,7 +758,7 @@ export default function App() {
               totalUpcoming={totalUpcoming} totalActuallySpent={totalActuallySpent} totalStillScheduled={totalStillScheduled}
               goals={goals} goalsSaved={goalsSaved} goalsTarget={goalsTarget} goalsNeed={goalsNeed}
               dueBills={dueBills} totalCredits={totalCredits} totalCreditsPending={totalCreditsPending}
-              savingsGoal={savingsGoal} savingsShortfall={savingsShortfall} savingsTarget={savingsTarget} leftToSpend={leftToSpend}
+              savingsGoal={savingsGoal} setAside={setAside} savingsShortfall={savingsShortfall} savingsTarget={savingsTarget} leftToSpend={leftToSpend}
               effectiveIncome={effectiveIncome} spentByCat={spentByCat} isReceived={isReceived}
               onSetTab={setTab} onEdit={setModal} patchCur={patchCur} save={save}
               onManageCategories={() => setCategoriesOpen(true)} onSetBudget={onSetBudget} onStartFresh={onStartFresh} />
@@ -1505,6 +1524,11 @@ export default function App() {
         <CategoryManager data={data} onClose={() => setCategoriesOpen(false)} onChange={(next) => save(next)} />
       )}
 
+      {payDialog && (
+        <PayScheduleModal data={data} today={today} initialKind={payDialog.kind} initialCutoff={payDialog.cutoffDay}
+          onCancel={() => { setPayDialog(null); setSettingsOpen(true); }}
+          onSwitch={onSwitchSchedule} />
+      )}
       {settingsOpen && (
         <SettingsModal
           data={data}
@@ -1514,6 +1538,8 @@ export default function App() {
           onChangeUpdates={(updates) => save({ ...data, updates })}
           onInstallUpdate={installUpdate}
           onChangeCutoff={onChangeCutoff}
+          onChangePay={(opts) => { setSettingsOpen(false); setPayDialog(opts); }}
+          today={today}
           onExport={() => exportData(data)}
           onExportCsv={() => exportCsv(data)}
           onImport={triggerImport}

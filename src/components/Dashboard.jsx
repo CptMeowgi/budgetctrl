@@ -14,6 +14,7 @@ import { InfoHint } from "./controls.jsx";
 import { Icon } from "./Icon.jsx";
 import { fmtDate, t, tk, tn } from "../i18n.js";
 import { useReflowAnimation } from "../hooks/useReflowAnimation.js";
+import { perMonthOf } from "../lib/paySchedule.js";
 
 const money = { fontFamily: FONT, fontVariantNumeric: "tabular-nums" };
 const shortDay = (iso) => fmtDate(iso, { day: "numeric", month: "short" });
@@ -249,7 +250,7 @@ function RecentCard({ data, cur, cal, isReceived, onOpen, onViewAll }) {
 export function Dashboard(props) {
   const {
     data, cur, curKey, today, cal, fc, remaining, remainingSub, totalUpcoming, totalActuallySpent, goals, goalsSaved, goalsTarget,
-    dueBills, totalCredits, totalCreditsPending, savingsGoal, savingsShortfall, savingsTarget, leftToSpend, goalsNeed, effectiveIncome,
+    dueBills, totalCredits, totalCreditsPending, savingsGoal, setAside, savingsShortfall, savingsTarget, leftToSpend, goalsNeed, effectiveIncome,
     totalStillScheduled, spentByCat, isReceived, onSetTab, onEdit, patchCur, save, onManageCategories, onSetBudget, onStartFresh,
   } = props;
   const { theme, s } = useThemed();
@@ -342,8 +343,8 @@ export function Dashboard(props) {
               <InfoHint text={t("How much you mean to save out of this period's money. It is taken off before Left to Spend, so what remains is genuinely free.")} />
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
-              <input type="number" min={0} value={savingsGoal.monthly || ""} placeholder="0"
-                onChange={(e) => save({ ...data, savingsGoal: { ...savingsGoal, monthly: Math.max(0, Math.floor(+e.target.value) || 0) } })}
+              <input type="number" min={0} value={setAside || ""} placeholder="0"
+                onChange={(e) => save({ ...data, savingsGoal: { ...savingsGoal, monthly: perMonthOf(Math.max(0, Math.floor(+e.target.value) || 0), cal, curKey) } })}
                 style={{ ...s.input, width: 140, textAlign: "right", ...money, fontWeight: 700, fontSize: 18 }} />
               <span style={{ ...TYPE.caption, color: theme.textMuted, fontWeight: 600 }}>{data.currency}</span>
             </div>
@@ -351,7 +352,7 @@ export function Dashboard(props) {
               <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.warning, marginTop: 8 }}>
                 {t("{short} short this period · setting aside {amount}", { short: fmt(savingsShortfall), amount: fmt(savingsTarget) })}
               </div>
-            ) : savingsGoal.monthly > 0 ? (
+            ) : setAside > 0 ? (
               <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginTop: 8 }}>
                 {t("Covered · {amount} still free", { amount: fmt(leftToSpend) })}
               </div>
