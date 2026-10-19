@@ -33,13 +33,18 @@ export function allNotes(entries, dev = false) {
 }
 
 // The changelog as [{ version, blocks }], newest first. A block is a
-// paragraph { type: "p", text } or a list { type: "ul", items: [{ text,
-// items }] } with one level of nesting. Wrapped lines are joined.
+// paragraph { type: "p", text }, a sub-heading { type: "h", text }, or a
+// list { type: "ul", items: [{ text, items }] } with one level of nesting.
+// Wrapped lines are joined. A quote reads as a paragraph, a table as a list
+// of its rows, and a link as its text: the window shows text, not markup.
 export function parseChangelog(md) {
   const entries = [];
   let entry = null;
   let block = null;
-  const close = () => { block = null; };
+  let kind = null; // what the open block came from: p, quote, ul or table
+  const close = () => { block = null; kind = null; };
+  const open = (b, k) => { block = b; kind = k; entry.blocks.push(b); };
+  const text = (s) => s.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").trim();
   for (const raw of String(md || "").split(/\r?\n/)) {
     const heading = raw.match(/^## (.+?)\s*$/);
     if (heading) {
@@ -51,23 +56,39 @@ export function parseChangelog(md) {
     if (!entry) continue;
     const line = raw.replace(/\s+$/, "");
     if (!line || line === "---") { close(); continue; }
+    const sub3 = line.match(/^#{3,}\s+(.*)$/);
+    const quote = line.match(/^>\s?(.*)$/);
+    const row = line.match(/^\|(.*)\|$/);
     const top = line.match(/^- (.*)$/);
     const sub = line.match(/^ {2,}- (.*)$/);
-    if (top) {
-      if (block?.type !== "ul") { block = { type: "ul", items: [] }; entry.blocks.push(block); }
-      block.items.push({ text: top[1], items: [] });
-    } else if (sub && block?.type === "ul") {
-      block.items[block.items.length - 1].items.push(sub[1]);
-    } else if (block?.type === "ul") {
+    if (sub3) {
+      close();
+      entry.blocks.push({ type: "h", text: text(sub3[1]) });
+    } else if (row) {
+      const cells = row[1].split("|").map((c) => text(c));
+      if (cells.every((c) => /^:?-{3,}:?$/.test(c))) continue;
+      // The first row of a table names its columns.
+      if (kind !== "table") { close(); kind = "table"; continue; }
+      if (!block) open({ type: "ul", items: [] }, "table");
+      block.items.push({ text: cells.filter(Boolean).join(" — "), items: [] });
+    } else if (quote) {
+      if (kind === "quote") block.text += ` ${text(quote[1])}`;
+      else { close(); open({ type: "p", text: text(quote[1]) }, "quote"); }
+    } else if (top) {
+      if (kind !== "ul") { close(); open({ type: "ul", items: [] }, "ul"); }
+      block.items.push({ text: text(top[1]), items: [] });
+    } else if (sub && kind === "ul") {
+      block.items[block.items.length - 1].items.push(text(sub[1]));
+    } else if (kind === "ul") {
       // A wrapped line belongs to the last item, or to its last sub-item.
       const item = block.items[block.items.length - 1];
-      if (item.items.length && /^ {4,}/.test(line)) item.items[item.items.length - 1] += ` ${line.trim()}`;
-      else item.text += ` ${line.trim()}`;
-    } else if (block?.type === "p") {
-      block.text += ` ${line.trim()}`;
+      if (item.items.length && /^ {4,}/.test(line)) item.items[item.items.length - 1] += ` ${text(line)}`;
+      else item.text += ` ${text(line)}`;
+    } else if (kind === "p") {
+      block.text += ` ${text(line)}`;
     } else {
-      block = { type: "p", text: line.trim() };
-      entry.blocks.push(block);
+      close();
+      open({ type: "p", text: text(line) }, "p");
     }
   }
   return entries;

@@ -33,7 +33,9 @@ export function WhatsNewModal({ title, entries, onClose }) {
                 {e.version === "Unreleased" ? t("Not released yet") : t("Version {version}", { version: e.version })}
               </h3>
             )}
-            {e.blocks.map((b, i) => (b.type === "p"
+            {e.blocks.map((b, i) => (b.type === "h"
+              ? <h4 key={i} style={{ ...text, fontWeight: 700, margin: `${SPACE.md}px 0 ${SPACE.xs}px` }}><Inline text={b.text} /></h4>
+              : b.type === "p"
               ? <p key={i} style={{ ...text, margin: `0 0 ${SPACE.sm}px` }}><Inline text={b.text} /></p>
               : (
                 <ul key={i} style={{ ...text, margin: `0 0 ${SPACE.sm}px`, paddingLeft: 20 }}>

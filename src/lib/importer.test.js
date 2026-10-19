@@ -355,6 +355,23 @@ describe("applyImport", () => {
     expect(out.months["2026-09"].upcoming[0].paid).toBe(true);
     expect(data.months["2026-07"]).toBeUndefined(); // input not mutated
   });
+
+  it("starts a period after the running one as it would have started: income carried, its bills copied", () => {
+    const data = {
+      cutoffDay: 1,
+      months: { "2026-10": { income: 4000, expenses: [], upcoming: [], credits: [],
+        recurring: [{ id: "r1", name: "Rent", amount: 1000, dayOfMonth: 1, templateId: "tr" }] } },
+      recurringTemplate: [{ id: "tr", name: "Rent", amount: 1000, dayOfMonth: 1 }],
+      creditTemplate: [],
+    };
+    const rows = [{ action: "expense", include: true, period: "2026-11", date: "2026-11-05", name: "Concert", amount: -80, category: "Fun" }];
+    let n = 0;
+    const { data: out } = applyImport(data, rows, () => `id${++n}`, new Date(2026, 9, 20, 12));
+    const nov = out.months["2026-11"];
+    expect(nov.income).toBe(4000);
+    expect(nov.recurring.map((r) => r.name)).toEqual(["Rent"]);
+    expect(nov.expenses.map((e) => e.name)).toEqual(["Concert"]);
+  });
 });
 
 describe("remembered column layouts", () => {
@@ -390,6 +407,23 @@ describe("remembered column layouts", () => {
     expect(layouts).toHaveLength(20);
     expect(rememberedLayout({ importLayouts: layouts }, ["Date 24", "Amount"])).not.toBeNull();
     expect(rememberedLayout({ importLayouts: layouts }, ["Date 0", "Amount"])).toBeNull();
+  });
+
+  it("doesn't remember a file with no header row: its first row is a transaction", () => {
+    const first = ["2026-10-01", "Lidl", "-23,40"];
+    expect(rememberLayout([], first, layout)).toEqual([]);
+    const forced = [{ key: layoutKey(first), mapping: { date: 0, title: 1, amount: 2 }, splitAmounts: false, invert: false }];
+    expect(rememberedLayout({ importLayouts: forced }, first)).toBeNull();
+  });
+
+  it("tells headers in other scripts apart", () => {
+    expect(layoutKey(["Дата", "Описание", "Сумма"])).not.toBe(layoutKey(["交易日期", "摘要", "金额"]));
+    expect(layoutKey(["Дата", "Описание", "Сумма"])).toBe(layoutKey(["дата", "описание", "сумма "]));
+  });
+
+  it("fills in a column an older layout didn't have", () => {
+    const old = [{ key: layoutKey(header), mapping: { date: 0, payee: -1, title: 1, amount: 4, debit: -1, credit: -1 }, splitAmounts: false, invert: false }];
+    expect(rememberedLayout({ importLayouts: old }, header).mapping.payer).toBe(-1);
   });
 
   it("ignores a saved layout whose columns don't fit the file", () => {

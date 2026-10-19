@@ -13,11 +13,13 @@
 // each transaction against what the budget already holds and proposes an action,
 // leaving anything it believes is already counted unticked.
 
+import { parseAmount } from "./amounts.js";
 import { daysBetween, isoDay } from "./periods.js";
 import { calendarFor } from "./calendar.js";
 import { isRecurringItem } from "./occurrences.js";
 import { applyRule, orderedRules } from "./rules.js";
 import { isSplit } from "./splits.js";
+import { startPeriod } from "../model.js";
 
 // ---------------------------------------------------------------- decoding
 
@@ -86,31 +88,9 @@ export function sniffDelimiter(text) {
 
 // ---------------------------------------------------------- values in cells
 
-// "-1 234,56", "1.234,56", "1,234.56", "(12.50)", "12,50 PLN", "123,45-"
-export function parseAmount(raw) {
-  if (raw == null) return null;
-  let s = String(raw).replace(/[\u00a0\u202f\s]/g, "").replace(/[A-Za-zżźćńółęąśŻŹĆĄŚĘŁÓŃ$€£zł]/g, "");
-  if (!s) return null;
-  let negative = false;
-  if (/^\(.*\)$/.test(s)) { negative = true; s = s.slice(1, -1); }
-  if (s.endsWith("-")) { negative = true; s = s.slice(0, -1); }
-  if (s.startsWith("-")) { negative = !negative; s = s.slice(1); }
-  if (s.startsWith("+")) s = s.slice(1);
-  if (!/^[\d.,]+$/.test(s)) return null;
-  const lastComma = s.lastIndexOf(",");
-  const lastDot = s.lastIndexOf(".");
-  if (lastComma >= 0 && lastDot >= 0) {
-    // Both present: whichever comes last is the decimal mark.
-    s = lastComma > lastDot ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, "");
-  } else if (lastComma >= 0) {
-    s = /,\d{1,2}$/.test(s) ? s.replace(/,(?=\d{3}(\D|$))/g, "").replace(",", ".") : s.replace(/,/g, "");
-  } else if ((s.match(/\./g) || []).length > 1) {
-    s = s.replace(/\./g, ""); // "1.234.567" can only be thousands
-  }
-  const n = Number(s);
-  if (!Number.isFinite(n)) return null;
-  return negative ? -n : n;
-}
+// Amounts are read in amounts.js; re-exported for the screens that import it from here.
+export { parseAmount };
+
 
 function validYMD(y, m, d) {
   if (!(m >= 1 && m <= 12)) return null;
@@ -168,14 +148,17 @@ export function findHeaderRow(rows) {
   let width = 0;
   let best = 0;
   for (const [w, c] of widths) if (c > best || (c === best && w > width)) { best = c; width = w; }
-  const looksLikeValue = (c) => parseAmount(c) != null || parseDate(c) != null;
   for (let i = 0; i < rows.length; i++) {
-    const r = rows[i];
-    if (r.length < width) continue;
-    const labels = r.filter((c) => c && !looksLikeValue(c)).length;
-    if (labels >= Math.ceil(width / 2)) return i;
+    if (rows[i].length >= width && readsAsLabels(rows[i], width)) return i;
   }
   return 0;
+}
+
+// A row most of whose cells are words, not dates or amounts: a header.
+export function readsAsLabels(row, width = row?.length || 0) {
+  const looksLikeValue = (c) => parseAmount(c) != null || parseDate(c) != null;
+  const labels = (row || []).filter((c) => c && !looksLikeValue(c)).length;
+  return width > 0 && labels >= Math.ceil(width / 2);
 }
 
 const KEYWORDS = {
@@ -222,23 +205,33 @@ export function guessMapping(header) {
 // the next time the same header turns up.
 const MAX_LAYOUTS = 20;
 
+// Latin headers without case or accents; others (Cyrillic, Chinese) as they
+// are, but for case and spacing.
 export function layoutKey(header) {
-  return (header || []).map(normalizeHeader).join("|");
+  return (header || []).map((h) => normalizeHeader(h) || String(h ?? "").trim().toLowerCase().normalize("NFKC")).join("|");
 }
 
+const NO_COLUMNS = { date: -1, payee: -1, payer: -1, title: -1, amount: -1, debit: -1, credit: -1 };
+
 // The layout saved for this header: { mapping, splitAmounts, invert }, or
-// null. One that points past the end of the row is ignored.
+// null. One that points past the end of the row is ignored, and a column
+// it doesn't mention (one added since it was saved) is none.
 export function rememberedLayout(data, header) {
+  if (!readsAsLabels(header)) return null;
   const key = layoutKey(header);
   const found = (data?.importLayouts || []).find((l) => l.key === key);
   if (!found?.mapping) return null;
-  const fits = Object.values(found.mapping).every((i) => Number.isInteger(i) && i >= -1 && i < header.length);
+  const mapping = { ...NO_COLUMNS, ...found.mapping };
+  const fits = Object.values(mapping).every((i) => Number.isInteger(i) && i >= -1 && i < header.length);
   if (!fits) return null;
-  return { mapping: found.mapping, splitAmounts: !!found.splitAmounts, invert: !!found.invert };
+  return { mapping, splitAmounts: !!found.splitAmounts, invert: !!found.invert };
 }
 
-// Saves the layout for a header, newest first, in place of an older one.
+// Saves the layout for a header, newest first, in place of an older one. A
+// file without a header row isn't remembered: its first row is a
+// transaction, and no other file will start with it.
 export function rememberLayout(layouts, header, { mapping, splitAmounts, invert }) {
+  if (!readsAsLabels(header)) return layouts || [];
   const key = layoutKey(header);
   const rest = (layouts || []).filter((l) => l.key !== key);
   return [{ key, mapping: { ...mapping }, splitAmounts: !!splitAmounts, invert: !!invert }, ...rest].slice(0, MAX_LAYOUTS);
@@ -396,12 +389,19 @@ export function analyzeImport(transactions, data) {
 
 // Apply the rows the user kept. Pure; `newId` is injected so tests are stable.
 // Transactions land in the period their date falls in, which may be a period
-// the budget has never had - those are created empty rather than dropped.
-export function applyImport(data, rows, newId) {
+// the budget has never had. One before the running period is created empty,
+// as a record of what happened; one after it starts as it would have when
+// its day came - income carried over and its bills - since that day won't
+// start it again.
+export function applyImport(data, rows, newId, today = new Date()) {
   const months = { ...(data.months || {}) };
+  const cal = calendarFor(data);
+  const curKey = cal.current(today);
   const ensure = (k) => {
-    if (!months[k]) months[k] = { income: 0, expenses: [], recurring: [], upcoming: [], credits: [] };
-    else months[k] = { ...months[k] };
+    if (!months[k]) {
+      months[k] = k > curKey ? startPeriod({ ...data, months }, cal, k)
+        : { income: 0, expenses: [], recurring: [], upcoming: [], credits: [] };
+    } else months[k] = { ...months[k] };
     return months[k];
   };
   const counts = { expenses: 0, credits: 0, markedPaid: 0 };

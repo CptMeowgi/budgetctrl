@@ -106,10 +106,18 @@ export function convertToRecurring(data, suggestion, newId, today) {
       recurring: [...(cur.recurring || []), ...copies],
     },
   };
-  return {
-    data: followAhead({ ...data, months, recurringTemplate: [...(data.recurringTemplate || []), tpl] }, "recurring", cal, curKey, tpl.id, newId),
-    removed: inThisPeriod.size,
-  };
+  const out = followAhead({ ...data, months, recurringTemplate: [...(data.recurringTemplate || []), tpl] }, "recurring", cal, curKey, tpl.id, newId);
+  // A period made ahead of time gets the bill too; there, as here, the bill
+  // stands in for the payment it was made from.
+  let removed = inThisPeriod.size;
+  for (const [k, m] of Object.entries(out.months)) {
+    if (k <= curKey || !(m.recurring || []).some((r) => r.templateId === tpl.id)) continue;
+    const gone = new Set(suggestion.entries.filter((e) => e.periodKey === k).map((e) => e.id));
+    if (!gone.size) continue;
+    out.months[k] = { ...m, expenses: (m.expenses || []).filter((e) => !gone.has(e.id)) };
+    removed += gone.size;
+  }
+  return { data: out, removed };
 }
 
 export function dismissRegular(data, key) {

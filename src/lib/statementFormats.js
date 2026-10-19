@@ -4,20 +4,30 @@
 // amount }, money out negative - so the matching that stops double counting,
 // and the import rules, work the same whatever the format.
 
-import { parseAmount } from "./importer.js";
+import { parseAmount } from "./amounts.js";
 
+// By how the file starts, so a CSV that merely mentions a format in one of
+// its cells stays a CSV.
 export function detectFormat(text) {
-  const head = String(text || "").slice(0, 4000);
-  if (/<(?:[\w.-]+:)?BkToCstmrStmt[\s>]/.test(head) || /camt\.053/i.test(head)) return "camt053";
-  if (/OFXHEADER|<OFX>/i.test(head)) return "ofx";
-  if (/^:20:/m.test(head) && /^:61:/m.test(text)) return "mt940";
+  const head = String(text || "").replace(/^\uFEFF/, "").trimStart().slice(0, 4000);
+  if (head.startsWith("<")) {
+    // camt.053 statements, and the camt.052 reports and camt.054
+    // notifications that list entries the same way.
+    if (/<(?:[\w.-]+:)?BkToCstmr(?:Stmt|AcctRpt|DbtCdtNtfctn)[\s>]/.test(head)) return "camt053";
+    if (/<OFX[\s>]|OFXHEADER/i.test(head)) return "ofx";
+    return "csv";
+  }
+  if (/^OFXHEADER:/i.test(head)) return "ofx";
+  if (/^(?:\{1:|:20:)/.test(head)) return "mt940";
   return "csv";
 }
 
+// { transactions, skipped, pending, format }: skipped counts entries that
+// couldn't be read, pending those the bank hasn't booked yet.
 export function parseStatement(text, format) {
   const read = { mt940: mt940, ofx, camt053: camt }[format];
   const out = read ? read(String(text || "")) : { transactions: [], skipped: 0 };
-  return { ...out, format };
+  return { pending: 0, ...out, format };
 }
 
 // ------------------------------------------------------------------ shared
@@ -51,13 +61,14 @@ const unescape = (s) => String(s || "")
 // ------------------------------------------------------------------- MT940
 
 // Fields start a line with :TAG:; any other line continues the field before.
+// A line keeps its spaces: one wrapped after a space must keep it. The
+// SWIFT header ({1:...) and the "-" or "-}" that ends a message are not text.
 function mt940Fields(text) {
   const fields = [];
-  for (const raw of text.split(/\r?\n/)) {
-    const line = raw.replace(/\s+$/, "");
+  for (const line of text.split(/\r?\n/)) {
     const tag = line.match(/^:(\d{2}[A-Z]?):(.*)$/);
     if (tag) fields.push({ tag: tag[1], lines: [tag[2]] });
-    else if (fields.length && line && line !== "-" && !/^[{}-]/.test(line)) fields[fields.length - 1].lines.push(line);
+    else if (fields.length && line.trim() && !/^-\}?$/.test(line.trim()) && !/^\{\d:/.test(line)) fields[fields.length - 1].lines.push(line);
   }
   return fields;
 }
@@ -66,6 +77,8 @@ function mt940Fields(text) {
 // with ~ ^ or <) or ?20 (German) - or is free text, maybe with /NAME/ and
 // /REMI/ codes. Parts can wrap onto the next line mid-word, so lines are
 // joined as they are; free text is joined with spaces.
+const SWIFT_CODES = /\/(TRTP|IBAN|BIC|NAME|ADDR|REMI|EREF|ORDP|BENM|MARF|CSID|PURP|RTRN|ISDT|CNTP|SVCL)\//;
+
 function mt940Details(lines) {
   const joined = lines.join("");
   const sep = joined.match(/^(?:\d{3})?([~^?<])\d{2}/)?.[1];
@@ -79,8 +92,14 @@ function mt940Details(lines) {
   }
   const free = lines.join(" ");
   if (/\/(NAME|REMI)\//.test(free)) {
-    const code = (c) => free.match(new RegExp(`/${c}/([^/]*)`))?.[1] || "";
-    return { payee: code("NAME"), title: code("REMI") };
+    // Each code's text runs to the next code, so a slash inside a name or
+    // an invoice number stays. REMI may start with USTD// or STRD/CUR/.
+    const pieces = free.split(SWIFT_CODES);
+    const code = (c) => {
+      const i = pieces.indexOf(c);
+      return i > 0 && i % 2 === 1 ? pieces[i + 1].replace(/\/+\s*$/, "") : "";
+    };
+    return { payee: code("NAME"), title: code("REMI").replace(/^USTD\/\/?/, "").replace(/^STRD\/[A-Z]*\//, "") };
   }
   return { payee: "", title: free };
 }
@@ -130,27 +149,53 @@ function ofx(text) {
 const tagRe = (tag) => new RegExp(`<(?:[\\w.-]+:)?${tag}(?:\\s[^>]*)?>([\\s\\S]*?)</(?:[\\w.-]+:)?${tag}>`, "g");
 const blocks = (xml, tag) => [...String(xml || "").matchAll(tagRe(tag))].map((m) => m[1]);
 const first = (xml, ...path) => path.reduce((x, tag) => (x == null ? null : blocks(x, tag)[0] ?? null), xml);
-const plain = (xml) => (xml == null ? "" : squash(unescape(String(xml).replace(/<[^>]+>/g, " "))));
+// Text with its tags gone; CDATA is text as it stands.
+const plain = (xml) => {
+  if (xml == null) return "";
+  const parts = String(xml).split(/<!\[CDATA\[([\s\S]*?)\]\]>/);
+  return squash(parts.map((p, i) => (i % 2 ? p : unescape(p.replace(/<[^>]+>/g, " ")))).join(""));
+};
+
+// One payment's details: the other side (who was paid for money out, who
+// paid for money in) and what it was for.
+function camtDetails(tx, out) {
+  const party = first(first(tx, "RltdPties"), out ? "Cdtr" : "Dbtr");
+  const title = blocks(first(tx, "RmtInf"), "Ustrd").map(plain).join(" ") || plain(first(tx, "AddtlTxInf"));
+  return { payee: plain(first(party, "Nm")), title };
+}
 
 function camt(text) {
   const transactions = [];
   let skipped = 0;
+  let pending = 0;
   for (const entry of blocks(text, "Ntry")) {
     // Only what the bank has booked; a pending entry may still change.
     const status = plain(first(entry, "Sts"));
-    if (status && status !== "BOOK") { skipped++; continue; }
+    if (status && status !== "BOOK") { pending++; continue; }
     const out = plain(first(entry, "CdtDbtInd")) === "DBIT";
     const amount = parseAmount(plain(first(entry, "Amt")));
     const when = first(entry, "BookgDt") ?? first(entry, "ValDt");
     const d = plain(first(when, "Dt") ?? first(when, "DtTm")).match(/^(\d{4})-(\d{2})-(\d{2})/);
     const date = d && iso(Number(d[1]), Number(d[2]), Number(d[3]));
     if (!date || !amount) { skipped++; continue; }
-    const tx = first(entry, "NtryDtls", "TxDtls");
-    // The other side: who was paid for money out, who paid for money in.
-    const party = first(first(tx, "RltdPties"), out ? "Cdtr" : "Dbtr");
-    const title = blocks(first(tx, "RmtInf"), "Ustrd").map(plain).join(" ")
-      || plain(first(tx, "AddtlTxInf")) || plain(first(entry, "AddtlNtryInf"));
-    transactions.push(transaction(date, out ? -Math.abs(amount) : Math.abs(amount), plain(first(party, "Nm")), title));
+    const signed = (value, isOut) => (isOut ? -Math.abs(value) : Math.abs(value));
+    const note = plain(first(entry, "AddtlNtryInf"));
+    const txs = blocks(entry, "TxDtls");
+    // A batch - several payments booked as one entry - is split when each
+    // payment says its amount, so each can match what was entered for it.
+    // Otherwise it stays one, named by the entry rather than its first payee.
+    const each = txs.map((tx) => parseAmount(plain(first(tx, "AmtDtls", "TxAmt", "Amt") ?? first(tx, "Amt"))));
+    if (txs.length > 1 && each.every((v) => v)) {
+      txs.forEach((tx, i) => {
+        const ind = plain(first(tx, "CdtDbtInd"));
+        const isOut = ind ? ind === "DBIT" : out;
+        const { payee, title } = camtDetails(tx, isOut);
+        transactions.push(transaction(date, signed(each[i], isOut), payee, title || note));
+      });
+      continue;
+    }
+    const { payee, title } = txs.length === 1 ? camtDetails(txs[0], out) : { payee: "", title: "" };
+    transactions.push(transaction(date, signed(amount, out), payee, title || note));
   }
-  return { transactions, skipped };
+  return { transactions, skipped, pending };
 }

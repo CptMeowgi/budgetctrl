@@ -86,6 +86,14 @@ describe("convertToRecurring", () => {
     expect(after).toBe(before);
   });
 
+  it("in a period made ahead of time, the bill stands in for the payment it was made from", () => {
+    const ahead = { ...data, months: { ...data.months, "2026-11": month(ex("n11", "NETFLIX.COM 9", 52, "2026-11-14")) } };
+    const s = findRegularPayments(ahead, TODAY).find((f) => f.key === "netflix com");
+    const { data: later } = convertToRecurring(ahead, s, id, TODAY);
+    expect(later.months["2026-11"].recurring.map((r) => r.name)).toHaveLength(1);
+    expect(later.months["2026-11"].expenses).toEqual([]);
+  });
+
   it("copies the bill into a period made ahead of time", () => {
     const ahead = { ...data, months: { ...data.months, "2026-11": month() } };
     const later = convertToRecurring(ahead, suggestion, id, TODAY).data;

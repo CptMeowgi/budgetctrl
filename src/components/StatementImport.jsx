@@ -11,7 +11,7 @@ import { t, tk, tn } from "../i18n.js";
 import { catName } from "../text.js";
 
 const ACTION_LABEL = { expense: tk("Expense"), credit: tk("Credit"), markPaid: tk("Marks paid"), skip: tk("Skip") };
-const FORMAT_NAME = { mt940: "MT940", ofx: "OFX", camt053: "CAMT.053" };
+const FORMAT_NAME = { mt940: "MT940", ofx: "OFX", camt053: "CAMT" };
 
 // Bank statement import. The parsing and the double-count matching live in
 // lib/importer.js where they are tested; this is the wizard over them:
@@ -216,6 +216,7 @@ export function StatementImport({ data, onClose, onImport }) {
               <div style={{ ...hint, marginTop: 6 }}>
                 {tn(preview.transactions.length, "{n} transaction read", "{n} transactions read")}
                 {preview.skipped ? ` · ${tn(preview.skipped, "{n} row without a date or amount ignored", "{n} rows without a date or amount ignored")}` : ""}
+                {preview.pending ? ` · ${tn(preview.pending, "{n} entry not booked yet left out", "{n} entries not booked yet left out")}` : ""}
                 {csv && ` · ${t("dates read as {order}", { order: preview.dateOrder === "MDY" ? t("month/day") : preview.dateOrder === "YMD" ? t("year-month-day") : t("day/month") })}`}
               </div>
             </div>

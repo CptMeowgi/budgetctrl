@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { compareVersions, notesToShow, parseChangelog } from "./whatsNew.js";
+import { APP_VERSION, compareVersions, notesToShow, parseChangelog } from "./whatsNew.js";
 
 const SAMPLE = [
   "# Changelog",
@@ -43,6 +43,33 @@ describe("parseChangelog", () => {
         { text: "The app now runs under a strict Content Security Policy:", items: ["its own code only;", "no outside requests."] },
       ] },
     ]);
+  });
+
+  it("reads sub-headings, quotes, tables and links as text, not markup", () => {
+    const md = [
+      "## 0.5.0", "", "> **Upgrading?** Your budget comes", "> with you.", "", "### A new look",
+      "Everything is new.", "", "| Key | Does |", "|---|---|", "| Ctrl+F | Search everything |", "| N | New entry |", "",
+      "See [the 0.4.0 notes](docs/releases/0.4.0.md) for more.",
+    ].join("\n");
+    expect(parseChangelog(md)[0].blocks).toEqual([
+      { type: "p", text: "**Upgrading?** Your budget comes with you." },
+      { type: "h", text: "A new look" },
+      { type: "p", text: "Everything is new." },
+      { type: "ul", items: [{ text: "Ctrl+F — Search everything", items: [] }, { text: "N — New entry", items: [] }] },
+      { type: "p", text: "See the 0.4.0 notes for more." },
+    ]);
+  });
+
+  it("leaves no markup in the real changelog's notes", () => {
+    const texts = parseChangelog(readFileSync("CHANGELOG.md", "utf8")).flatMap((e) => e.blocks.flatMap((b) =>
+      (b.type === "ul" ? b.items.flatMap((i) => [i.text, ...i.items]) : [b.text])));
+    expect(texts.filter((x) => /^[#>|]/.test(x) || /\]\(/.test(x) || /\|\s*-{3}/.test(x))).toEqual([]);
+  });
+
+  it("has notes for the version being built, so a release's What's new isn't empty", () => {
+    // Bumping the version in tauri.conf.json means renaming "## Unreleased" too.
+    expect(APP_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(parseChangelog(readFileSync("CHANGELOG.md", "utf8")).map((e) => e.version)).toContain(APP_VERSION);
   });
 
   it("reads the real changelog: every released version has notes", () => {

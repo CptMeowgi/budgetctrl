@@ -156,7 +156,71 @@ describe("CAMT.053", () => {
     ]);
     expect(r.transactions[0].note).toBe("Strom Oktober");
     expect(r.transactions[1].note).toBe("Gehalt Oktober");
-    expect(r.skipped).toBe(1);
+    // The pending entry is left out, and said so: it isn't unreadable.
+    expect([r.pending, r.skipped]).toEqual([1, 0]);
+  });
+
+  it("splits a batch whose payments each have an amount, naming each after its own payee", () => {
+    const batch = `<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.02"><BkToCstmrStmt><Stmt>
+      <Ntry><Amt Ccy="EUR">300.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts><BookgDt><Dt>2026-10-01</Dt></BookgDt>
+      <AddtlNtryInf>Sammelueberweisung</AddtlNtryInf><NtryDtls>
+        <TxDtls><AmtDtls><TxAmt><Amt Ccy="EUR">100.00</Amt></TxAmt></AmtDtls><RltdPties><Cdtr><Nm>Alice</Nm></Cdtr></RltdPties><RmtInf><Ustrd>Rent A</Ustrd></RmtInf></TxDtls>
+        <TxDtls><AmtDtls><TxAmt><Amt Ccy="EUR">120.00</Amt></TxAmt></AmtDtls><RltdPties><Cdtr><Nm>Bob</Nm></Cdtr></RltdPties></TxDtls>
+        <TxDtls><Amt Ccy="EUR">80.00</Amt><RltdPties><Cdtr><Nm>Carol</Nm></Cdtr></RltdPties></TxDtls>
+      </NtryDtls></Ntry></Stmt></BkToCstmrStmt></Document>`;
+    expect(brief(parseStatement(batch, "camt053"))).toEqual([
+      ["2026-10-01", "Alice", -100], ["2026-10-01", "Bob", -120], ["2026-10-01", "Carol", -80],
+    ]);
+  });
+
+  it("keeps a batch without amounts per payment as one, named by the entry", () => {
+    const batch = `<Document><BkToCstmrStmt><Stmt><Ntry><Amt>300.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+      <BookgDt><Dt>2026-10-01</Dt></BookgDt><AddtlNtryInf>Sammelueberweisung</AddtlNtryInf><NtryDtls>
+      <TxDtls><RltdPties><Cdtr><Nm>Alice</Nm></Cdtr></RltdPties></TxDtls><TxDtls><RltdPties><Cdtr><Nm>Bob</Nm></Cdtr></RltdPties></TxDtls>
+      </NtryDtls></Ntry></Stmt></BkToCstmrStmt></Document>`;
+    expect(brief(parseStatement(batch, "camt053"))).toEqual([["2026-10-01", "Sammelueberweisung", -300]]);
+  });
+
+  it("reads text in CDATA as it is", () => {
+    const cdata = CAMT.replace("<Ustrd>Strom Oktober</Ustrd>", "<Ustrd><![CDATA[Refund <ref> & co]]></Ustrd>");
+    expect(parseStatement(cdata, "camt053").transactions[0].note).toBe("Refund <ref> & co");
+  });
+
+  it("reads account reports and notifications (camt.052, camt.054) the same way", () => {
+    const report = CAMT.replace("camt.053.001.02", "camt.054.001.02").replace(/BkToCstmrStmt/g, "BkToCstmrDbtCdtNtfctn").replace(/<(\/?)Stmt>/g, "<$1Ntfctn>");
+    expect(detectFormat(report)).toBe("camt053");
+    expect(parseStatement(report, "camt053").transactions).toHaveLength(3);
+  });
+});
+
+describe("MT940 details that wrap or carry codes", () => {
+  const one = (details) => parseStatement([":20:X", ":61:2610031003DN10,00NTRF", ...details].join("\r\n"), "mt940").transactions[0];
+
+  it("keeps the space where a line wraps after one", () => {
+    const tx = one([":86:020~00PRZELEW~20Zakup w ", "sklepie spozywczym~32JAN ", "KOWALSKI"]);
+    expect([tx.name, tx.note]).toEqual(["JAN KOWALSKI", "Zakup w sklepie spozywczym"]);
+  });
+
+  it("keeps a continuation line that starts with a dash", () => {
+    expect(one([":86:Zakup towaru", "-50% RABAT"]).name).toBe("Zakup towaru -50% RABAT");
+  });
+
+  it("reads /NAME/ and /REMI/ codes up to the next code, slashes and all", () => {
+    expect(one([":86:/NAME/AB/CD SP. Z O.O./REMI/Faktura 1/2026"])).toMatchObject({ name: "AB/CD SP. Z O.O.", note: "Faktura 1/2026" });
+    expect(one([":86:/TRTP/SEPA OVERBOEKING/IBAN/NL00BANK0123456789/NAME/Shop BV/REMI/USTD//Factuur 123/"]))
+      .toMatchObject({ name: "Shop BV", note: "Factuur 123" });
+  });
+});
+
+describe("detectFormat, by how a file starts", () => {
+  it("doesn't mistake a CSV that mentions another format for one", () => {
+    expect(detectFormat('Date;Description;Amount\n2026-10-01;"Paid via <OFX> export";-5')).toBe("csv");
+    expect(detectFormat('Date;Notes;Amount\n2026-10-01;"camt.053 test";-5')).toBe("csv");
+    expect(detectFormat('Date;Notes;Amount\n2026-10-01;"line one\n:20:REF\n:61:x";-5')).toBe("csv");
+  });
+
+  it("finds MT940 after a byte-order mark or blank lines, even with no entries", () => {
+    expect(detectFormat("﻿\r\n\r\n:20:STARTUMS\r\n:25:123\r\n:62F:C261031EUR0,00")).toBe("mt940");
   });
 });
 

@@ -56,13 +56,12 @@ function MoneyLeftCard({ data, curKey, today, cal, fc, remaining, sub, stillToPa
               ? <Chip tone="bad"><Icon name="arrow-down" size={12} />{t("Runs short around {date} at this pace", { date: shortDay(short) })}</Chip>
               : <Chip tone="good"><Icon name="arrow-up" size={12} />{t("About {amount} left at the end", { amount: fmt(fc.endWithEveryday) })}</Chip>)}
           </div>
+          <div style={{ fontSize: 12, color: theme.textFaint, marginTop: 6 }}>{sub}</div>
           {/* With no income yet, Remaining is only what's spent: say what's missing. */}
-          {needsIncome ? (
+          {needsIncome && (
             <button style={{ ...s.linkBtn, padding: 0, marginTop: 6, fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }} onClick={onAddIncome}>
               <Icon name="plus" size={12} />{monthly ? t("Add your income for this month") : t("Add your income for this period")}
             </button>
-          ) : (
-            <div style={{ fontSize: 12, color: theme.textFaint, marginTop: 6 }}>{sub}</div>
           )}
         </div>
         <div style={{ display: "flex", gap: SPACE.lg, flexShrink: 0, textAlign: "right" }}>
@@ -267,8 +266,9 @@ export function Dashboard(props) {
   useReflowAnimation(lowerRef);
   const planRef = useRef(null);
   const incomeRef = useRef(null);
-  // No pay entered for this period: Remaining asks for it, and takes you to it.
-  const needsIncome = !(cur.income > 0);
+  // Nothing coming in this period yet - no pay entered, no credits received:
+  // Remaining asks for the income, and takes you to it.
+  const needsIncome = !(effectiveIncome > 0);
   const addIncome = () => {
     planRef.current?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
     incomeRef.current?.focus({ preventScroll: true });

@@ -10,24 +10,32 @@
 // Text is compared without case or accents. Rules are checked in order, and
 // the first that fits wins: "ORLEN under 50 -> Snacks" above "ORLEN -> Fuel".
 
+import { parseAmount } from "./amounts.js";
 import { fold } from "./search.js";
 
 const clean = (s) => fold(s).replace(/\*/g, "").replace(/\s+/g, " ").trim();
 
-// The rule's figure, as typed: "49,99" or 49.99. Nothing usable is null.
+// The rule's figure, read as any amount is ("1.234,56", "50 zł", -50), and
+// whichever way the money went. An empty figure is no condition: null. One
+// that isn't a number is NaN, and the rule doesn't apply until it's fixed.
 const figure = (v) => {
   if (v == null || String(v).trim() === "") return null;
-  const n = typeof v === "number" ? v : Number(String(v).replace(/\s/g, "").replace(",", "."));
-  return Number.isFinite(n) ? n : null;
+  const n = typeof v === "number" ? v : parseAmount(v);
+  return n == null || !Number.isFinite(n) ? NaN : Math.abs(n);
 };
 const hasAmount = (r) => figure(r.amount?.value) != null;
 const amountFits = (cond, amount) => {
   const value = figure(cond?.value);
   if (value == null) return true;
-  if (amount == null || !Number.isFinite(amount)) return false;
+  if (Number.isNaN(value) || amount == null || !Number.isFinite(amount)) return false;
   const a = Math.abs(amount);
   return cond.op === "under" ? a < value : cond.op === "over" ? a > value : Math.abs(a - value) < 0.005;
 };
+
+// A figure typed that isn't a number, for the rules list to point out.
+export function amountProblem(rule) {
+  return Number.isNaN(figure(rule?.amount?.value));
+}
 
 export function ruleFor(name, rules, amount) {
   const hay = fold(name);
@@ -92,7 +100,8 @@ export function upsertRule(rules, rule, newId) {
   const plain = (r) => !clean(r.exclude) && !hasAmount(r);
   const existing = list.find((r) => clean(r.match) === key && plain(r));
   if (existing) return list.map((r) => (r === existing ? { ...r, ...rule, id: r.id } : r));
-  const broader = list.findIndex((r) => { const m = clean(r.match); return m && m !== key && key.includes(m); });
+  // Broader: looks for part of this text, or for no text at all, only an amount.
+  const broader = list.findIndex((r) => { const m = clean(r.match); return m ? m !== key && key.includes(m) : hasAmount(r); });
   const added = { id: newId(), ...rule };
   return broader < 0 ? [...list, added] : [...list.slice(0, broader), added, ...list.slice(broader)];
 }

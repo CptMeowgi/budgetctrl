@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ruleFor, suggestMatch, applyRule, upsertRule, orderedRules, moveRule } from "./rules.js";
+import { ruleFor, suggestMatch, applyRule, upsertRule, orderedRules, moveRule, amountProblem } from "./rules.js";
 
 // In the order they are checked: the first that fits wins.
 const rules = [
@@ -55,6 +55,23 @@ describe("ruleFor", () => {
 
   it("reads the figure as typed, with a decimal comma", () => {
     expect(ruleFor("X", [{ id: "eq", match: "x", amount: { op: "equal", value: "49,99" } }], -49.99).id).toBe("eq");
+  });
+
+  it("reads figures as amounts are written anywhere else: thousands, currency, a minus sign", () => {
+    const under = (value) => [{ id: "u", match: "x", amount: { op: "under", value } }];
+    expect(ruleFor("X", under("1.234,56"), -1000).id).toBe("u");
+    expect(ruleFor("X", under("50 zł"), -60)).toBe(null);
+    expect(ruleFor("X", under("50 zł"), -40).id).toBe("u");
+    expect(ruleFor("X", under("-50"), -40).id).toBe("u");
+    expect(ruleFor("X", [{ id: "o", match: "x", amount: { op: "over", value: "-50" } }], -10)).toBe(null);
+  });
+
+  it("a figure that isn't a number makes the rule not apply, rather than apply to everything", () => {
+    const list = [{ id: "bad", match: "orlen", amount: { op: "under", value: "fifty" } }];
+    expect(ruleFor("ORLEN", list, -60)).toBe(null);
+    expect(amountProblem(list[0])).toBe(true);
+    expect(amountProblem({ match: "orlen", amount: { op: "under", value: "50" } })).toBe(false);
+    expect(amountProblem({ match: "orlen" })).toBe(false);
   });
 
   it("ignores an amount condition with no figure", () => {
@@ -125,6 +142,11 @@ describe("upsertRule", () => {
   it("puts a new rule above a broader one it would otherwise lose to", () => {
     const out = upsertRule([{ id: "o", match: "orlen", category: "Transport" }], { match: "orlen stop", category: "Eating out" }, id);
     expect(out.map((r) => r.match)).toEqual(["orlen stop", "orlen"]);
+  });
+
+  it("puts a new rule above one that only checks the amount", () => {
+    const list = [{ id: "a", match: "", amount: { op: "over", value: 100 }, category: "Transport" }];
+    expect(upsertRule(list, { match: "biedronka", category: "Food" }, id).map((r) => r.match)).toEqual(["biedronka", ""]);
   });
 
   it("never overwrites a rule with conditions; it adds a plain one after it", () => {

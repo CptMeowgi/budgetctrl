@@ -1557,7 +1557,7 @@ export default function App() {
           onInstallUpdate={installUpdate}
           onChangeCutoff={onChangeCutoff}
           onChangePay={(opts) => { setSettingsOpen(false); setPayDialog(opts); }}
-          onWhatsNew={() => loadChangelog().then((all) => { setSettingsOpen(false); setWhatsNew({ entries: allNotes(all, import.meta.env.DEV), launch: false }); })}
+          onWhatsNew={() => loadChangelog().then((all) => { setSettingsOpen(false); setWhatsNew({ entries: allNotes(all, import.meta.env.DEV), launch: false }); }).catch(() => { /* notes are a courtesy */ })}
           today={today}
           onExport={() => exportData(data)}
           onExportCsv={() => exportCsv(data)}

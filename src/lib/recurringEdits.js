@@ -22,6 +22,8 @@ const emptyPeriod = () => ({ income: 0, expenses: [], recurring: [], upcoming: [
 // template's copies afresh, and a date that stays keeps its copy's id, as
 // does a monthly bill's one copy.
 export function followAhead(data, kind, cal, curKey, templateId, newId) {
+  // A bill from before templates had ids has no copies to follow it.
+  if (!templateId) return data;
   const { list, template } = KINDS[kind];
   const ahead = Object.keys(data.months || {}).filter((k) => k > curKey);
   if (!ahead.length) return data;

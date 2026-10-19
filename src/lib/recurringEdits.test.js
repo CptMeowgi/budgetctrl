@@ -180,6 +180,13 @@ describe("periods made ahead of time follow the bills", () => {
     expect(out.months["2026-10"]).toEqual(b.months["2026-10"]);
   });
 
+  it("a bill with no template touches no period ahead", () => {
+    const b = ahead();
+    b.months["2026-11"].credits = [{ id: "g", name: "Gift", amount: 50, date: "2026-11-20" }];
+    const out = deleteRecurringCopy(b, "credits", "2026-10", { id: "c0", name: "Old", amount: 5, dayOfMonth: 5 });
+    expect(out.months["2026-11"]).toEqual(b.months["2026-11"]);
+  });
+
   it("leaves past periods alone, and a correction in one stays there", () => {
     const b = ahead();
     const edited = saveRecurring(b, "recurring", opts({ editing: b.months["2026-10"].recurring[0], fields: { name: "Rent", amount: 950, dayOfMonth: 1 }, schedule: MONTHLY }));

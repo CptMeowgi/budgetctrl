@@ -1,5 +1,5 @@
 import { uid } from "../model.js";
-import { moveRule, orderedRules } from "../lib/rules.js";
+import { amountProblem, moveRule, orderedRules } from "../lib/rules.js";
 import { SPACE, TYPE, useThemed } from "../theme.js";
 import { Modal } from "./Modal.jsx";
 import { t } from "../i18n.js";
@@ -56,8 +56,9 @@ export function RulesManager({ data, onChange, onClose }) {
                 </select>
                 {r.amount && (
                   <input inputMode="decimal" aria-label={t("Amount")} value={r.amount.value ?? ""} placeholder="0"
+                    aria-invalid={amountProblem(r)} title={amountProblem(r) ? t("Not a number: this rule won't apply until it is.") : undefined}
                     onChange={(e) => setAmount(r, { value: e.target.value === "" ? null : e.target.value })}
-                    style={{ ...small, width: 90, textAlign: "right" }} />
+                    style={{ ...small, width: 90, textAlign: "right", ...(amountProblem(r) ? { borderColor: theme.danger, color: theme.danger } : null) }} />
                 )}
               </div>
             </div>
