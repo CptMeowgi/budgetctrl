@@ -723,6 +723,8 @@ export default {
   "Choose CSV file…": "Wybierz plik CSV…",
   "Payments already in your budget — recurring bills, your salary, things you entered by hand — are recognised and left unticked, so nothing is counted twice.": "Płatności, które już są w budżecie — stałe opłaty, wypłata, rzeczy wpisane ręcznie — zostaną rozpoznane i odznaczone, więc nic nie zostanie policzone podwójnie.",
   "separated by {sep}": "rozdzielane: {sep}",
+  "Using the columns you chose last time for a file like this.": "Używam kolumn wybranych ostatnio dla takiego pliku.",
+  "Guess again": "Rozpoznaj od nowa",
   "tabs": "tabulatory",
   "Name (who was paid)": "Nazwa (komu zapłacono)",
   "Name (who paid you)": "Nazwa (kto zapłacił)",

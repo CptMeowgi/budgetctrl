@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { analyzeImport, applyImport, decodeBytes, findHeaderRow, guessMapping, parseCsv, sniffDelimiter, toTransactions } from "../lib/importer.js";
+import { analyzeImport, applyImport, decodeBytes, findHeaderRow, guessMapping, parseCsv, rememberedLayout, rememberLayout, sniffDelimiter, toTransactions } from "../lib/importer.js";
 import { uid } from "../model.js";
 import { fmt } from "../money.js";
 import { SPACE, TYPE, useThemed } from "../theme.js";
@@ -21,6 +21,8 @@ export function StatementImport({ data, onClose, onImport }) {
   const [mapping, setMapping] = useState(null);
   const [splitAmounts, setSplitAmounts] = useState(false);
   const [invert, setInvert] = useState(false);
+  // The columns come from the last import of a file with this header.
+  const [remembered, setRemembered] = useState(false);
   const [rows, setRows] = useState([]);
   const [error, setError] = useState("");
 
@@ -34,16 +36,29 @@ export function StatementImport({ data, onClose, onImport }) {
       const parsed = parseCsv(text, delimiter);
       if (parsed.length < 2) { setError(t("That file doesn't contain a table of transactions.")); return; }
       const headerIndex = findHeaderRow(parsed);
-      const m = guessMapping(parsed[headerIndex]);
       setFile({ name: f.name, encoding, delimiter, rows: parsed, headerIndex });
-      setMapping(m);
-      setSplitAmounts(m.amount < 0 && (m.debit >= 0 || m.credit >= 0));
-      setInvert(false);
+      const saved = rememberedLayout(data, parsed[headerIndex]);
+      if (saved) {
+        setMapping(saved.mapping);
+        setSplitAmounts(saved.splitAmounts);
+        setInvert(saved.invert);
+        setRemembered(true);
+      } else {
+        guess(parsed[headerIndex]);
+      }
       setError("");
       setStep("map");
     } catch {
       setError(t("Couldn't read that file. Export a CSV from your bank and try again."));
     }
+  };
+
+  const guess = (row) => {
+    const m = guessMapping(row);
+    setMapping(m);
+    setSplitAmounts(m.amount < 0 && (m.debit >= 0 || m.credit >= 0));
+    setInvert(false);
+    setRemembered(false);
   };
 
   const header = file ? file.rows[file.headerIndex] : [];
@@ -111,7 +126,9 @@ export function StatementImport({ data, onClose, onImport }) {
       rules = upsertRule(rules, { match: suggestMatch(r.bankName || r.name), category: r.category || (r.amount < 0 ? "Uncategorized" : "Other") }, newId);
       if (rules.length > before) added++;
     }
-    const { data: next, counts } = applyImport({ ...data, importRules: rules }, rows, newId);
+    // The columns as confirmed, for the next statement with this header.
+    const importLayouts = rememberLayout(data.importLayouts, header, { mapping, splitAmounts, invert });
+    const { data: next, counts } = applyImport({ ...data, importRules: rules, importLayouts }, rows, newId);
     onImport(next, { ...counts, rules: added });
   };
 
@@ -137,6 +154,12 @@ export function StatementImport({ data, onClose, onImport }) {
             {file.name} · {file.encoding === "utf-8" ? "UTF-8" : "Windows-1250"} · {t("separated by {sep}", { sep: file.delimiter === "\t" ? t("tabs") : `"${file.delimiter}"` })}
             {" · "}{tn(file.rows.length - file.headerIndex - 1, "{n} row", "{n} rows")}
           </div>
+          {remembered && (
+            <div style={{ ...TYPE.caption, color: theme.textMuted, display: "flex", gap: SPACE.sm, alignItems: "baseline", flexWrap: "wrap", marginBottom: SPACE.xs }}>
+              {t("Using the columns you chose last time for a file like this.")}
+              <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => guess(header)}>{t("Guess again")}</button>
+            </div>
+          )}
           {col("date", t("Date"))}
           {col("payee", t("Name (who was paid)"))}
           {col("payer", t("Name (who paid you)"), t("For money in, when your bank names both sides of a transfer."))}

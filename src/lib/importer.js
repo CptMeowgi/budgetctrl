@@ -215,6 +215,35 @@ export function guessMapping(header) {
   return { date, payee, payer, title, amount, debit, credit };
 }
 
+// ------------------------------------------------------- remembered layouts
+
+// A bank's export keeps its header row from one month to the next, so the
+// columns someone confirmed for it are kept, keyed by that row, and used
+// the next time the same header turns up.
+const MAX_LAYOUTS = 20;
+
+export function layoutKey(header) {
+  return (header || []).map(normalizeHeader).join("|");
+}
+
+// The layout saved for this header: { mapping, splitAmounts, invert }, or
+// null. One that points past the end of the row is ignored.
+export function rememberedLayout(data, header) {
+  const key = layoutKey(header);
+  const found = (data?.importLayouts || []).find((l) => l.key === key);
+  if (!found?.mapping) return null;
+  const fits = Object.values(found.mapping).every((i) => Number.isInteger(i) && i >= -1 && i < header.length);
+  if (!fits) return null;
+  return { mapping: found.mapping, splitAmounts: !!found.splitAmounts, invert: !!found.invert };
+}
+
+// Saves the layout for a header, newest first, in place of an older one.
+export function rememberLayout(layouts, header, { mapping, splitAmounts, invert }) {
+  const key = layoutKey(header);
+  const rest = (layouts || []).filter((l) => l.key !== key);
+  return [{ key, mapping: { ...mapping }, splitAmounts: !!splitAmounts, invert: !!invert }, ...rest].slice(0, MAX_LAYOUTS);
+}
+
 // Rows -> transactions with an ISO date, a name, a note and a signed amount
 // (money out negative). Rows without a usable date or amount are skipped and
 // counted rather than guessed at.

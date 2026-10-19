@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   decodeBytes, parseCsv, sniffDelimiter, parseAmount, parseDate, detectDateOrder,
   findHeaderRow, guessMapping, normalizeHeader, toTransactions, analyzeImport, applyImport,
+  layoutKey, rememberLayout, rememberedLayout,
 } from "./importer.js";
 
 // A Polish-bank-style statement: account metadata first, then a ";" table with
@@ -353,5 +354,46 @@ describe("applyImport", () => {
     expect(out.months["2026-07"].credits[0]).toMatchObject({ name: "Refund", amount: 20, category: "Other" });
     expect(out.months["2026-09"].upcoming[0].paid).toBe(true);
     expect(data.months["2026-07"]).toBeUndefined(); // input not mutated
+  });
+});
+
+describe("remembered column layouts", () => {
+  const header = ["#Data operacji", "#Opis operacji", "#Rachunek", "#Kategoria", "#Kwota", "#Saldo po operacji"];
+  const layout = { mapping: { date: 0, payee: -1, payer: -1, title: 3, amount: 4, debit: -1, credit: -1 }, splitAmounts: false, invert: true };
+
+  it("keys a layout by the header row, whatever its case, accents or spacing", () => {
+    expect(layoutKey(header)).toBe(layoutKey(["Data operacji ", "opis OPERACJI", "#Rachunek", "#Kategoria", "#Kwota", "#Saldo po operacji"]));
+    expect(layoutKey(header)).not.toBe(layoutKey(header.slice(0, 5)));
+  });
+
+  it("remembers a layout and finds it for the next file with that header", () => {
+    const layouts = rememberLayout([], header, layout);
+    expect(rememberedLayout({ importLayouts: layouts }, header)).toEqual(layout);
+    expect(rememberedLayout({ importLayouts: layouts }, ["Date", "Amount"])).toBeNull();
+    expect(rememberedLayout({}, header)).toBeNull();
+  });
+
+  it("replaces the layout for a header instead of adding another, newest first", () => {
+    const other = ["Date", "Description", "Amount"];
+    let layouts = rememberLayout([], header, layout);
+    layouts = rememberLayout(layouts, other, { ...layout, invert: false });
+    layouts = rememberLayout(layouts, header, { ...layout, invert: false });
+    expect(layouts).toHaveLength(2);
+    expect(layouts[0].key).toBe(layoutKey(header));
+    expect(rememberedLayout({ importLayouts: layouts }, header).invert).toBe(false);
+  });
+
+  it("keeps the 20 most recent", () => {
+    let layouts = [];
+    const two = { mapping: { date: 0, payee: -1, payer: -1, title: -1, amount: 1, debit: -1, credit: -1 }, splitAmounts: false, invert: false };
+    for (let i = 0; i < 25; i++) layouts = rememberLayout(layouts, [`Date ${i}`, "Amount"], two);
+    expect(layouts).toHaveLength(20);
+    expect(rememberedLayout({ importLayouts: layouts }, ["Date 24", "Amount"])).not.toBeNull();
+    expect(rememberedLayout({ importLayouts: layouts }, ["Date 0", "Amount"])).toBeNull();
+  });
+
+  it("ignores a saved layout whose columns don't fit the file", () => {
+    const layouts = [{ key: layoutKey(header), mapping: { ...layout.mapping, amount: 9 }, splitAmounts: false, invert: false }];
+    expect(rememberedLayout({ importLayouts: layouts }, header)).toBeNull();
   });
 });

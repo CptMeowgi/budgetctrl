@@ -14,6 +14,9 @@
 - Your income, what you set aside and where the money is going now sit
   right under Remaining on the Dashboard, instead of at the bottom. When a
   period has no income yet, Remaining says so and takes you to it.
+- Statement imports remember the columns you chose for each bank. The
+  next file with the same header opens with them, and "Guess again" starts
+  over.
 - Statements from banks that name both sides of a transfer, such as Alior
   Bank, import better. Money in (the amounts with a "+") is named after
   who paid you rather than after you, card payments are named from the

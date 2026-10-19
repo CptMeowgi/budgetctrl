@@ -723,6 +723,8 @@ export default {
   "Choose CSV file…": "选择 CSV 文件…",
   "Payments already in your budget — recurring bills, your salary, things you entered by hand — are recognised and left unticked, so nothing is counted twice.": "预算中已有的付款——固定支出、工资、手动录入的记录——会被识别并保持未勾选，不会重复计算。",
   "separated by {sep}": "分隔符：{sep}",
+  "Using the columns you chose last time for a file like this.": "沿用上次为此类文件选择的列。",
+  "Guess again": "重新识别",
   "tabs": "制表符",
   "Name (who was paid)": "名称（收款方）",
   "Name (who paid you)": "名称（付款方）",
