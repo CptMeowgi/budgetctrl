@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- In dark mode, the lists that drop down from a choice (an account's type,
+  a category, a frequency) were white with near-white text and couldn't be
+  read. They now follow the theme.
 - Editing a recurring credit from History, search or the bill calendar now
   opens the recurring credit form, instead of the one for one-off credits,
   which could leave a stray date on it.

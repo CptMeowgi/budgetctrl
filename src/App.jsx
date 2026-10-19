@@ -577,6 +577,10 @@ export default function App() {
         /* Scrollbars follow the theme. color-scheme also darkens the number-input
            spinners and any other native control the panels render. */
         :root { color-scheme: ${themeMode === "dark" ? "dark" : "light"}; }
+        /* A dropdown's list is drawn by the system, which can't see the
+           translucent field behind it. Without a solid colour of its own it
+           came out white, under the theme's light dark-mode text. */
+        select option, select optgroup { background-color: ${theme.surface}; color: ${theme.text}; }
         ::-webkit-scrollbar { width: 10px; height: 10px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: ${theme.border}; border-radius: 5px; }
