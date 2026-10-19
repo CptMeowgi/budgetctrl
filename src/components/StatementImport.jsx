@@ -5,7 +5,7 @@ import { fmt } from "../money.js";
 import { SPACE, TYPE, useThemed } from "../theme.js";
 import { SettingRow } from "./controls.jsx";
 import { Modal } from "./Modal.jsx";
-import { suggestMatch, upsertRule } from "../lib/rules.js";
+import { orderedRules, suggestMatch, upsertRule } from "../lib/rules.js";
 import { t, tk, tn } from "../i18n.js";
 import { catName } from "../text.js";
 
@@ -118,7 +118,7 @@ export function StatementImport({ data, onClose, onImport }) {
   const doImport = () => {
     let n = 0;
     const newId = () => `${uid()}${++n}`;
-    let rules = data.importRules || [];
+    let rules = orderedRules(data);
     let added = 0;
     for (const r of rows) {
       if (!r.include || !r.remember || (r.action !== "expense" && r.action !== "credit")) continue;
@@ -128,7 +128,8 @@ export function StatementImport({ data, onClose, onImport }) {
     }
     // The columns as confirmed, for the next statement with this header.
     const importLayouts = rememberLayout(data.importLayouts, header, { mapping, splitAmounts, invert });
-    const { data: next, counts } = applyImport({ ...data, importRules: rules, importLayouts }, rows, newId);
+    const ordered = rules.length ? { importRules: rules, importRulesOrdered: true } : {};
+    const { data: next, counts } = applyImport({ ...data, ...ordered, importLayouts }, rows, newId);
     onImport(next, { ...counts, rules: added });
   };
 

@@ -1531,7 +1531,7 @@ export default function App() {
       )}
 
       {rulesOpen && (
-        <RulesManager data={data} onChange={(importRules) => save({ ...data, importRules })} onClose={() => setRulesOpen(false)} />
+        <RulesManager data={data} onChange={(importRules) => save({ ...data, importRules, importRulesOrdered: true })} onClose={() => setRulesOpen(false)} />
       )}
 
       {categoriesOpen && (

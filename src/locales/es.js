@@ -511,7 +511,14 @@ export default {
 
   // Import rules
   "Import rules": "Reglas de importación",
-  "When a bank description contains the text on the left, a statement import names and files it for you. Case and accents don't matter. If several rules match, the longest text wins. Tick {always} while reviewing an import to add one.": "Cuando la descripción del banco contiene el texto de la izquierda, la importación del extracto le pone nombre y categoría por ti. No importan mayúsculas ni acentos. Si coinciden varias reglas, gana el texto más largo. Marca {always} al revisar una importación para añadir una.",
+  "A statement import names and files each new transaction by the first rule here that fits it, checked from the top. Case and accents don't matter. Tick {always} while reviewing an import to add one.": "Al importar un extracto, cada movimiento nuevo se nombra y clasifica con la primera regla de aquí que encaje, revisadas de arriba abajo. No importan las mayúsculas ni los acentos. Marca {always} al revisar una importación para añadir una.",
+  "But not": "Pero no",
+  "Any amount": "Cualquier importe",
+  "Under": "Menos de",
+  "Over": "Más de",
+  "Exactly": "Exactamente",
+  "Move up": "Subir",
+  "Move down": "Bajar",
   "Always": "Siempre",
   "No rules yet.": "Aún no hay reglas.",
   "When it contains": "Si contiene",

@@ -511,7 +511,14 @@ export default {
 
   // Import rules
   "Import rules": "导入规则",
-  "When a bank description contains the text on the left, a statement import names and files it for you. Case and accents don't matter. If several rules match, the longest text wins. Tick {always} while reviewing an import to add one.": "银行描述中包含左侧文字时，导入流水会自动为其命名并归类。不区分大小写和重音符号。多条规则匹配时，以最长的文字为准。审核导入时勾选{always}即可添加规则。",
+  "A statement import names and files each new transaction by the first rule here that fits it, checked from the top. Case and accents don't matter. Tick {always} while reviewing an import to add one.": "导入对账单时，每笔新交易会按此处从上到下第一条符合的规则命名和归类。不区分大小写和重音符号。在检查导入时勾选 {always} 即可添加规则。",
+  "But not": "但不包含",
+  "Any amount": "任意金额",
+  "Under": "低于",
+  "Over": "高于",
+  "Exactly": "正好",
+  "Move up": "上移",
+  "Move down": "下移",
   "Always": "始终",
   "No rules yet.": "还没有规则。",
   "When it contains": "包含文字",

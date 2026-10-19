@@ -16,7 +16,7 @@
 import { daysBetween, isoDay } from "./periods.js";
 import { calendarFor } from "./calendar.js";
 import { isRecurringItem } from "./occurrences.js";
-import { applyRule } from "./rules.js";
+import { applyRule, orderedRules } from "./rules.js";
 import { isSplit } from "./splits.js";
 
 // ---------------------------------------------------------------- decoding
@@ -334,7 +334,8 @@ export function analyzeImport(transactions, data) {
     spendCategories: (data.categories || []).map((c) => c.name),
     creditCategories: (data.creditCategories || []).map((c) => c.name),
   };
-  const ruled = (row) => applyRule(row, data.importRules, ruleCats);
+  const rules = orderedRules(data);
+  const ruled = (row) => applyRule(row, rules, ruleCats);
 
   // Existing entries each absorb at most one transaction, so two identical
   // coffees on the same day are not both waved through as one duplicate.

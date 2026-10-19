@@ -14,6 +14,11 @@
 - Your income, what you set aside and where the money is going now sit
   right under Remaining on the Dashboard, instead of at the bottom. When a
   period has no income yet, Remaining says so and takes you to it.
+- Import rules can do more. A rule can also say what the description must
+  not contain, and check the amount: under, over or exactly a figure. So
+  "ORLEN under 50 is Eating out, any other ORLEN is Transport" works.
+  Rules are checked from the top and the first that fits wins, and you can
+  move them up and down. Your existing rules keep filing as they did.
 - Statement imports remember the columns you chose for each bank. The
   next file with the same header opens with them, and "Guess again" starts
   over.

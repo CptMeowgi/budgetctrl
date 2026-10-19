@@ -2,23 +2,46 @@
 // call it Biedronka". Applied to every new row of a statement import, so a
 // monthly import needs ticking through rather than categorising.
 //
-// A rule: { id, match, category?, rename? }. `match` is compared without case
-// or accents against the bank's description. When several rules match, the
-// longest match wins - "orlen paliwo" beats "orlen".
+// A rule: { id, match, exclude?, amount?, category?, rename? }.
+//   match    the bank's description contains this;
+//   exclude  ...and doesn't contain this;
+//   amount   { op: "under" | "over" | "equal", value }, on the amount
+//            whichever way the money went.
+// Text is compared without case or accents. Rules are checked in order, and
+// the first that fits wins: "ORLEN under 50 -> Snacks" above "ORLEN -> Fuel".
 
 import { fold } from "./search.js";
 
 const clean = (s) => fold(s).replace(/\*/g, "").replace(/\s+/g, " ").trim();
 
-export function ruleFor(name, rules) {
+// The rule's figure, as typed: "49,99" or 49.99. Nothing usable is null.
+const figure = (v) => {
+  if (v == null || String(v).trim() === "") return null;
+  const n = typeof v === "number" ? v : Number(String(v).replace(/\s/g, "").replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+};
+const hasAmount = (r) => figure(r.amount?.value) != null;
+const amountFits = (cond, amount) => {
+  const value = figure(cond?.value);
+  if (value == null) return true;
+  if (amount == null || !Number.isFinite(amount)) return false;
+  const a = Math.abs(amount);
+  return cond.op === "under" ? a < value : cond.op === "over" ? a > value : Math.abs(a - value) < 0.005;
+};
+
+export function ruleFor(name, rules, amount) {
   const hay = fold(name);
-  let best = null;
   for (const r of rules || []) {
     const m = clean(r.match);
-    if (!m || !hay.includes(m)) continue;
-    if (!best || m.length > clean(best.match).length) best = r;
+    // A rule must look for something: text, or at least an amount.
+    if (!m && !hasAmount(r)) continue;
+    if (m && !hay.includes(m)) continue;
+    const not = clean(r.exclude);
+    if (not && hay.includes(not)) continue;
+    if (!amountFits(r.amount, amount)) continue;
+    return r;
   }
-  return best;
+  return null;
 }
 
 // Words in bank descriptions that say how something was paid, not who to.
@@ -46,7 +69,7 @@ export function suggestMatch(name) {
 // searchable.
 export function applyRule(row, rules, { spendCategories = [], creditCategories = [] } = {}) {
   if (row.action !== "expense" && row.action !== "credit") return row;
-  const rule = ruleFor(row.name, rules);
+  const rule = ruleFor(row.name, rules, row.amount);
   if (!rule) return row;
   const allowed = row.action === "expense" ? spendCategories : creditCategories;
   const out = { ...row, rule: rule.id };
@@ -58,12 +81,41 @@ export function applyRule(row, rules, { spendCategories = [], creditCategories =
   return out;
 }
 
-// Add a rule, or update the one that already looks for the same text.
+// Add a rule, or update the plain one that already looks for the same text.
+// A rule with conditions is the reader's own and is never overwritten. A new
+// rule goes above the first broader one it would otherwise lose to ("orlen
+// stop" above "orlen"), so the most specific still wins; otherwise last.
 export function upsertRule(rules, rule, newId) {
   const key = clean(rule.match);
-  if (!key) return rules || [];
   const list = rules || [];
-  const existing = list.find((r) => clean(r.match) === key);
+  if (!key) return list;
+  const plain = (r) => !clean(r.exclude) && !hasAmount(r);
+  const existing = list.find((r) => clean(r.match) === key && plain(r));
   if (existing) return list.map((r) => (r === existing ? { ...r, ...rule, id: r.id } : r));
-  return [...list, { id: newId(), ...rule }];
+  const broader = list.findIndex((r) => { const m = clean(r.match); return m && m !== key && key.includes(m); });
+  const added = { id: newId(), ...rule };
+  return broader < 0 ? [...list, added] : [...list.slice(0, broader), added, ...list.slice(broader)];
+}
+
+// Move a rule one place up (-1) or down (+1).
+export function moveRule(rules, id, delta) {
+  const i = rules.findIndex((r) => r.id === id);
+  const j = i + delta;
+  if (i < 0 || j < 0 || j >= rules.length) return rules;
+  const out = [...rules];
+  [out[i], out[j]] = [out[j], out[i]];
+  return out;
+}
+
+// Rules saved before 0.7 were picked by the longest matching text. Until
+// the reader first changes them, they are read in that order, so with
+// "first that fits wins" each files as before; saved in order from then on
+// (with importRulesOrdered), the order is theirs.
+export function orderedRules(data) {
+  const list = Array.isArray(data?.importRules) ? data.importRules : [];
+  if (data?.importRulesOrdered) return list;
+  return list
+    .map((r, i) => ({ r, i, n: clean(r.match).length }))
+    .sort((a, b) => b.n - a.n || a.i - b.i)
+    .map((x) => x.r);
 }
