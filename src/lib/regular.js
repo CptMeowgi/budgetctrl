@@ -16,6 +16,7 @@ import { calendarFor } from "./calendar.js";
 import { monthsBetween } from "./schedule.js";
 import { daysBetweenISO } from "./accounts.js";
 import { copiesFor } from "./occurrences.js";
+import { followAhead } from "./recurringEdits.js";
 
 const mostCommon = (xs) => {
   const counts = new Map();
@@ -106,7 +107,7 @@ export function convertToRecurring(data, suggestion, newId, today) {
     },
   };
   return {
-    data: { ...data, months, recurringTemplate: [...(data.recurringTemplate || []), tpl] },
+    data: followAhead({ ...data, months, recurringTemplate: [...(data.recurringTemplate || []), tpl] }, "recurring", cal, curKey, tpl.id, newId),
     removed: inThisPeriod.size,
   };
 }

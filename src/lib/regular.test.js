@@ -86,6 +86,12 @@ describe("convertToRecurring", () => {
     expect(after).toBe(before);
   });
 
+  it("copies the bill into a period made ahead of time", () => {
+    const ahead = { ...data, months: { ...data.months, "2026-11": month() } };
+    const later = convertToRecurring(ahead, suggestion, id, TODAY).data;
+    expect(later.months["2026-11"].recurring.map((r) => r.name)).toEqual(["NETFLIX.COM 1234"]);
+  });
+
   it("is no longer suggested afterwards", () => {
     expect(findRegularPayments(out, TODAY).map((f) => f.key)).not.toContain("netflix com");
   });

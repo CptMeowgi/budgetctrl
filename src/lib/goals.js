@@ -113,13 +113,6 @@ export function goalStatus(goal, data, today, history = leftOverHistory(data, to
   };
 }
 
-// What dated goals need set aside each period, together: per paycheck when
-// paid every week or two.
-export function goalsNeedPerPeriod(goals, data, today) {
-  const cal = calendarFor(data);
-  return goalsMonthlyNeed(goals, data, today) / cal.periodsPerMonth(cal.current(today));
-}
-
 // What dated goals need set aside each month, together.
 export function goalsMonthlyNeed(goals, data, today) {
   const history = leftOverHistory(data, today);

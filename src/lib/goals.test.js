@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  leftOverHistory, accountPace, budgetPace, goalSaved, goalStatus, goalsMonthlyNeed, goalsNeedPerPeriod, goalAccountOptions, migrateGoals,
+  leftOverHistory, accountPace, budgetPace, goalSaved, goalStatus, goalsMonthlyNeed, goalAccountOptions, migrateGoals,
 } from "./goals.js";
 
 const D = (y, m, d) => new Date(y, m - 1, d);
@@ -152,12 +152,10 @@ describe("goals in a budget paid every two weeks", () => {
     const st = goalStatus(fortnightly.goals[0], fortnightly, NOV_21);
     expect(st.neededPerMonth).toBe(1300);
     expect(st.perPeriod.needed).toBeCloseTo(600, 6);
-    expect(goalsNeedPerPeriod(fortnightly.goals, fortnightly, NOV_21)).toBeCloseTo(600, 6);
   });
 
   it("in a monthly budget, per period is per month", () => {
     const st = goalStatus({ id: "h", target: 6000, targetDate: "2027-04", source: "budget", startAmount: 0 }, data, TODAY);
     expect(st.perPeriod.needed).toBe(st.neededPerMonth);
-    expect(goalsNeedPerPeriod(data.goals || [], data, TODAY)).toBe(goalsMonthlyNeed(data.goals || [], data, TODAY));
   });
 });

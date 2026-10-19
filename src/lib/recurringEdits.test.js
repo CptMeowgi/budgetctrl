@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { deleteRecurringCopy, editFormFor, saveRecurring } from "./recurringEdits.js";
+import { deleteRecurringCopy, deleteTemplate, editFormFor, saveRecurring } from "./recurringEdits.js";
 import { monthlyCalendar } from "./calendar.js";
 
 const cal = monthlyCalendar(1);
@@ -127,5 +127,64 @@ describe("editFormFor", () => {
     expect(editFormFor("credit", { id: "c", repeat: "weeks", every: 2, date: "2026-11-06" })).toBe("creditRecurring");
     expect(editFormFor("credit", { id: "c", date: "2026-11-06" })).toBe("credit");
     expect(editFormFor("expense", { id: "e", dayOfMonth: 5 })).toBe("expense");
+  });
+});
+
+// A period made ahead of time (by a pay switch, or an import of a future
+// date) holds copies of the bills before it begins. Changing a bill in the
+// running period changes them too, as if the period were made afterwards.
+describe("periods made ahead of time follow the bills", () => {
+  const nov = (n) => `2026-11-${String(n).padStart(2, "0")}`;
+  const ahead = () => {
+    const b = base();
+    b.months["2026-11"] = { income: 0, upcoming: [], credits: [],
+      expenses: [{ id: "x", name: "Shop", amount: 5, date: nov(3), category: "Food" }],
+      recurring: [{ id: "a1", name: "Rent", amount: 900, dayOfMonth: 1, templateId: "tr" },
+                  ...[6, 13, 20, 27].map((d) => ({ id: `aw${d}`, name: "Cleaner", amount: 40, ...WEEKLY, date: nov(d), templateId: "tw" }))] };
+    return b;
+  };
+  const novBills = (out) => out.months["2026-11"].recurring.map((r) => [r.id, r.name, r.amount]);
+
+  it("an edited bill changes there too, and its copies keep their ids", () => {
+    const b = ahead();
+    const rent = saveRecurring(b, "recurring", opts({ editing: b.months["2026-10"].recurring[0], fields: { name: "Rent", amount: 950, dayOfMonth: 1 }, schedule: MONTHLY }));
+    expect(novBills(rent).filter((r) => r[1] === "Rent")).toEqual([["a1", "Rent", 950]]);
+    const cleaner = saveRecurring(b, "recurring", opts({ editing: b.months["2026-10"].recurring[1], fields: { name: "Cleaner", amount: 45 }, schedule: WEEKLY, today: new Date(2026, 9, 5, 12) }));
+    expect(novBills(cleaner).filter((r) => r[1] === "Cleaner")).toEqual([6, 13, 20, 27].map((d) => [`aw${d}`, "Cleaner", 45]));
+  });
+
+  it("a new bill is copied there", () => {
+    const out = saveRecurring(ahead(), "recurring", opts({ fields: { name: "Gym", amount: 30, dayOfMonth: 5 }, schedule: MONTHLY }));
+    expect(out.months["2026-11"].recurring.filter((r) => r.name === "Gym")).toHaveLength(1);
+  });
+
+  it("a bill moved off a date leaves it there", () => {
+    const b = ahead();
+    const fortnightly = { ...WEEKLY, every: 2 };
+    const out = saveRecurring(b, "recurring", opts({ editing: b.months["2026-10"].recurring[1], fields: { name: "Cleaner", amount: 40 }, schedule: fortnightly, today: new Date(2026, 9, 5, 12) }));
+    expect(out.months["2026-11"].recurring.filter((r) => r.name === "Cleaner").map((r) => r.date)).toEqual([nov(13), nov(27)]);
+  });
+
+  it("a deleted bill goes from there too", () => {
+    const b = ahead();
+    const out = deleteRecurringCopy(b, "recurring", "2026-10", b.months["2026-10"].recurring[0]);
+    expect(out.months["2026-11"].recurring.some((r) => r.name === "Rent")).toBe(false);
+    expect(out.months["2026-11"].expenses).toEqual(b.months["2026-11"].expenses);
+  });
+
+  it("a bill deleted from \"not due this period\" goes from there too", () => {
+    const b = ahead();
+    const out = deleteTemplate(b, "recurring", "2026-10", "tr");
+    expect(out.recurringTemplate.map((t) => t.id)).toEqual(["tw"]);
+    expect(out.months["2026-11"].recurring.some((r) => r.templateId === "tr")).toBe(false);
+    expect(out.months["2026-10"]).toEqual(b.months["2026-10"]);
+  });
+
+  it("leaves past periods alone, and a correction in one stays there", () => {
+    const b = ahead();
+    const edited = saveRecurring(b, "recurring", opts({ editing: b.months["2026-10"].recurring[0], fields: { name: "Rent", amount: 950, dayOfMonth: 1 }, schedule: MONTHLY }));
+    expect(edited.months["2026-09"]).toEqual(b.months["2026-09"]);
+    const corrected = saveRecurring(b, "recurring", opts({ targetKey: "2026-09", editing: b.months["2026-09"].recurring[0], fields: { name: "Rent", amount: 980, dayOfMonth: 1 }, schedule: MONTHLY }));
+    expect(corrected.months["2026-11"]).toEqual(b.months["2026-11"]);
   });
 });

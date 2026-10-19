@@ -9,10 +9,9 @@
 
 import { calendarFor, readSchedule } from "./calendar.js";
 import { capAt, withCap } from "./envelopes.js";
-import { isRecurringItem } from "./occurrences.js";
+import { isRecurringItem, missingCopies } from "./occurrences.js";
 import { isoDay, parseDay } from "./periods.js";
 import { emptyMonth, startPeriod, uid } from "../model.js";
-import { missingCopies } from "./occurrences.js";
 
 // The choices, as the Settings and welcome screens offer them.
 export const PAY_KINDS = [
@@ -22,16 +21,6 @@ export const PAY_KINDS = [
 ];
 
 const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
-
-// How the running period is paid: the latest schedule entry that has begun.
-export function payKindNow(data, today) {
-  const schedule = readSchedule(data);
-  if (!schedule) return "monthly";
-  const day = isoDay(today);
-  const begun = schedule.filter((e, i) => i === 0 || e.from <= day);
-  const e = begun[begun.length - 1];
-  return e.kind === "weeks" ? `weeks:${e.every}` : "monthly";
-}
 
 // How the budget is set to be paid: its latest schedule entry, whether or
 // not that has begun. Settings shows this, so a switch still to come can be
@@ -43,12 +32,22 @@ export function payKindChosen(data) {
 }
 
 // The first day `cutoffDay` after the running period ends: where a monthly
-// schedule picks up, so the running period runs on to it.
+// schedule picks up, so the running period runs on to it. Paydays run from
+// the 1st to the 28th; anything else is read as the nearest of those.
 export function firstPaydayFor(data, cutoffDay, today) {
+  const day = Math.min(28, Math.max(1, Math.round(Number(cutoffDay)) || 1));
   const cal = calendarFor(data);
   let d = addDays(cal.range(cal.current(today)).end, 1);
-  while (d.getDate() !== cutoffDay) d = addDays(d, 1);
+  while (d.getDate() !== day) d = addDays(d, 1);
   return isoDay(d);
+}
+
+// The next payday the dialog suggests: the day after the running period
+// ends as the budget stands without a switch still to come, which the
+// reader may be about to change or take back.
+export function defaultFirstPayday(data, today) {
+  const cal = calendarFor(withoutPending(data, today));
+  return isoDay(addDays(cal.range(cal.current(today)).end, 1));
 }
 
 // The set-aside is kept per month and shown per period: a fortnight sets
@@ -79,7 +78,10 @@ function withoutPending(data, today) {
     const { paySchedule: _gone, ...rest } = data;
     return { ...rest, cutoffDay: kept[0].cutoffDay };
   }
-  return { ...data, paySchedule: kept };
+  // The payday Settings shows is the latest monthly one that stays.
+  const monthly = kept.filter((e) => e.kind === "monthly");
+  const cutoffDay = monthly.length ? monthly[monthly.length - 1].cutoffDay : data.cutoffDay;
+  return { ...data, paySchedule: kept, cutoffDay };
 }
 
 // options: { kind: "monthly" | "weeks", every: 1 | 2, cutoffDay, firstPayday, paycheck }.
@@ -104,10 +106,12 @@ export function switchSchedule(data, options, today) {
   const startIso = isoDay(cur.start);
   const baseSchedule = readSchedule(base) || [{ kind: "monthly", cutoffDay: base.cutoffDay || 1 }];
   const last = baseSchedule[baseSchedule.length - 1];
-  // Monthly on the payday the budget already follows, from its usual next
-  // payday: nothing to switch to; only a switch still to come is taken back.
-  const nothingNew = kind === "monthly" && last.kind === "monthly" && last.cutoffDay === cutoffDay
-    && first === isoDay(addDays(cur.end, 1));
+  // The schedule the budget already follows, from its usual next payday:
+  // nothing to switch to; only a switch still to come is taken back.
+  const natural = first === isoDay(addDays(cur.end, 1));
+  const nothingNew = natural && (kind === "monthly"
+    ? last.kind === "monthly" && last.cutoffDay === cutoffDay
+    : last.kind === "weeks" && last.every === every);
   const entry = kind === "monthly"
     ? { kind: "monthly", cutoffDay, from: first, after: startIso }
     : { kind: "weeks", every, from: first, after: startIso };
@@ -187,24 +191,32 @@ export function switchSchedule(data, options, today) {
     ? { ...base, categories, months }
     : { ...base, paySchedule, cutoffDay: kind === "monthly" ? cutoffDay : base.cutoffDay, categories, months };
   // Each new period up to today's, with its bills; the first with the paycheck.
+  let made = 0;
   if (!nothingNew) {
     for (let k = firstKey; k <= lastNew; k = newCal.next(k)) {
       const p = startPeriod(next, newCal, k, moved[k] || emptyMonth());
       next.months[k] = k === firstKey ? { ...p, income: paycheck } : p;
+      made++;
     }
   }
+  // Nothing to switch to and no switch to take back: the budget stays as it is.
+  const unchanged = nothingNew && base === data;
 
   const newEnd = newCal.range(curKey).end;
   const nowEnd = nowCal.range(curKey).end;
   const labels = [firstKey];
   while (labels.length < 3) labels.push(newCal.next(labels[labels.length - 1]));
   return {
-    data: next,
+    data: unchanged ? data : next,
     preview: {
       error: null,
+      unchanged,
+      takeBack: nothingNew && !unchanged,
+      made,
       firstPayday: first,
       firstKey,
-      periods: labels.map((k) => newCal.label(k).primary),
+      // A monthly period that isn't a calendar month is named by its days.
+      periods: labels.map((k) => { const l = newCal.label(k); return l.range || l.primary; }),
       current: {
         key: curKey,
         start: startIso,

@@ -15,9 +15,10 @@ export function CategoryBudgets({ categories, spent, average, envelopeOf, onSetB
   const [draftCap, setDraftCap] = useState("");
   const [draftRollover, setDraftRollover] = useState(false);
 
+  // The budget this period has, not one already set for a period to come.
   const startEdit = (c) => {
     setEditing(c.name);
-    setDraftCap(c.cap != null ? String(c.cap) : "");
+    setDraftCap(c.env.cap != null ? String(c.env.cap) : "");
     setDraftRollover(!!c.rollover);
   };
   const commitEdit = () => {

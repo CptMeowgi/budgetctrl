@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { firstPaydayFor, payKindChosen, payKindNow, switchSchedule } from "./paySchedule.js";
+import { defaultFirstPayday, firstPaydayFor, payKindChosen, switchSchedule } from "./paySchedule.js";
 import { calendarFor, readSchedule } from "./calendar.js";
 import { applySetup } from "./setup.js";
 import { isoDay } from "./periods.js";
@@ -144,11 +144,6 @@ describe("switching to fortnights", () => {
     expect(payKindChosen(fortnights("2026-11-27").data)).toBe("weeks:2");
   });
 
-  it("says how the running period is paid", () => {
-    expect(payKindNow(B(), TODAY)).toBe("monthly");
-    expect(payKindNow(fortnights().data, new Date(2026, 10, 10, 12))).toBe("weeks:2");
-    expect(payKindNow(fortnights().data, TODAY)).toBe("monthly");
-  });
 });
 
 describe("switching again", () => {
@@ -224,5 +219,58 @@ describe("fixes from the review of switching", () => {
     expect(back.months["2026-10"].recurring.map((r) => r.name).sort()).toEqual(["Phone", "Rent"]);
     const later = switchSchedule(pending, { kind: "weeks", every: 2, firstPayday: "2026-11-27" }, TODAY).data;
     expect(later.months["2026-10"].recurring.map((r) => r.name).sort()).toEqual(["Phone", "Rent"]);
+  });
+});
+
+describe("the rest of the review of switching", () => {
+  const TEN_NOV = new Date(2026, 10, 10, 12);
+
+  it("replacing a monthly switch still to come puts back the payday the budget had", () => {
+    const f = fortnights().data;
+    const pendingMonthly = switchSchedule(f, { kind: "monthly", cutoffDay: 10 }, TEN_NOV).data;
+    expect(pendingMonthly.cutoffDay).toBe(10);
+    const { data } = switchSchedule(pendingMonthly, { kind: "weeks", every: 1, firstPayday: "2026-11-16" }, TEN_NOV);
+    expect(data.cutoffDay).toBe(25);
+  });
+
+  it("the suggested next payday ignores a switch still to come", () => {
+    expect(defaultFirstPayday(B(), TODAY)).toBe("2026-11-25");
+    expect(defaultFirstPayday(fortnights("2026-11-27").data, TODAY)).toBe("2026-11-25");
+    expect(defaultFirstPayday(fortnights().data, TEN_NOV)).toBe("2026-11-20");
+  });
+
+  it("a switch to how the budget is already paid changes nothing", () => {
+    const f = fortnights().data;
+    const same = switchSchedule(f, { kind: "weeks", every: 2, firstPayday: "2026-11-20" }, TEN_NOV);
+    expect(same.preview.unchanged).toBe(true);
+    expect(same.data).toBe(f);
+    const b = B();
+    const monthly = switchSchedule(b, { kind: "monthly", cutoffDay: 25 }, TODAY);
+    expect(monthly.preview.unchanged).toBe(true);
+    expect(monthly.data).toBe(b);
+    expect(fortnights().preview.unchanged).toBe(false);
+  });
+
+  it("says when a switch is taken back, so there's no paycheck to ask for", () => {
+    const pending = fortnights("2026-11-27").data;
+    const back = switchSchedule(pending, { kind: "monthly", cutoffDay: 25 }, TODAY).preview;
+    expect([back.takeBack, back.unchanged]).toEqual([true, false]);
+    expect(fortnights().preview.takeBack).toBe(false);
+  });
+
+  it("monthly periods ahead are named by their days when they aren't calendar months", () => {
+    const { preview } = switchSchedule(fortnights().data, { kind: "monthly", cutoffDay: 25 }, TEN_NOV);
+    expect(preview.periods.map(plain)).toEqual(["Nov 25 – Dec 24", "Dec 25 – Jan 24", "Jan 25 – Feb 24"]);
+  });
+
+  it("counts the new periods a late switch makes", () => {
+    expect(fortnights("2026-11-06", new Date(2026, 10, 21, 12)).preview.made).toBe(2);
+    expect(fortnights().preview.made).toBe(1);
+  });
+
+  it("a payday outside 1-28 is read as the nearest one, and never loops", () => {
+    expect(firstPaydayFor(B(), 40, TODAY)).toBe(firstPaydayFor(B(), 28, TODAY));
+    expect(firstPaydayFor(B(), 0, TODAY)).toBe(firstPaydayFor(B(), 1, TODAY));
+    expect(firstPaydayFor(B(), NaN, TODAY)).toBe(firstPaydayFor(B(), 1, TODAY));
   });
 });

@@ -176,7 +176,9 @@ function migrateCurrency(data) {
 
 function migrateSavingsGoal(data) {
   const g = data.savingsGoal;
-  const clean = (n) => (Number.isFinite(+n) && +n > 0 ? Math.round(+n) : 0);
+  // To the cent: the set-aside is kept per month, and a fortnight's figure
+  // converted to a month has cents.
+  const clean = (n) => (Number.isFinite(+n) && +n > 0 ? Math.round(+n * 100) / 100 : 0);
   if (g && typeof g === "object") {
     return { ...data, savingsGoal: { monthly: clean(g.monthly), target: clean(g.target) } };
   }

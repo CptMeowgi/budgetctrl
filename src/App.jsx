@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { closeAccount, recordBalance, removeBalance, reopenAccount } from "./lib/accounts.js";
-import { startFresh, withCap, withRollover } from "./lib/envelopes.js";
+import { capAt, startFresh, withCap, withRollover } from "./lib/envelopes.js";
 import { goalStatus, goalsMonthlyNeed, leftOverHistory } from "./lib/goals.js";
 import { convertToRecurring, dismissRegular, findRegularPayments } from "./lib/regular.js";
 import { forecast } from "./lib/forecast.js";
@@ -10,7 +10,7 @@ import { calendarFor } from "./lib/calendar.js";
 import { collectDueBills, OVERDUE_GRACE_DAYS, upcomingSettled } from "./lib/reminders.js";
 import { dayOfMonthFrom, REPEAT_OPTIONS, repeatLabel, scheduleFromForm } from "./lib/schedule.js";
 import { isRecurringItem, isWeekly, missingCopies, occursIn } from "./lib/occurrences.js";
-import { deleteRecurringCopy, editFormFor, saveRecurring } from "./lib/recurringEdits.js";
+import { deleteRecurringCopy, deleteTemplate, editFormFor, saveRecurring } from "./lib/recurringEdits.js";
 import { creditReceived, periodIncome, periodSpending } from "./lib/totals.js";
 import { AccountModal, AccountsView } from "./components/AccountsView.jsx";
 import { CategoryManager } from "./components/CategoryManager.jsx";
@@ -536,6 +536,9 @@ export default function App() {
   const filteredCredits = filterAndSort(cur.credits || [], creditsView);
   const onChangeCutoff = (next) => {
     const clamped = Math.max(1, Math.min(28, next || 1));
+    // A budget with a pay schedule changes payday by adding to the schedule,
+    // never by re-sorting its months.
+    if (cal.scheduled) { setPayDialog({ kind: "monthly", cutoffDay: clamped }); return; }
     if (clamped === cal.cutoffDay) return;
     const moves = countRebucketMoves(data, clamped, today);
     if (moves === 0) { save({ ...data, cutoffDay: clamped }); return; }
@@ -567,7 +570,7 @@ export default function App() {
       ...data,
       categories: data.categories.map((c) => {
         if (c.name !== name) return c;
-        const capped = (c.cap ?? null) === newCap ? c : withCap(c, newCap, curKey);
+        const capped = capAt(c, curKey) === newCap ? c : withCap(c, newCap, curKey);
         return withRollover(capped, rollover, curKey);
       }),
     });
@@ -922,7 +925,7 @@ export default function App() {
               )}
               <NotDueThisPeriod items={offCycleRecurring} curKey={curKey} cal={cal} categories={data.categories}
                 onEdit={(tpl) => setModal({ type: "recurring", templateId: tpl.id })}
-                onDelete={(tpl) => save({ ...data, recurringTemplate: data.recurringTemplate.filter((x) => x.id !== tpl.id) })} />
+                onDelete={(tpl) => save(deleteTemplate(data, "recurring", curKey, tpl.id))} />
             </div>
           )}
 
@@ -1033,7 +1036,7 @@ export default function App() {
                   <NotDueThisPeriod items={offCycleCredits} curKey={curKey} cal={cal}
                     categories={data.creditCategories || []} fallback={CREDIT_UNCATEGORIZED} positive
                     onEdit={(tpl) => setModal({ type: "creditRecurring", templateId: tpl.id })}
-                    onDelete={(tpl) => save({ ...data, creditTemplate: (data.creditTemplate || []).filter((x) => x.id !== tpl.id) })} />
+                    onDelete={(tpl) => save(deleteTemplate(data, "credits", curKey, tpl.id))} />
                 </div>
 
                 <div style={{ ...s.card, marginTop: 16 }}>
@@ -1061,7 +1064,7 @@ export default function App() {
                 <div style={s.cardTitle}>{cal.calendarMonths ? t("Past Months") : t("Past periods")}</div>
               </div>
               {(() => {
-                const pastKeys = Object.keys(data.months).filter((k) => k !== curKey).sort().reverse();
+                const pastKeys = Object.keys(data.months).filter((k) => k < curKey).sort().reverse();
                 if (pastKeys.length === 0) {
                   return <div style={s.empty}>{cal.calendarMonths ? t("No past months yet. Come back after the month ends.") : t("No past periods yet. Come back after this one ends.")}</div>;
                 }

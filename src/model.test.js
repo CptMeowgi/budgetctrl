@@ -112,6 +112,11 @@ describe("opening a budget saved by 0.4.2", () => {
     expect(d).not.toHaveProperty("startingBalance");
   });
 
+  it("keeps the cents of a set-aside kept per month", () => {
+    const d = hydrate(migrate({ ...structuredClone(SAVED_BY_0_4_2), savingsGoal: { monthly: 650.25, target: 0 } }));
+    expect(d.savingsGoal.monthly).toBe(650.25);
+  });
+
   it("keeps the settings, and the złoty formatting it always showed", () => {
     const d = open();
     expect(d.cutoffDay).toBe(1);
