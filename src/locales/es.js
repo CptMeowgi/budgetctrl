@@ -690,7 +690,6 @@ export default {
 
   // First-run setup
   "Money": "Dinero",
-  "Your month": "Tu mes",
   "Set up Budget Ctrl": "Configurar Budget Ctrl",
   "Skip": "Omitir",
   "Welcome to Budget Ctrl": "Te damos la bienvenida a Budget Ctrl",
@@ -803,4 +802,10 @@ export default {
   "Pick a payday after this period starts and no more than a month after it ends.": "Elige un día de cobro posterior al inicio de este periodo y como mucho un mes después de que termine.",
   "Switch": "Cambiar",
   "before changing pay schedule": "antes de cambiar el ritmo de cobro",
+  "Your pay": "Tu sueldo",
+  "How often are you paid?": "¿Cada cuánto cobras?",
+  "Your paycheck ({currency})": "Tu sueldo ({currency})",
+  "Set aside each paycheck": "Apartar de cada sueldo",
+  "Each budget period runs from one payday to the day before the next, so your budget follows your pay.": "Cada periodo del presupuesto va de un día de cobro al día anterior al siguiente, así tu presupuesto sigue a tu sueldo.",
+  "Your pay after tax. Each new period starts with the last paycheck, so you only change it when your pay changes.": "Tu sueldo neto. Cada periodo nuevo empieza con el último sueldo, así que solo lo cambias cuando cambie tu sueldo.",
 };

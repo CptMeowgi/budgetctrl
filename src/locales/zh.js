@@ -690,7 +690,6 @@ export default {
 
   // First-run setup
   "Money": "货币",
-  "Your month": "你的月份",
   "Set up Budget Ctrl": "设置 Budget Ctrl",
   "Skip": "跳过",
   "Welcome to Budget Ctrl": "欢迎使用 Budget Ctrl",
@@ -803,4 +802,10 @@ export default {
   "Pick a payday after this period starts and no more than a month after it ends.": "请选择在本周期开始之后、结束后一个月以内的发薪日。",
   "Switch": "更改",
   "before changing pay schedule": "更改发薪方式之前",
+  "Your pay": "你的工资",
+  "How often are you paid?": "你多久发一次工资？",
+  "Your paycheck ({currency})": "每期工资（{currency}）",
+  "Set aside each paycheck": "每次发薪预留",
+  "Each budget period runs from one payday to the day before the next, so your budget follows your pay.": "每个预算周期从一个发薪日开始，到下一个发薪日的前一天结束，预算随工资走。",
+  "Your pay after tax. Each new period starts with the last paycheck, so you only change it when your pay changes.": "税后工资。每个新周期沿用上一次的工资，只有工资变动时才需要修改。",
 };

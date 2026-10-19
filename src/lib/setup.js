@@ -1,7 +1,8 @@
 // The welcome screens a brand-new budget starts with: currency, when the
 // month starts, this month's income, and some categories to begin with.
 
-import { monthlyCalendar } from "./calendar.js";
+import { calendarFor, monthlyCalendar } from "./calendar.js";
+import { isoDay } from "./periods.js";
 
 // Offered on the last screen; the first eight start ticked.
 export const STARTER_CATEGORIES = [
@@ -35,19 +36,28 @@ export const DEFAULT_CREDIT_CATEGORIES = [
 // months, because the current period depends on the payday just chosen - with
 // a payday of the 25th, 11 October belongs to the period that began on 25
 // September.
+//
+// Paid every week or two (`pay: "weeks:2"`), the budget follows a schedule
+// from the next payday, and the set-aside, asked per paycheck, is kept per
+// month as everywhere else.
 export function applySetup(data, answers, today) {
-  const { currency, locale, cutoffDay, income, setAside, categories } = answers || {};
+  const { currency, locale, cutoffDay, income, setAside, categories, pay, nextPayday } = answers || {};
   const cd = Math.max(1, Math.min(28, Math.floor(Number(cutoffDay)) || 1));
-  const cur = monthlyCalendar(cd).keyFor(today);
+  const weeks = /^weeks:(1|2)$/.exec(pay || "");
+  const paySchedule = weeks ? [{ kind: "weeks", every: Number(weeks[1]), from: nextPayday || isoDay(today) }] : null;
+  const cal = paySchedule ? calendarFor({ paySchedule }) : monthlyCalendar(cd);
+  const cur = cal.keyFor(today);
+  const aside = Math.max(0, Math.round(Number(setAside) || 0));
   const fallback = (data.categories || []).find((c) => c.name === "Uncategorized") || { name: "Uncategorized", color: "#9ca3af", icon: "·" };
   return {
     ...data,
     currency: currency || data.currency,
     locale: locale ?? data.locale,
-    cutoffDay: cd,
+    cutoffDay: paySchedule ? 1 : cd,
+    ...(paySchedule ? { paySchedule } : {}),
     months: { [cur]: { income: Math.max(0, Number(income) || 0), expenses: [], recurring: [], upcoming: [], credits: [] } },
     categories: [fallback, ...(categories || []).map(({ name, icon, color }) => ({ name, icon, color }))],
-    savingsGoal: { monthly: Math.max(0, Math.round(Number(setAside) || 0)) },
+    savingsGoal: { monthly: paySchedule ? Math.round(aside * cal.periodsPerMonth(cur) * 100) / 100 : aside },
     setupDone: true,
   };
 }

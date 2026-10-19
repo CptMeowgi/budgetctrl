@@ -690,7 +690,6 @@ export default {
 
   // First-run setup
   "Money": "Pieniądze",
-  "Your month": "Twój miesiąc",
   "Set up Budget Ctrl": "Konfiguracja Budget Ctrl",
   "Skip": "Pomiń",
   "Welcome to Budget Ctrl": "Witaj w Budget Ctrl",
@@ -803,4 +802,10 @@ export default {
   "Pick a payday after this period starts and no more than a month after it ends.": "Wybierz dzień wypłaty po początku tego okresu i nie później niż miesiąc po jego końcu.",
   "Switch": "Zmień",
   "before changing pay schedule": "przed zmianą sposobu wypłaty",
+  "Your pay": "Twoja wypłata",
+  "How often are you paid?": "Jak często dostajesz wypłatę?",
+  "Your paycheck ({currency})": "Twoja wypłata ({currency})",
+  "Set aside each paycheck": "Odkładaj z każdej wypłaty",
+  "Each budget period runs from one payday to the day before the next, so your budget follows your pay.": "Każdy okres budżetu trwa od jednej wypłaty do dnia przed następną, więc budżet idzie za Twoją wypłatą.",
+  "Your pay after tax. Each new period starts with the last paycheck, so you only change it when your pay changes.": "Twoja wypłata na rękę. Każdy nowy okres zaczyna się od ostatniej wypłaty, więc zmieniasz ją tylko wtedy, gdy zmieni się wypłata.",
 };

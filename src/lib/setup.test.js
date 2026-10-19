@@ -44,3 +44,23 @@ describe("applySetup", () => {
     expect(new Set(names).size).toBe(names.length);
   });
 });
+
+describe("applySetup for pay every week or two", () => {
+  const OCT_15 = new Date(2026, 9, 15, 12);
+
+  it("a budget paid every two weeks starts on its fortnight", () => {
+    const out = applySetup(fresh, { pay: "weeks:2", nextPayday: "2026-10-23", income: 1900, setAside: 185 }, OCT_15);
+    expect(out.paySchedule).toEqual([{ kind: "weeks", every: 2, from: "2026-10-23" }]);
+    expect(Object.keys(out.months)).toEqual(["2026-10-09"]);
+    expect(out.months["2026-10-09"].income).toBe(1900);
+    expect(out.cutoffDay).toBe(1);
+    // The set-aside is entered per paycheck and kept per month.
+    expect(out.savingsGoal.monthly).toBeCloseTo(185 * 26 / 12, 2);
+  });
+
+  it("monthly is as before", () => {
+    const answers = { cutoffDay: 25, income: 4000, setAside: 300 };
+    expect(applySetup(fresh, { ...answers, pay: "monthly" }, OCT_15)).toEqual(applySetup(fresh, answers, OCT_15));
+    expect("paySchedule" in applySetup(fresh, answers, OCT_15)).toBe(false);
+  });
+});

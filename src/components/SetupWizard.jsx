@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { parseAmount } from "../lib/importer.js";
 import { STARTER_CATEGORIES } from "../lib/setup.js";
+import { PAY_KINDS } from "../lib/paySchedule.js";
+import { isoDay } from "../lib/periods.js";
 import { currencyOptions, LOCALE_OPTIONS } from "../money.js";
 import { ordinal } from "../text.js";
 import { ELEVATION, FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
 import { LANGUAGES, t, tk } from "../i18n.js";
 import { BrandMark } from "./Icon.jsx";
 
-const STEPS = [tk("Money"), tk("Your month"), tk("Categories")];
+const STEPS = [tk("Money"), tk("Your pay"), tk("Categories")];
 
 // Three short screens for a brand-new budget. Everything here can be changed
 // later in Settings, and Skip leaves the defaults.
@@ -17,6 +19,9 @@ export function SetupWizard({ data, onFinish, onRestore, onSkip, onChangeLanguag
   const [currency, setCurrency] = useState(data.currency || "PLN");
   const [locale, setLocale] = useState(data.locale || "");
   const [cutoffDay, setCutoffDay] = useState(data.cutoffDay || 1);
+  const [pay, setPay] = useState("monthly");
+  const [nextPayday, setNextPayday] = useState(() => isoDay(new Date()));
+  const weekly = pay !== "monthly";
   const [income, setIncome] = useState("");
   const [setAside, setSetAside] = useState("");
   const [picked, setPicked] = useState(() => new Set(STARTER_CATEGORIES.filter((c) => c.on).map((c) => c.name)));
@@ -25,7 +30,7 @@ export function SetupWizard({ data, onFinish, onRestore, onSkip, onChangeLanguag
   const asideNum = setAside.trim() === "" ? 0 : parseAmount(setAside);
   const stepValid = step !== 1 || (incomeNum != null && incomeNum >= 0 && asideNum != null && asideNum >= 0);
   const answers = () => ({
-    currency, locale, cutoffDay, income: incomeNum || 0, setAside: asideNum || 0,
+    currency, locale, cutoffDay, pay, nextPayday, income: incomeNum || 0, setAside: asideNum || 0,
     categories: STARTER_CATEGORIES.filter((c) => picked.has(c.name)),
   });
   const toggle = (name) => setPicked((p) => {
@@ -80,25 +85,44 @@ export function SetupWizard({ data, onFinish, onRestore, onSkip, onChangeLanguag
 
         {step === 1 && (
           <>
-            <div style={{ ...TYPE.lead, fontWeight: 700 }}>{t("Your month")}</div>
-            <div style={{ ...TYPE.caption, color: theme.textMuted, margin: `${SPACE.xs}px 0 ${SPACE.lg}px`, lineHeight: 1.5 }}>{t("Budget Ctrl can follow your payday rather than the calendar, so a month runs from one pay to the next.")}</div>
-            <label style={label}>{t("My month starts on")}</label>
-            <select value={cutoffDay} onChange={(e) => setCutoffDay(+e.target.value)} style={s.input}>
-              {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
-                <option key={d} value={d}>{d === 1 ? t("The 1st (calendar months)") : t("The {day} (payday)", { day: ordinal(d) })}</option>
-              ))}
+            <div style={{ ...TYPE.lead, fontWeight: 700 }}>{t("Your pay")}</div>
+            <div style={{ ...TYPE.caption, color: theme.textMuted, margin: `${SPACE.xs}px 0 ${SPACE.lg}px`, lineHeight: 1.5 }}>
+              {weekly ? t("Each budget period runs from one payday to the day before the next, so your budget follows your pay.")
+                : t("Budget Ctrl can follow your payday rather than the calendar, so a month runs from one pay to the next.")}
+            </div>
+            <label style={label}>{t("How often are you paid?")}</label>
+            <select value={pay} onChange={(e) => setPay(e.target.value)} style={s.input}>
+              {PAY_KINDS.map((k) => <option key={k.id} value={k.id}>{t(k.label)}</option>)}
             </select>
+            {weekly ? (
+              <>
+                <label style={{ ...label, marginTop: SPACE.md }}>{t("Your next payday")}</label>
+                <input type="date" value={nextPayday} onChange={(e) => setNextPayday(e.target.value)} style={s.input} />
+              </>
+            ) : (
+              <>
+                <label style={{ ...label, marginTop: SPACE.md }}>{t("My month starts on")}</label>
+                <select value={cutoffDay} onChange={(e) => setCutoffDay(+e.target.value)} style={s.input}>
+                  {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+                    <option key={d} value={d}>{d === 1 ? t("The 1st (calendar months)") : t("The {day} (payday)", { day: ordinal(d) })}</option>
+                  ))}
+                </select>
+              </>
+            )}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: SPACE.md }}>
               <div>
-                <label style={label}>{t("Income this month ({currency})", { currency })}</label>
+                <label style={label}>{weekly ? t("Your paycheck ({currency})", { currency }) : t("Income this month ({currency})", { currency })}</label>
                 <input inputMode="decimal" value={income} placeholder="0" autoFocus onChange={(e) => setIncome(e.target.value)} style={s.input} />
               </div>
               <div>
-                <label style={label}>{t("Set aside each month")}</label>
+                <label style={label}>{weekly ? t("Set aside each paycheck") : t("Set aside each month")}</label>
                 <input inputMode="decimal" value={setAside} placeholder={t("Optional")} onChange={(e) => setSetAside(e.target.value)} style={s.input} />
               </div>
             </div>
-            <div style={hint}>{t("Your pay after tax. Each new month starts with the last one's figure, so you only change it when your pay changes.")}</div>
+            <div style={hint}>
+              {weekly ? t("Your pay after tax. Each new period starts with the last paycheck, so you only change it when your pay changes.")
+                : t("Your pay after tax. Each new month starts with the last one's figure, so you only change it when your pay changes.")}
+            </div>
           </>
         )}
 
