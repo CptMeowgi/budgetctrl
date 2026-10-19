@@ -13,7 +13,7 @@ import { calendarFor, readSchedule } from "../lib/calendar.js";
 import { PAY_KINDS, payKindChosen } from "../lib/paySchedule.js";
 
 export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onChangeLocale, onRestore, onManageCategories, updater, onChangeUpdates, onInstallUpdate,
-  onChangeCutoff, onChangePay, today, onExport, onExportCsv, onImport, onImportStatement, onReset, onManageRules, lockCfg, onPinAction, onChangeLock, onChangeLanguage }) {
+  onChangeCutoff, onChangePay, onWhatsNew, today, onExport, onExportCsv, onImport, onImportStatement, onReset, onManageRules, lockCfg, onPinAction, onChangeLock, onChangeLanguage }) {
   const { theme, s } = useThemed();
   const [openedAt] = useState(() => Date.now());
   const rem = data.reminders || { enabled: true, leadDays: 3 };
@@ -330,6 +330,9 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
           {t("Couldn't open your browser. The address is: {url}", { url: unopened })}
         </div>
       )}
+      <SettingRow label={t("What's new")} hint={t("The changes in this version and the ones before it.")}>
+        <button style={{ ...s.linkBtn, padding: 0 }} onClick={onWhatsNew}>{t("Show")}</button>
+      </SettingRow>
       <SettingRow label={t("Open-source licences")} hint={t("The open-source software Budget Ctrl is built with, and its licences.")}>
         <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => setLicensesOpen(true)}>{t("Show")}</button>
       </SettingRow>

@@ -11,6 +11,8 @@ import { collectDueBills, OVERDUE_GRACE_DAYS, upcomingSettled } from "./lib/remi
 import { dayOfMonthFrom, REPEAT_OPTIONS, repeatLabel, scheduleFromForm } from "./lib/schedule.js";
 import { isRecurringItem, isWeekly, missingCopies, occursIn } from "./lib/occurrences.js";
 import { deleteRecurringCopy, deleteTemplate, editFormFor, saveRecurring } from "./lib/recurringEdits.js";
+import { allNotes, APP_VERSION, loadChangelog, whatsNewAtLaunch } from "./lib/whatsNew.js";
+import { WhatsNewModal } from "./components/WhatsNewModal.jsx";
 import { creditReceived, periodIncome, periodSpending } from "./lib/totals.js";
 import { AccountModal, AccountsView } from "./components/AccountsView.jsx";
 import { CategoryManager } from "./components/CategoryManager.jsx";
@@ -126,6 +128,8 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   // The "Change how you're paid" dialog: { kind, cutoffDay } while open.
   const [payDialog, setPayDialog] = useState(null);
+  // { entries, launch }: the notes, after an update or from Settings.
+  const [whatsNew, setWhatsNew] = useState(null);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   // The welcome screens: shown once, for a budget created on this launch.
@@ -221,6 +225,8 @@ export default function App() {
         const lang = DEMO.get("lang") || "en";
         setData(hydrate(DEMO.get("pay") === "fortnightly" ? fortnightlyDemo(new Date(), lang) : demoData(new Date(), lang)));
         setLoaded(true);
+        // &whatsnew: the launch notes as the next release will show them.
+        if (DEMO.has("whatsnew")) loadChangelog().then((all) => setWhatsNew({ entries: allNotes(all, true).slice(0, 1), launch: true }));
         return;
       }
       let stored = null;
@@ -249,6 +255,7 @@ export default function App() {
         return;
       }
       setLoaded(true);
+      whatsNewAtLaunch(!!stored).then((entries) => { if (entries.length) setWhatsNew({ entries, launch: true }); }).catch(() => { /* notes are a courtesy */ });
     })();
     // `save` has no deps of its own, so this still runs exactly once.
   }, [save]);
@@ -356,7 +363,7 @@ export default function App() {
       const el = e.target;
       const tag = (el?.tagName || "").toLowerCase();
       const typing = tag === "input" || tag === "textarea" || tag === "select" || el?.isContentEditable;
-      const dialogOpen = !!modal || settingsOpen || categoriesOpen || statementOpen || searchOpen || rulesOpen || setupOpen || !!pinDialog || !!payDialog;
+      const dialogOpen = !!modal || settingsOpen || categoriesOpen || statementOpen || searchOpen || rulesOpen || setupOpen || !!pinDialog || !!payDialog || !!whatsNew;
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
       // Locking works from anywhere, open dialog or not.
@@ -382,7 +389,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [loaded, modal, settingsOpen, categoriesOpen, statementOpen, searchOpen, rulesOpen, setupOpen, pinDialog, payDialog, lockCfg, locked, tab, undo, redo]);
+  }, [loaded, modal, settingsOpen, categoriesOpen, statementOpen, searchOpen, rulesOpen, setupOpen, pinDialog, payDialog, whatsNew, lockCfg, locked, tab, undo, redo]);
 
   useEffect(() => {
     let alive = true;
@@ -1531,6 +1538,10 @@ export default function App() {
         <CategoryManager data={data} onClose={() => setCategoriesOpen(false)} onChange={(next) => save(next)} />
       )}
 
+      {whatsNew && (
+        <WhatsNewModal entries={whatsNew.entries} onClose={() => setWhatsNew(null)}
+          title={whatsNew.launch ? t("What's new in Budget Ctrl {version}", { version: whatsNew.entries[0]?.version === "Unreleased" ? APP_VERSION : whatsNew.entries[0]?.version || APP_VERSION }) : t("What's new")} />
+      )}
       {payDialog && (
         <PayScheduleModal data={data} today={today} initialKind={payDialog.kind} initialCutoff={payDialog.cutoffDay}
           onCancel={() => { setPayDialog(null); setSettingsOpen(true); }}
@@ -1546,6 +1557,7 @@ export default function App() {
           onInstallUpdate={installUpdate}
           onChangeCutoff={onChangeCutoff}
           onChangePay={(opts) => { setSettingsOpen(false); setPayDialog(opts); }}
+          onWhatsNew={() => loadChangelog().then((all) => { setSettingsOpen(false); setWhatsNew({ entries: allNotes(all, import.meta.env.DEV), launch: false }); })}
           today={today}
           onExport={() => exportData(data)}
           onExportCsv={() => exportCsv(data)}

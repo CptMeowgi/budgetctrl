@@ -9,6 +9,8 @@
   backup, and Ctrl+Z undoes it. Earlier months stay as they were.
 - Budgets whose periods aren't calendar months now say "period" in Category
   Budgets, Savings and History, and goals say what they need per paycheck.
+- After an update, Budget Ctrl shows what's new, once. The notes are
+  always there under Settings → About → What's new.
 - Your income, what you set aside and where the money is going now sit
   right under Remaining on the Dashboard, instead of at the bottom. When a
   period has no income yet, Remaining says so and takes you to it.
