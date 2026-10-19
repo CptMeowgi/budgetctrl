@@ -280,3 +280,39 @@ describe("a damaged pay schedule", () => {
     expect(fortnightly().days("not a key")).toEqual([]);
   });
 });
+
+describe("running a period on to the next stretch", () => {
+  it("monthly to fortnightly with the first payday after the month ends: the month runs on to it", () => {
+    const cal = calendarFor({ paySchedule: [{ kind: "monthly", cutoffDay: 25 }, { kind: "weeks", every: 2, from: "2026-11-27", after: "2026-10-25" }] });
+    expect(span(cal.range("2026-10"))).toEqual(["2026-10-25", "2026-11-26"]);
+    expect(cal.keyFor(on(2026, 11, 25))).toBe("2026-10");
+    expect(cal.next("2026-10")).toBe("2026-11-27");
+    expect(cal.sameKind("2026-10", "2026-09")).toBe(false);
+  });
+
+  it("fortnightly, payday moved later: the running fortnight runs on to it", () => {
+    const cal = calendarFor({ paySchedule: [...FORTNIGHTLY, { kind: "weeks", every: 2, from: "2026-12-10", after: "2026-11-20" }] });
+    expect(span(cal.range("2026-11-20"))).toEqual(["2026-11-20", "2026-12-09"]);
+    expect(cal.keyFor(on(2026, 12, 5))).toBe("2026-11-20");
+    expect(cal.next("2026-11-20")).toBe("2026-12-10");
+  });
+
+  it("fortnightly back to monthly: the fortnight runs on to the payday", () => {
+    const cal = calendarFor({ paySchedule: [...FORTNIGHTLY, { kind: "monthly", cutoffDay: 25, from: "2026-11-25", after: "2026-11-06" }] });
+    expect(span(cal.range("2026-11-06"))).toEqual(["2026-11-06", "2026-11-24"]);
+    expect(cal.next("2026-11-06")).toBe("2026-11-25");
+    expect(span(cal.range("2026-11-25"))).toEqual(["2026-11-25", "2026-12-24"]);
+  });
+
+  it("refuses an `after` that isn't a date before `from`, on or after the stretch before", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const broken = [
+      [...FORTNIGHTLY, { kind: "weeks", every: 2, from: "2026-12-10", after: "2026-12-11" }],
+      [...FORTNIGHTLY, { kind: "weeks", every: 2, from: "2026-12-10", after: "soon" }],
+      [...FORTNIGHTLY, { kind: "weeks", every: 2, from: "2026-12-10", after: "2026-11-01" }],
+    ];
+    for (const paySchedule of broken) expect(readSchedule({ paySchedule })).toBeNull();
+    expect(warn).toHaveBeenCalledTimes(broken.length);
+    warn.mockRestore();
+  });
+});

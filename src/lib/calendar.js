@@ -99,8 +99,14 @@ function validEntry(e, first) {
 }
 function validSchedule(s) {
   if (!Array.isArray(s) || !s.length || !s.every((e, i) => validEntry(e, i === 0))) return false;
-  // Each stretch starts after the one before it.
-  for (let i = 1; i < s.length; i++) if (s[i - 1].from && !(s[i].from > s[i - 1].from)) return false;
+  for (let i = 1; i < s.length; i++) {
+    // Each stretch starts after the one before it.
+    if (s[i - 1].from && !(s[i].from > s[i - 1].from)) return false;
+    // `after`, when there, is the start of the period that runs on until
+    // this stretch begins: a day before `from`, inside the stretch before.
+    const { after } = s[i];
+    if (after != null && !(isDate(after) && after < s[i].from && (!s[i - 1].from || after >= s[i - 1].from))) return false;
+  }
   return true;
 }
 export function readSchedule(data) {
@@ -135,6 +141,10 @@ function scheduleCalendar(schedule) {
       start: i === 0 ? null : dayOf(e.from),
       anchor: e.from ? dayOf(e.from) : null,
       end: next ? addDays(dayOf(next.from), -1) : null,
+      // No period of this stretch starts after the next entry's `after`: the
+      // one that starts then runs on to the stretch's end, shorter or longer
+      // than usual.
+      lastStart: next?.after ? dayOf(next.after) : null,
       monthKeys: i === 0 && e.kind === "monthly",
     };
   });
@@ -148,8 +158,16 @@ function scheduleCalendar(schedule) {
   });
 
   // The period of stretch `s` that day `d` falls in: { key, start, end, part, s }.
-  // `part` marks one cut short by a switch: it is never compared with a whole one.
+  // `part` marks one cut short or run on by a switch: it is never compared
+  // with a whole one.
   const periodIn = (s, d) => {
+    if (s.lastStart && d >= s.lastStart) {
+      const p = basePeriod(s, s.lastStart);
+      return { ...p, end: s.end, part: p.part || p.end.getTime() !== s.end.getTime() };
+    }
+    return basePeriod(s, d);
+  };
+  const basePeriod = (s, d) => {
     if (s.kind === "weeks") {
       const first = addDays(s.anchor, Math.floor(daysBetween(s.anchor, d) / s.step) * s.step);
       const last = addDays(first, s.step - 1);
@@ -173,9 +191,12 @@ function scheduleCalendar(schedule) {
       if (q.key === key) p = q;
     } else if (stretches[0].monthKeys && /^\d{4}-\d{2}$/.test(String(key))) {
       const s = stretches[0];
-      const { start, end } = periodRange(key, s.cd);
-      const r = clip(s, start, end);
-      if (r.start <= r.end) p = { key, ...r, part: r.start > start || r.end < end, s };
+      const { start } = periodRange(key, s.cd);
+      const d = s.start && start < s.start ? s.start : start;
+      if (!s.end || d <= s.end) {
+        const q = periodIn(s, d);
+        if (q.key === key) p = q;
+      }
     }
     cache.set(key, p);
     return p;
