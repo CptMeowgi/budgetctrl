@@ -180,16 +180,21 @@ export function findHeaderRow(rows) {
 
 const KEYWORDS = {
   date: ["data operacji", "data transakcji", "data ksiegowania", "transaction date", "booking date", "value date", "data", "date"],
-  payee: ["kontrahent", "odbiorca", "nadawca", "nazwa odbiorcy", "nazwa nadawcy", "payee", "merchant", "counterparty", "beneficiary"],
-  title: ["tytul", "opis operacji", "opis", "description", "details", "title", "reference", "memo"],
-  amount: ["kwota operacji", "kwota transakcji", "kwota", "amount", "wartosc", "value"],
+  payee: ["kontrahent", "nazwa odbiorcy", "odbiorca", "payee", "merchant", "counterparty", "beneficiary", "nazwa nadawcy", "nadawca"],
+  payer: ["nazwa nadawcy", "nadawca", "payer"],
+  title: ["tytul", "opis operacji", "opis", "szczegoly", "description", "details", "title", "reference", "memo"],
+  // The account's own currency first: a payment abroad is also given in
+  // the currency it was made in, which isn't what left the account.
+  amount: ["kwota w walucie rachunku", "kwota operacji", "kwota transakcji", "kwota", "amount", "wartosc", "value"],
   debit: ["obciazenia", "obciazenie", "wydatki", "debit", "money out", "withdrawal", "paid out"],
   credit: ["uznania", "uznanie", "wplywy", "credit", "money in", "deposit", "paid in"],
 };
 
 // Best guess at which column is which, by header text. Every value is an index
 // into the header or -1. Payee and title are kept apart because banks usually
-// split them: the payee makes a good entry name, the title a good note.
+// split them: the payee makes a good entry name, the title a good note. Some
+// banks name both sides of a transfer; then the payee is who was paid and the
+// payer who paid you, and money in is named after the payer.
 export function guessMapping(header) {
   const norm = header.map(normalizeHeader);
   const used = new Set();
@@ -205,8 +210,9 @@ export function guessMapping(header) {
   const credit = pick(KEYWORDS.credit);
   const amount = debit >= 0 && credit >= 0 ? -1 : pick(KEYWORDS.amount);
   const payee = pick(KEYWORDS.payee);
+  const payer = pick(KEYWORDS.payer);
   const title = pick(KEYWORDS.title);
-  return { date, payee, title, amount, debit, credit };
+  return { date, payee, payer, title, amount, debit, credit };
 }
 
 // Rows -> transactions with an ISO date, a name, a note and a signed amount
@@ -230,7 +236,8 @@ export function toTransactions(rows, headerIndex, mapping, { invert = false } = 
     }
     if (!date || amount == null || amount === 0) { skipped++; continue; }
     if (invert) amount = -amount;
-    const payee = mapping.payee >= 0 ? (r[mapping.payee] || "").trim() : "";
+    const who = amount > 0 && mapping.payer >= 0 ? mapping.payer : mapping.payee;
+    const payee = who >= 0 ? (r[who] || "").trim() : "";
     const title = mapping.title >= 0 ? (r[mapping.title] || "").trim() : "";
     const name = (payee || title || "Imported transaction").replace(/\s+/g, " ").slice(0, 80);
     const note = payee && title && title !== payee ? title.replace(/\s+/g, " ").slice(0, 200) : undefined;

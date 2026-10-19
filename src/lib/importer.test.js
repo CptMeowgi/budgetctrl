@@ -103,6 +103,20 @@ describe("dates", () => {
   });
 });
 
+// An Alior-style export: a criteria line, then a ";" table with day-first
+// dates. Money in carries a "+" and its name in the sender's column; card
+// payments have no names, only details; a payment abroad gives the amount in
+// its own currency and in the account's. Made-up data, not a real statement.
+const ALIOR_STATEMENT = [
+  "Kryteria transakcji: Okres: 01-10-2026 - 19-10-2026;Typ transakcji: Uznania/Obciążenia;Produkty: 00000000000000000000000000",
+  "Data transakcji;Data księgowania;Nazwa nadawcy;Nazwa odbiorcy;Szczegóły transakcji;Kwota operacji;Waluta operacji;Kwota w walucie rachunku;Waluta rachunku;Numer rachunku nadawcy;Numer rachunku odbiorcy",
+  "15-10-2026;15-10-2026;ACME SP. Z O.O.;JAN KOWALSKI;Wynagrodzenie 09/2026;+6 500,00;PLN;+6 500,00;PLN;11111111111111111111111111;22222222222222222222222222",
+  "14-10-2026;16-10-2026;;;KOLEO bilety kolejowe Warszawa PL;-17,50;PLN;-17,50;PLN;;",
+  "12-10-2026;13-10-2026;;;BOOKING.COM Amsterdam NL;-22,14;EUR;-104,06;PLN;;",
+  "10-10-2026;10-10-2026;JAN KOWALSKI;ANNA NOWAK;Za obiad;-50,00;PLN;-50,00;PLN;22222222222222222222222222;33333333333333333333333333",
+  "09-10-2026;09-10-2026;ANNA NOWAK;JAN KOWALSKI;Zwrot za bilety;+35,00;PLN;+35,00;PLN;33333333333333333333333333;22222222222222222222222222",
+].join("\r\n");
+
 describe("table layout", () => {
   it("skips account metadata and finds the real header", () => {
     const rows = parseCsv(PL_STATEMENT, ";");
@@ -125,6 +139,13 @@ describe("table layout", () => {
     const rows = parseCsv(UK_STATEMENT, ",");
     const m = guessMapping(rows[0]);
     expect(m).toMatchObject({ date: 0, title: 1, debit: 2, credit: 3, amount: -1 });
+  });
+
+  it("reads an Alior header: names by direction, details, the account's amount", () => {
+    const rows = parseCsv(ALIOR_STATEMENT, ";");
+    const h = findHeaderRow(rows);
+    expect(h).toBe(1);
+    expect(guessMapping(rows[h])).toMatchObject({ date: 0, payer: 2, payee: 3, title: 4, amount: 7, debit: -1, credit: -1 });
   });
 });
 
@@ -160,6 +181,34 @@ describe("toTransactions", () => {
     const rows = [["Data", "Kontrahent", "Tytuł", "Kwota"], ["2026-09-01", "Orange Polska", "Faktura 09/2026", "-60,00"]];
     const { transactions } = toTransactions(rows, 0, guessMapping(rows[0]));
     expect(transactions[0]).toMatchObject({ name: "Orange Polska", note: "Faktura 09/2026", amount: -60 });
+  });
+
+  it("reads an Alior statement: money in with a plus, names from the right column", () => {
+    const rows = parseCsv(ALIOR_STATEMENT, ";");
+    const h = findHeaderRow(rows);
+    const { transactions, skipped } = toTransactions(rows, h, guessMapping(rows[h]));
+    expect(skipped).toBe(0);
+    expect(transactions.map((t) => [t.date, t.name, t.amount])).toEqual([
+      ["2026-10-15", "ACME SP. Z O.O.", 6500],
+      ["2026-10-14", "KOLEO bilety kolejowe Warszawa PL", -17.5],
+      ["2026-10-12", "BOOKING.COM Amsterdam NL", -104.06],
+      ["2026-10-10", "ANNA NOWAK", -50],
+      ["2026-10-09", "ANNA NOWAK", 35],
+    ]);
+    expect(transactions[0].note).toBe("Wynagrodzenie 09/2026");
+    expect(transactions[1].note).toBeUndefined();
+  });
+
+  it("names money in from the payee column when the bank has no sender column", () => {
+    const rows = [["Data", "Kontrahent", "Tytuł", "Kwota"], ["2026-09-01", "ACME", "Pensja", "+3 000,00"]];
+    const { transactions } = toTransactions(rows, 0, guessMapping(rows[0]));
+    expect(transactions[0]).toMatchObject({ name: "ACME", note: "Pensja", amount: 3000 });
+  });
+
+  it("names a row by its direction after inverting the signs", () => {
+    const rows = [["Date", "Payer", "Payee", "Amount"], ["2026-09-01", "Me", "Shop", "10.00"]];
+    const { transactions } = toTransactions(rows, 0, { date: 0, payer: 1, payee: 2, title: -1, amount: 3, debit: -1, credit: -1 }, { invert: true });
+    expect(transactions[0]).toMatchObject({ name: "Shop", amount: -10 });
   });
 
   it("skips and counts rows without a usable date or amount", () => {
@@ -204,6 +253,21 @@ describe("analyzeImport", () => {
     const [r] = analyzeImport([tx("2026-09-28", "COFFEE ROASTERY", -3.2)], data);
     expect(r).toMatchObject({ action: "skip", include: false });
     expect(r.reason).toContain("Coffee");
+  });
+
+  it("proposes an Alior statement's money in as credits, ticked", () => {
+    const rows = parseCsv(ALIOR_STATEMENT, ";");
+    const h = findHeaderRow(rows);
+    const { transactions } = toTransactions(rows, h, guessMapping(rows[h]));
+    const budget = { cutoffDay: 1, months: { "2026-10": { income: 7000, expenses: [], recurring: [], upcoming: [], credits: [] } } };
+    const out = analyzeImport(transactions, budget);
+    expect(out.map((r) => [r.name, r.action, r.include])).toEqual([
+      ["ACME SP. Z O.O.", "credit", true],
+      ["KOLEO bilety kolejowe Warszawa PL", "expense", true],
+      ["BOOKING.COM Amsterdam NL", "expense", true],
+      ["ANNA NOWAK", "expense", true],
+      ["ANNA NOWAK", "credit", true],
+    ]);
   });
 
   it("lets only one of two identical transactions match one existing entry", () => {

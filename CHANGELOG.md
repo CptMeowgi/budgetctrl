@@ -9,6 +9,12 @@
   backup, and Ctrl+Z undoes it. Earlier months stay as they were.
 - Budgets whose periods aren't calendar months now say "period" in Category
   Budgets, Savings and History, and goals say what they need per paycheck.
+- Statements from banks that name both sides of a transfer, such as Alior
+  Bank, import better. Money in (the amounts with a "+") is named after
+  who paid you rather than after you, card payments are named from the
+  transaction details instead of "Imported transaction", and a payment
+  abroad counts what left your account, not the amount in the foreign
+  currency.
 - In dark mode, the lists that drop down from a choice (an account's type,
   a category, a frequency) were white with near-white text and couldn't be
   read. They now follow the theme.

@@ -723,6 +723,8 @@ export default {
   "separated by {sep}": "rozdzielane: {sep}",
   "tabs": "tabulatory",
   "Name (who was paid)": "Nazwa (komu zapłacono)",
+  "Name (who paid you)": "Nazwa (kto zapłacił)",
+  "For money in, when your bank names both sides of a transfer.": "Dla wpływów, gdy bank podaje obie strony przelewu.",
   "Description": "Opis",
   "Amounts": "Kwoty",
   "Money out and money in are in separate columns.": "Wydatki i wpływy są w osobnych kolumnach.",

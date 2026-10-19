@@ -723,6 +723,8 @@ export default {
   "separated by {sep}": "分隔符：{sep}",
   "tabs": "制表符",
   "Name (who was paid)": "名称（收款方）",
+  "Name (who paid you)": "名称（付款方）",
+  "For money in, when your bank names both sides of a transfer.": "用于收入，当银行同时列出转账双方时。",
   "Description": "描述",
   "Amounts": "金额",
   "Money out and money in are in separate columns.": "支出和收入分列显示。",

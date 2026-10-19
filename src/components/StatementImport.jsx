@@ -50,8 +50,8 @@ export function StatementImport({ data, onClose, onImport }) {
   const effective = mapping && (splitAmounts ? { ...mapping, amount: -1 } : { ...mapping, debit: -1, credit: -1 });
   const preview = file && effective ? toTransactions(file.rows, file.headerIndex, effective, { invert }) : null;
 
-  const col = (key, label) => (
-    <SettingRow label={label}>
+  const col = (key, label, hint) => (
+    <SettingRow label={label} hint={hint}>
       <select value={mapping[key]} onChange={(e) => setMapping({ ...mapping, [key]: +e.target.value })}
         style={{ ...s.input, width: 230, minHeight: 36, padding: "6px 10px" }}>
         <option value={-1}>{t("— none —")}</option>
@@ -139,6 +139,7 @@ export function StatementImport({ data, onClose, onImport }) {
           </div>
           {col("date", t("Date"))}
           {col("payee", t("Name (who was paid)"))}
+          {col("payer", t("Name (who paid you)"), t("For money in, when your bank names both sides of a transfer."))}
           {col("title", t("Description"))}
           <SettingRow label={t("Amounts")} hint={splitAmounts ? t("Money out and money in are in separate columns.") : t("One column; spending is negative.")}>
             <select value={splitAmounts ? "split" : "single"} onChange={(e) => setSplitAmounts(e.target.value === "split")}
