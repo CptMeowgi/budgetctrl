@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  leftOverHistory, accountPace, budgetPace, goalSaved, goalStatus, goalsMonthlyNeed, goalAccountOptions, migrateGoals,
+  leftOverHistory, accountPace, budgetPace, goalSaved, goalStatus, goalsMonthlyNeed, goalsNeedPerPeriod, goalAccountOptions, migrateGoals,
 } from "./goals.js";
 
 const D = (y, m, d) => new Date(y, m - 1, d);
@@ -135,5 +135,29 @@ describe("migrateGoals", () => {
     const once = migrateGoals({ savingsGoal: { target: 100 }, startingBalance: 1 }, id);
     const twice = migrateGoals(once, id);
     expect(twice.goals).toEqual(once.goals);
+  });
+});
+
+describe("goals in a budget paid every two weeks", () => {
+  // Fortnights from 6 Nov 2026; today is in the one from 20 Nov. Nothing is
+  // saved yet, so a 7,800 goal due in May 2027 needs 1,300 a month.
+  const fortnightly = {
+    paySchedule: [{ kind: "weeks", every: 2, from: "2026-11-06" }],
+    months: { "2026-11-20": { income: 1900, expenses: [], recurring: [], upcoming: [], credits: [] } },
+    goals: [{ id: "g", name: "Car", target: 7800, targetDate: "2027-05", source: "budget", startAmount: 0 }],
+  };
+  const NOV_21 = D(2026, 11, 21);
+
+  it("say what they need per paycheck", () => {
+    const st = goalStatus(fortnightly.goals[0], fortnightly, NOV_21);
+    expect(st.neededPerMonth).toBe(1300);
+    expect(st.perPeriod.needed).toBeCloseTo(600, 6);
+    expect(goalsNeedPerPeriod(fortnightly.goals, fortnightly, NOV_21)).toBeCloseTo(600, 6);
+  });
+
+  it("in a monthly budget, per period is per month", () => {
+    const st = goalStatus({ id: "h", target: 6000, targetDate: "2027-04", source: "budget", startAmount: 0 }, data, TODAY);
+    expect(st.perPeriod.needed).toBe(st.neededPerMonth);
+    expect(goalsNeedPerPeriod(data.goals || [], data, TODAY)).toBe(goalsMonthlyNeed(data.goals || [], data, TODAY));
   });
 });

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { calendarFor } from "../lib/calendar.js";
 import { latestBalance, daysBetweenISO } from "../lib/accounts.js";
 import { goalAccount, goalAccountOptions, goalStatus } from "../lib/goals.js";
 import { parseAmount } from "../lib/importer.js";
@@ -14,24 +15,36 @@ const money = { fontFamily: FONT, fontVariantNumeric: "tabular-nums" };
 
 // One sentence on where a goal stands: done, late, what it needs a month to
 // land on its date, or when it gets there at the current pace.
-function planLine(goal, st) {
+// `paycheck`: the budget is paid every week or two, so needs and pace are
+// given per paycheck.
+function planLine(goal, st, paycheck) {
   if (st.saved == null) return null;
   if (st.target <= 0) return t("No target set");
   if (st.reached) return t("Goal reached");
   if (st.overdue) return t("Was due {month} · {amount} still to go", { month: monthLabel(goal.targetDate), amount: fmt(st.remaining) });
   if (st.neededPerMonth != null) {
-    const needed = t("{amount} a month gets you there by {month}", { amount: fmt(st.neededPerMonth), month: monthLabel(goal.targetDate) });
+    const needed = paycheck
+      ? t("{amount} a paycheck gets you there by {month}", { amount: fmt(st.perPeriod.needed), month: monthLabel(goal.targetDate) })
+      : t("{amount} a month gets you there by {month}", { amount: fmt(st.neededPerMonth), month: monthLabel(goal.targetDate) });
     return st.behind ? `${needed} · ${t("at your current pace, {month}", { month: monthLabel(st.eta) })}` : needed;
   }
-  if (st.eta) return t("At your current pace ({amount} a month), {month}", { amount: fmt(st.pace), month: monthLabel(st.eta) });
+  if (st.eta) {
+    return paycheck
+      ? t("At your current pace ({amount} a paycheck), {month}", { amount: fmt(st.perPeriod.pace), month: monthLabel(st.eta) })
+      : t("At your current pace ({amount} a month), {month}", { amount: fmt(st.pace), month: monthLabel(st.eta) });
+  }
   return t("{amount} to go", { amount: fmt(st.remaining) });
 }
 
 function sourceLine(goal, data, todayIso) {
   if (goal.source === "budget") {
-    return goal.startAmount
-      ? t("Counts what your budget leaves over each month, plus {amount} saved before", { amount: fmt(goal.startAmount) })
-      : t("Counts what your budget leaves over each month");
+    const monthly = calendarFor(data).calendarMonths;
+    if (goal.startAmount) {
+      return monthly
+        ? t("Counts what your budget leaves over each month, plus {amount} saved before", { amount: fmt(goal.startAmount) })
+        : t("Counts what your budget leaves over each period, plus {amount} saved before", { amount: fmt(goal.startAmount) });
+    }
+    return monthly ? t("Counts what your budget leaves over each month") : t("Counts what your budget leaves over each period");
   }
   const acc = goalAccount(goal, data);
   if (!acc) return t("Its account was removed. Edit the goal to choose another.");
@@ -42,9 +55,9 @@ function sourceLine(goal, data, todayIso) {
   return t("Tracks {name} · balance from {when}", { name: acc.name, when });
 }
 
-function GoalCard({ goal, status, data, todayIso, onEdit }) {
+function GoalCard({ goal, status, data, todayIso, paycheck, onEdit }) {
   const { theme, s } = useThemed();
-  const plan = planLine(goal, status);
+  const plan = planLine(goal, status, paycheck);
   const warn = status.overdue || status.behind;
   return (
     <div style={s.card}>
@@ -80,6 +93,8 @@ export function SavingsView({ data, history, today, cal, onAddGoal, onEditGoal, 
   const { theme, s } = useThemed();
   const goals = data.goals || [];
   const todayIso = isoDay(today);
+  const monthly = cal.calendarMonths;
+  const paycheck = cal.kindOf(cal.current(today)) === "weeks";
 
   return (
     <>
@@ -92,7 +107,7 @@ export function SavingsView({ data, history, today, cal, onAddGoal, onEditGoal, 
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
           {goals.map((g) => (
-            <GoalCard key={g.id} goal={g} status={goalStatus(g, data, today, history)} data={data} todayIso={todayIso}
+            <GoalCard key={g.id} goal={g} status={goalStatus(g, data, today, history)} data={data} todayIso={todayIso} paycheck={paycheck}
               onEdit={() => onEditGoal(g)} />
           ))}
         </div>
@@ -100,19 +115,21 @@ export function SavingsView({ data, history, today, cal, onAddGoal, onEditGoal, 
 
       <div style={{ ...s.card, marginTop: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <div style={s.cardTitle}>{t("Left over each month")}</div>
-          <InfoHint text={t("Income less spending for every finished month, and the running total. A goal set to count what your budget leaves over uses this.")} />
+          <div style={s.cardTitle}>{monthly ? t("Left over each month") : t("Left over each period")}</div>
+          <InfoHint text={monthly
+            ? t("Income less spending for every finished month, and the running total. A goal set to count what your budget leaves over uses this.")
+            : t("Income less spending for every finished period, and the running total. A goal set to count what your budget leaves over uses this.")} />
         </div>
-        <SavingsChart series={history.series} />
+        <SavingsChart series={history.series} monthly={monthly} />
       </div>
 
       <div style={{ ...s.card, marginTop: 16 }}>
-        <div style={s.cardTitle}>{t("Month by month")}</div>
+        <div style={s.cardTitle}>{monthly ? t("Month by month") : t("Period by period")}</div>
         {history.series.length < 2 ? (
-          <div style={s.emptySmall}>{t("Each month appears here once it has finished.")}</div>
+          <div style={s.emptySmall}>{monthly ? t("Each month appears here once it has finished.") : t("Each period appears here once it has finished.")}</div>
         ) : (
           <>
-            <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginTop: SPACE.xs }}>{t("Income is editable here. For expenses, open the month.")}</div>
+            <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginTop: SPACE.xs }}>{monthly ? t("Income is editable here. For expenses, open the month.") : t("Income is editable here. For expenses, open the period.")}</div>
             <TableHeader columns={[
               { label: t("PERIOD"), flex: 2 }, { label: t("INCOME"), flex: 1, align: "right" },
               { label: t("SPENT"), flex: 1, align: "right" }, { label: t("LEFT OVER"), flex: 1, align: "right" },
@@ -202,7 +219,7 @@ export function GoalModal({ goal, data, curKey, onDismiss, onSave, onDelete }) {
           <select value={source} onChange={(e) => setSource(e.target.value)} style={s.input}>
             {options.map((a) => <option key={a.id} value={`account:${a.id}`}>{t("The balance of {name}", { name: a.name })}</option>)}
             {currentMissing && <option value={`account:${goal.accountId}`}>{t("Its old account (removed)")}</option>}
-            <option value="budget">{t("What my budget leaves over each month")}</option>
+            <option value="budget">{calendarFor(data).calendarMonths ? t("What my budget leaves over each month") : t("What my budget leaves over each period")}</option>
           </select>
           {options.length === 0 && !currentMissing && (
             <div style={{ ...TYPE.finePrint, color: theme.textFaint, marginTop: 6 }}>{t("Keeping the money in a savings account? Add it on the Accounts tab and this goal can track its balance.")}</div>

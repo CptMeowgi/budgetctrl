@@ -74,10 +74,10 @@ export function NetWorthChart({ series }) {
   );
 }
 
-export function MonthlyBarChart({ data, curKey, onBarClick }) {
+export function MonthlyBarChart({ data, curKey, onBarClick, monthly = true }) {
   const { theme, s } = useThemed();
   if (data.length < 2) {
-    return <div style={s.chartEmpty}>{t("Come back next month to see trends.")}</div>;
+    return <div style={s.chartEmpty}>{monthly ? t("Come back next month to see trends.") : t("Come back next period to see trends.")}</div>;
   }
   return (
     <div style={{ width: "100%", height: 200 }}>
@@ -118,10 +118,10 @@ export function MonthlyBarChart({ data, curKey, onBarClick }) {
   );
 }
 
-export function SavingsChart({ series }) {
+export function SavingsChart({ series, monthly = true }) {
   const { theme, s } = useThemed();
   if (!series || series.length < 2) {
-    return <div style={s.chartEmpty}>{t("Close out a month to start tracking savings.")}</div>;
+    return <div style={s.chartEmpty}>{monthly ? t("Close out a month to start tracking savings.") : t("Close out a period to start tracking savings.")}</div>;
   }
   // The first point is the starting line, labelled in the reader's language.
   const data = series.map((p) => (p.key === "start" ? { ...p, label: t("Start") } : p));
@@ -148,7 +148,7 @@ export function SavingsChart({ series }) {
                 <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", color: theme.success }}>{t("Running total: {amount}", { amount: fmt(d.balance) })}</div>
                 {d.delta !== 0 && (
                   <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", color: d.delta >= 0 ? theme.success : theme.danger }}>
-                    {t("{amount} that month", { amount: `${d.delta >= 0 ? "+" : ""}${fmt(d.delta)}` })}
+                    {monthly ? t("{amount} that month", { amount: `${d.delta >= 0 ? "+" : ""}${fmt(d.delta)}` }) : t("{amount} that period", { amount: `${d.delta >= 0 ? "+" : ""}${fmt(d.delta)}` })}
                   </div>
                 )}
               </div>

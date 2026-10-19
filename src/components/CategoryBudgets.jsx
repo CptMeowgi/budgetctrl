@@ -7,7 +7,8 @@ import { parseAmount } from "../lib/importer.js";
 
 // `compact` (the Dashboard) lists only categories with a budget or spending
 // this period, with the rest a click away.
-export function CategoryBudgets({ categories, spent, average, envelopeOf, onSetBudget, onStartFresh, compact }) {
+// `monthly`: periods are calendar months, so the words say month.
+export function CategoryBudgets({ categories, spent, average, envelopeOf, onSetBudget, onStartFresh, compact, monthly = true }) {
   const { theme, s } = useThemed();
   const [editing, setEditing] = useState(null);
   const [showAll, setShowAll] = useState(false);
@@ -95,13 +96,13 @@ export function CategoryBudgets({ categories, spent, average, envelopeOf, onSetB
             {isEditing && (
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: SPACE.sm, margin: "2px 0 8px" }}>
                 <label style={{ display: "flex", alignItems: "center", gap: 6, ...TYPE.finePrint, color: theme.textMuted, cursor: "pointer" }}
-                  title={t("Unspent budget carries into next month. Overspending carries too, as a deficit.")}>
+                  title={monthly ? t("Unspent budget carries into next month. Overspending carries too, as a deficit.") : t("Unspent budget carries into the next period. Overspending carries too, as a deficit.")}>
                   <input type="checkbox" checked={draftRollover} onChange={(e) => setDraftRollover(e.target.checked)} />
-                  {t("Roll over what's left into next month")}
+                  {monthly ? t("Roll over what's left into next month") : t("Roll over what's left into the next period")}
                 </label>
                 {r.rollover && r.env.carry !== 0 && (
                   <button style={{ ...s.linkBtn, ...TYPE.finePrint }} onClick={() => { onStartFresh(r.name); setEditing(null); }}
-                    title={t("Forget the carried balance and count from this month")}>{t("Start fresh")}</button>
+                    title={monthly ? t("Forget the carried balance and count from this month") : t("Forget the carried balance and count from this period")}>{t("Start fresh")}</button>
                 )}
               </div>
             )}
@@ -114,8 +115,8 @@ export function CategoryBudgets({ categories, spent, average, envelopeOf, onSetB
               <div style={{ fontSize: 11, color: theme.textFaint, marginTop: 4, fontVariantNumeric: "tabular-nums" }}>
                 {r.rollover && (
                   <span title={r.env.carry >= 0
-                      ? t("Budget {amount} this month, plus what carried over", { amount: fmt(r.env.cap) })
-                      : t("Budget {amount} this month, less what carried over", { amount: fmt(r.env.cap) })}
+                      ? (monthly ? t("Budget {amount} this month, plus what carried over", { amount: fmt(r.env.cap) }) : t("Budget {amount} this period, plus what carried over", { amount: fmt(r.env.cap) }))
+                      : (monthly ? t("Budget {amount} this month, less what carried over", { amount: fmt(r.env.cap) }) : t("Budget {amount} this period, less what carried over", { amount: fmt(r.env.cap) }))}
                     style={{ color: r.env.carry < 0 ? theme.danger : r.env.carry > 0 ? theme.accent : theme.textFaint }}>
                     ↻ {r.env.carry > 0 ? t("{amount} carried in", { amount: fmt(r.env.carry) })
                       : r.env.carry < 0 ? t("{amount} overspent before", { amount: fmt(-r.env.carry) })
@@ -123,7 +124,7 @@ export function CategoryBudgets({ categories, spent, average, envelopeOf, onSetB
                   </span>
                 )}
                 {r.rollover && avg != null && " · "}
-                {avg != null && t("avg of past months: {amount}", { amount: fmt(avg) })}
+                {avg != null && (monthly ? t("avg of past months: {amount}", { amount: fmt(avg) }) : t("avg of past periods: {amount}", { amount: fmt(avg) }))}
               </div>
             )}
           </div>

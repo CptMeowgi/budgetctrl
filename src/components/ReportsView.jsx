@@ -221,7 +221,7 @@ export function ReportsView({ data, today, curKey, range, onRange, onOpenPeriod 
               <div style={s.cardTitle}>{monthly ? t("Spent each month") : t("Spent each period")}</div>
               <div style={{ ...TYPE.finePrint, color: theme.textFaint }}>{t("Red where spending passed income")}</div>
             </div>
-            <MonthlyBarChart data={bars} curKey={curKey} onBarClick={onOpenPeriod} />
+            <MonthlyBarChart data={bars} curKey={curKey} onBarClick={onOpenPeriod} monthly={monthly} />
           </div>
 
           <div style={{ ...s.card, marginTop: 16 }}>

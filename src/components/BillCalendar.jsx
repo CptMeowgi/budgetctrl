@@ -91,7 +91,7 @@ export function BillCalendar({ data, periodKey, today, onOpen }) {
 }
 
 // Where the money left this period is heading, day by day to its end.
-export function ForecastCard({ fc }) {
+export function ForecastCard({ fc, monthly = true }) {
   const { theme, s } = useThemed();
   if (fc.series.length < 2) {
     return <div style={s.emptySmall}>{t("This period has ended; there's nothing ahead to forecast.")}</div>;
@@ -111,7 +111,9 @@ export function ForecastCard({ fc }) {
       </div>
       <div style={{ ...TYPE.finePrint, color: theme.textFaint, marginTop: 2, lineHeight: 1.5 }}>
         {fc.rate > 0
-          ? t("Counts the bills and money still to come, plus about {rate} a day of everyday spending (your average over the last three months).", { rate: fmt(fc.rate) })
+          ? (monthly
+            ? t("Counts the bills and money still to come, plus about {rate} a day of everyday spending (your average over the last three months).", { rate: fmt(fc.rate) })
+            : t("Counts the bills and money still to come, plus about {rate} a day of everyday spending (your average over the last three periods).", { rate: fmt(fc.rate) }))
           : t("Counts the bills and money still to come.")}
         {" "}{t("The dashed line is bills only.")}
       </div>

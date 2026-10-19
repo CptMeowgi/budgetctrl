@@ -80,7 +80,8 @@ export function goalStatus(goal, data, today, history = leftOverHistory(data, to
   const cal = calendarFor(data);
   // Goals count in calendar months, whatever the pay period: from the month
   // the running period started in.
-  const cur = monthKey(cal.range(cal.current(today)).start);
+  const running = cal.current(today);
+  const cur = monthKey(cal.range(running).start);
   const saved = goalSaved(goal, data, today, history);
   const target = Number(goal.target) || 0;
   const known = saved != null;
@@ -102,9 +103,21 @@ export function goalStatus(goal, data, today, history = leftOverHistory(data, to
     pct: known && target > 0 ? Math.max(0, Math.min(1, saved / target)) : null,
     monthsLeft, overdue: monthsLeft != null && monthsLeft <= 0 && !reached,
     neededPerMonth, pace, eta,
+    // The same, per paycheck, for a budget paid every week or two.
+    perPeriod: {
+      needed: neededPerMonth == null ? null : neededPerMonth / cal.periodsPerMonth(running),
+      pace: pace == null ? null : pace / cal.periodsPerMonth(running),
+    },
     // Would the date be missed at the current pace?
     behind: eta != null && goal.targetDate != null && eta > goal.targetDate,
   };
+}
+
+// What dated goals need set aside each period, together: per paycheck when
+// paid every week or two.
+export function goalsNeedPerPeriod(goals, data, today) {
+  const cal = calendarFor(data);
+  return goalsMonthlyNeed(goals, data, today) / cal.periodsPerMonth(cal.current(today));
 }
 
 // What dated goals need set aside each month, together.

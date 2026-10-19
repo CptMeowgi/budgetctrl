@@ -310,6 +310,7 @@ export function Dashboard(props) {
               envelopeOf={(c, sp) => envelope(data, c, curKey, today, sp)}
               onSetBudget={onSetBudget}
               onStartFresh={onStartFresh}
+              monthly={cal.calendarMonths}
               compact
             />
           </div>
@@ -359,7 +360,10 @@ export function Dashboard(props) {
             ) : null}
             {goalsNeed > 0 && Math.round(goalsNeed) !== savingsGoal.monthly && (
               <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginTop: 8 }}>
-                {t("Your dated goals need {amount} a month.", { amount: fmt(goalsNeed) })}{" "}
+                {/* Kept per month; shown per paycheck when paid every week or two. */}
+                {cal.kindOf(curKey) === "weeks"
+                  ? t("Your dated goals need {amount} a paycheck.", { amount: fmt(goalsNeed / cal.periodsPerMonth(curKey)) })
+                  : t("Your dated goals need {amount} a month.", { amount: fmt(goalsNeed) })}{" "}
                 <button style={{ ...s.linkBtn, padding: 0, ...TYPE.finePrint, fontWeight: 600 }}
                   onClick={() => save({ ...data, savingsGoal: { ...savingsGoal, monthly: Math.round(goalsNeed) } })}>{t("Set aside that")}</button>
               </div>

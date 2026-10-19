@@ -927,7 +927,7 @@ export default function App() {
             <>
               <div style={{ ...s.card, marginBottom: 16 }}>
                 <div style={s.cardTitle}>{cal.calendarMonths ? t("Money left this month, looking ahead") : t("Money left this period, looking ahead")}</div>
-                <ForecastCard fc={fc} />
+                <ForecastCard fc={fc} monthly={cal.calendarMonths} />
               </div>
               <div style={{ ...s.card, marginBottom: 16 }}>
                 <div style={s.cardTitle}>{t("Calendar")}</div>
@@ -1038,7 +1038,7 @@ export default function App() {
                     <button style={s.linkBtn} onClick={() => setModal({ type: "credit" })}>{t("+ Add Credit")}</button>
                   </div>
                   {oneOffCredits.length === 0 ? (
-                    <div style={s.emptySmall}>{creditsView.search ? t("No one-off credits match your search.") : t("No one-off credits this month. Log a refund, gift, or bonus.")}</div>
+                    <div style={s.emptySmall}>{creditsView.search ? t("No one-off credits match your search.") : (cal.calendarMonths ? t("No one-off credits this month. Log a refund, gift, or bonus.") : t("No one-off credits this period. Log a refund, gift, or bonus."))}</div>
                   ) : (
                     <>
                       <TableHeader columns={[{ label: tk("NAME"), flex: 2, sortKey: "name" }, { label: tk("SOURCE"), flex: 1.2, sortKey: "category" }, { label: tk("DATE"), flex: 1, sortKey: "date" }, { label: tk("AMOUNT"), flex: 1, align: "right", sortKey: "amount" }, { label: "", flex: 0.6, align: "center" }]} sorts={creditsView.sorts} onSort={onSortCredits} />
@@ -1054,12 +1054,12 @@ export default function App() {
           {tab === "history" && historyKey === null && (
             <div style={s.card}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={s.cardTitle}>{t("Past Months")}</div>
+                <div style={s.cardTitle}>{cal.calendarMonths ? t("Past Months") : t("Past periods")}</div>
               </div>
               {(() => {
                 const pastKeys = Object.keys(data.months).filter((k) => k !== curKey).sort().reverse();
                 if (pastKeys.length === 0) {
-                  return <div style={s.empty}>{t("No past months yet. Come back after the month ends.")}</div>;
+                  return <div style={s.empty}>{cal.calendarMonths ? t("No past months yet. Come back after the month ends.") : t("No past periods yet. Come back after this one ends.")}</div>;
                 }
                 return (
                   <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
@@ -1131,7 +1131,7 @@ export default function App() {
                   <span style={{ fontSize: 12, color: theme.textMuted, fontWeight: 600 }}>{data.currency}</span>
                 </div>
                 <div style={s.statsRow}>
-                  <StatCard label={t("Income")} value={fmt(effective)} accent={theme.success} sub={credits > 0 ? t("+ {amount} credits", { amount: fmt(credits) }) : t("For this month")} icon="↑" />
+                  <StatCard label={t("Income")} value={fmt(effective)} accent={theme.success} sub={credits > 0 ? t("+ {amount} credits", { amount: fmt(credits) }) : (cal.calendarMonths ? t("For this month") : t("For this period"))} icon="↑" />
                   <StatCard label={t("Remaining")} value={fmt(rem)} accent={rem >= 0 ? theme.success : theme.danger} sub={t("After everything paid")} icon="↓" />
                   <StatCard label={t("Total Spent")} value={fmt(spent)} accent={theme.danger} sub={t("{oneOff} one-off · {recurring} recurring", { oneOff: m.expenses.length, recurring: m.recurring.length })} icon="↻" />
                 </div>
