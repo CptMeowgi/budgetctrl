@@ -8,6 +8,7 @@ import { budgetToRows } from "./lib/csv.js";
 import { countRebucketMoves, rebucketData } from "./model.js";
 import { isRecurringItem, isWeekly } from "./lib/occurrences.js";
 import { isoDay, itemDateInPeriod } from "./lib/periods.js";
+import { calendarFor } from "./lib/calendar.js";
 
 // A bill every week and a credit every two weeks, as copies dated in
 // October beside a monthly rent. Every part of the app that reads a period
@@ -161,5 +162,16 @@ describe("dated copies of weekly items", () => {
   it("stray date: a monthly copy still falls on its day of the month", () => {
     expect(isoDay(itemDateInPeriod({ dayOfMonth: 5, date: "2026-10-20" }, "2026-10", 1))).toBe("2026-10-05");
     expect(isoDay(itemDateInPeriod({ repeat: "weeks", date: "2026-10-20" }, "2026-10", 1))).toBe("2026-10-20");
+  });
+});
+
+describe("exporting a copy corrected in a past fortnight", () => {
+  it("uses the copy's own date, as every screen does", () => {
+    const data = { paySchedule: [{ kind: "weeks", every: 2, from: "2026-11-06" }],
+      months: { "2026-11-06": { income: 0, expenses: [], upcoming: [], credits: [],
+        recurring: [{ id: "r", name: "Rent", amount: 900, dayOfMonth: 10, date: "2026-11-12", templateId: "t" }] } } };
+    const cal = calendarFor(data);
+    const rows = budgetToRows(data, { resolveItemDate: (item, period) => isoDay(cal.itemDate(item, period)) });
+    expect(rows.find((r) => r.name === "Rent").date).toBe("2026-11-12");
   });
 });

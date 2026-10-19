@@ -51,7 +51,7 @@ export function formatAmount(n, decimal) {
 // resolveRecurringDate(dayOfMonth, periodKey) is injected because the period
 // arithmetic (custom cutoff days, short months) lives with the app; this module
 // only formats.
-export function budgetToRows(data, { resolveRecurringDate, currency }) {
+export function budgetToRows(data, { resolveRecurringDate, resolveItemDate, currency }) {
   const rows = [];
   const cur = currency || data.currency || "";
   for (const [period, m] of Object.entries(data.months || {})) {
@@ -62,9 +62,12 @@ export function budgetToRows(data, { resolveRecurringDate, currency }) {
                     category: p.category, amount: -(p.amount || 0), status: "", note: e.note });
       }
     }
-    // A weekly copy carries its own date. A monthly one falls on its day of the
-    // month, whatever else it carries, as everywhere else in the app.
-    const dateOf = (x) => (x.dayOfMonth == null && x.date) ? x.date : (resolveRecurringDate ? resolveRecurringDate(x.dayOfMonth, period) : "");
+    // A recurring copy's date, as the app's calendar gives it when it's passed
+    // in (`resolveItemDate`): a copy in a fortnight by its own date. Otherwise a
+    // weekly copy carries its own date and a monthly one falls on its day of
+    // the month, whatever else it carries.
+    const dateOf = (x) => (resolveItemDate ? resolveItemDate(x, period)
+      : (x.dayOfMonth == null && x.date) ? x.date : (resolveRecurringDate ? resolveRecurringDate(x.dayOfMonth, period) : ""));
     for (const r of m.recurring || []) {
       rows.push({ period, date: dateOf(r),
                   type: "Recurring", name: r.name, category: r.category, amount: -(r.amount || 0),
@@ -96,7 +99,7 @@ export function rowsToCsv(rows, { delimiter = ",", decimal = ".", bom = true } =
   return (bom ? "\uFEFF" : "") + [line(CSV_COLUMNS), ...body].join("\r\n") + "\r\n";
 }
 
-export function budgetToCsv(data, { resolveRecurringDate, locale, currency, bom = true } = {}) {
+export function budgetToCsv(data, { resolveRecurringDate, resolveItemDate, locale, currency, bom = true } = {}) {
   const dialect = csvDialect(locale);
-  return rowsToCsv(budgetToRows(data, { resolveRecurringDate, currency }), { ...dialect, bom });
+  return rowsToCsv(budgetToRows(data, { resolveRecurringDate, resolveItemDate, currency }), { ...dialect, bom });
 }

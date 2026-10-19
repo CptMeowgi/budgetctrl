@@ -26,8 +26,10 @@ export function exportData(data) {
 }
 
 export function exportCsv(data) {
+  const cal = calendarFor(data);
   const csv = budgetToCsv(data, {
-    resolveRecurringDate: (day, period) => isoDay(calendarFor(data).dateOf(day, period)),
+    // Each recurring copy on the date every screen shows for it.
+    resolveItemDate: (item, period) => isoDay(cal.itemDate(item, period)),
     locale: data.locale || navigator.language,
     currency: data.currency,
   });

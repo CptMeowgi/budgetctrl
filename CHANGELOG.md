@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- You can now tell Budget Ctrl you're paid every week or every two weeks
+  (Settings → You're paid, or when you start). Each budget period then runs
+  from one payday to the day before the next. Switching shows what will
+  change first, converts your category budgets to the new period, takes a
+  backup, and Ctrl+Z undoes it. Earlier months stay as they were.
+- Budgets whose periods aren't calendar months now say "period" in Category
+  Budgets, Savings and History, and goals say what they need per paycheck.
 - In dark mode, the lists that drop down from a choice (an account's type,
   a category, a frequency) were white with near-white text and couldn't be
   read. They now follow the theme.

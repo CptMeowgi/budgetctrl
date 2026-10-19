@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { countRebucketMoves, hydrate, migrate, rebucketData, uid } from "./model.js";
 import { readFileSync } from "node:fs";
-import { monthlyCalendar } from "./lib/calendar.js";
+import { calendarFor, monthlyCalendar } from "./lib/calendar.js";
 import { capAt, envelope } from "./lib/envelopes.js";
 import { missingCopies } from "./lib/occurrences.js";
 import { isOnCycle } from "./lib/schedule.js";
@@ -303,5 +303,32 @@ describe("changing the payday mid-period", () => {
 
   it("keeps a period's own marks, such as an edit made after it closed", () => {
     expect(moveTo10th()["2026-08"].editedAt).toBe("2026-09-30T08:15:00.000Z");
+  });
+});
+
+// The 0.5.2 budget as 0.7 saves it after switching to fortnights from Friday
+// 2 October 2026: September cut short to 25 Sep - 1 Oct, then fortnights.
+const SAVED_FORTNIGHTLY = JSON.parse(readFileSync("src/fixtures/budget-0.7-fortnightly.json", "utf8"));
+
+describe("opening a budget saved after switching to fortnights", () => {
+  beforeAll(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 9, 12, 12)); });
+  afterAll(() => vi.useRealTimers());
+
+  const open = () => hydrate(migrate(structuredClone(SAVED_FORTNIGHTLY)));
+  const today = () => new Date(2026, 9, 12, 12);
+
+  it("changes nothing at all", () => {
+    expect(open()).toEqual(SAVED_FORTNIGHTLY);
+  });
+
+  it("shows the same periods and figures", () => {
+    const d = open();
+    const cal = calendarFor(d);
+    expect(Object.keys(d.months).sort()).toEqual(["2026-08", "2026-09", "2026-10-02"]);
+    expect(cal.current(today())).toBe("2026-10-02");
+    expect(cal.label("2026-10-02").primary.replace(/\s/g, " ")).toBe("Oct 2 – 15, 2026");
+    expect(periodSpending(d.months["2026-10-02"], "2026-10-02", today(), cal).total).toBeCloseTo(106.9, 2);
+    expect(periodIncome(d.months["2026-10-02"], "2026-10-02", today(), cal).total).toBe(1900);
+    expect(periodSpending(d.months["2026-09"], "2026-09", today(), cal).total).toBeCloseTo(2811.19, 2);
   });
 });

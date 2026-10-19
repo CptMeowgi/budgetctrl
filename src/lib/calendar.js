@@ -211,9 +211,11 @@ function scheduleCalendar(schedule) {
     const start = dayOf(key);
     return { start, end: periodIn(stretchAt(start), start).end };
   };
+  // Fresh Dates every time: what's cached here must not be changed by a caller.
   const range = (key) => {
     const p = owned(key);
-    return p ? { start: p.start, end: p.end } : loose(key);
+    const r = p || loose(key);
+    return { start: new Date(r.start.getTime()), end: new Date(r.end.getTime()) };
   };
   const keyFor = (date) => {
     const d = dayOf(date);
@@ -230,8 +232,9 @@ function scheduleCalendar(schedule) {
   // began with, so a switch neither moves nor drops one of their payments.
   const cycleCd = stretches[0].kind === "monthly" ? stretches[0].cd : 1;
   const cycleKey = (date) => periodKeyFor(date, cycleCd);
-  const next = (key) => keyFor(addDays(range(key).end, 1));
-  const prev = (key) => keyFor(addDays(range(key).start, -1));
+  // A key the calendar can't place has no neighbours: stepping stays put.
+  const next = (key) => keyFor(addDays(range(key).end, 1)) ?? key;
+  const prev = (key) => keyFor(addDays(range(key).start, -1)) ?? key;
   const dateOf = (dayOfMonth, key) => {
     const r = range(key);
     return datesOnDay(dayOfMonth, r.start, r.end)[0] || r.start;

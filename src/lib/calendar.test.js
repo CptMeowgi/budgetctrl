@@ -316,3 +316,19 @@ describe("running a period on to the next stretch", () => {
     warn.mockRestore();
   });
 });
+
+describe("answers handed out", () => {
+  it("a range handed out can't change the next answer", () => {
+    const cal = fortnightly();
+    cal.range("2026-11-06").end.setDate(30);
+    expect(span(cal.range("2026-11-06"))).toEqual(["2026-11-06", "2026-11-19"]);
+    cal.range("2026-10").end.setDate(30);
+    expect(span(cal.range("2026-10"))).toEqual(["2026-10-25", "2026-11-05"]);
+  });
+
+  it("stepping from a key it can't place stays put", () => {
+    const cal = fortnightly();
+    expect([cal.next("not a key"), cal.prev("not a key")]).toEqual(["not a key", "not a key"]);
+    expect(() => cal.shift("not a key", 3)).not.toThrow();
+  });
+});
