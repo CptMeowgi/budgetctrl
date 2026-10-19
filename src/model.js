@@ -334,7 +334,7 @@ export function ensureCurrentMonth(data) {
 // and a copy of each recurring bill and credit that falls in it. `already`
 // is what's in it before it begins (entries a payday change moved there);
 // copies among it count, so none is made twice.
-function startPeriod(data, cal, key, already = emptyMonth()) {
+export function startPeriod(data, cal, key, already = emptyMonth()) {
   const priorKeys = Object.keys(data.months).filter((k) => k < key).sort();
   const lastKey = priorKeys[priorKeys.length - 1];
   return {
