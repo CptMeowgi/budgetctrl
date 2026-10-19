@@ -67,6 +67,9 @@ export function monthlyCalendar(cutoffDay) {
     shortLabel: (key) => (isDayKey(key) ? shortDay(dayOf(key)) : monthLabel(key).slice(0, 3)),
     days: (key) => daysIn(range(key)),
     kindOf: (key) => (isDayKey(key) ? "weeks" : "monthly"),
+    // Whether a period's copies carry their dates (only periods of another
+    // schedule, keyed by day).
+    dated: (key) => isDayKey(key),
     sameKind: (a, b) => isDayKey(a) === isDayKey(b),
     periodsPerMonth: () => 1,
     dateOf: (dayOfMonth, key) => recurringDateInPeriod(dayOfMonth, key, cd),
@@ -100,12 +103,15 @@ function validEntry(e, first) {
 function validSchedule(s) {
   if (!Array.isArray(s) || !s.length || !s.every((e, i) => validEntry(e, i === 0))) return false;
   for (let i = 1; i < s.length; i++) {
-    // Each stretch starts after the one before it.
-    if (s[i - 1].from && !(s[i].from > s[i - 1].from)) return false;
+    // Each stretch starts after the one before it. The first one reaches back
+    // to the beginning: its `from`, when it has one, is only where its
+    // paydays are counted from (a weekly budget's first payday), not a start.
+    const before = i > 1 ? s[i - 1].from : null;
+    if (before && !(s[i].from > before)) return false;
     // `after`, when there, is the start of the period that runs on until
     // this stretch begins: a day before `from`, inside the stretch before.
     const { after } = s[i];
-    if (after != null && !(isDate(after) && after < s[i].from && (!s[i - 1].from || after >= s[i - 1].from))) return false;
+    if (after != null && !(isDate(after) && after < s[i].from && (!before || after >= before))) return false;
   }
   return true;
 }
@@ -163,7 +169,9 @@ function scheduleCalendar(schedule) {
   const periodIn = (s, d) => {
     if (s.lastStart && d >= s.lastStart) {
       const p = basePeriod(s, s.lastStart);
-      return { ...p, end: s.end, part: p.part || p.end.getTime() !== s.end.getTime() };
+      // `runOn`: it lasts past its usual end, into days that hold bills of
+      // their own, so its copies carry their dates.
+      return { ...p, end: s.end, part: p.part || p.end.getTime() !== s.end.getTime(), runOn: s.end > p.natEnd };
     }
     return basePeriod(s, d);
   };
@@ -172,12 +180,12 @@ function scheduleCalendar(schedule) {
       const first = addDays(s.anchor, Math.floor(daysBetween(s.anchor, d) / s.step) * s.step);
       const last = addDays(first, s.step - 1);
       const r = clip(s, first, last);
-      return { key: isoDay(first), ...r, part: r.end < last, s };
+      return { key: isoDay(first), ...r, natEnd: last, part: r.end < last, s };
     }
     const month = periodKeyFor(d, s.cd);
     const { start, end } = periodRange(month, s.cd);
     const r = clip(s, start, end);
-    return { key: s.monthKeys ? month : isoDay(r.start), ...r, part: r.start > start || r.end < end, s };
+    return { key: s.monthKeys ? month : isoDay(r.start), ...r, natEnd: end, part: r.start > start || r.end < end, s };
   };
 
   // The period a key names, when this schedule has one; null otherwise.
@@ -239,9 +247,12 @@ function scheduleCalendar(schedule) {
     const r = range(key);
     return datesOnDay(dayOfMonth, r.start, r.end)[0] || r.start;
   };
-  // In a fortnight a copy's own date wins; in a month its day of the month
-  // does, as it always has (old data can carry a stray date).
-  const itemDate = (item, key) => (kindOf(key) === "weeks"
+  // Whether a period's copies carry their dates: a fortnight's, and a month's
+  // that runs on past its usual end (its day of the month comes round twice).
+  const dated = (key) => kindOf(key) === "weeks" || !!owned(key)?.runOn;
+  // Where copies are dated, a copy's own date wins; elsewhere its day of the
+  // month does, as it always has (old data can carry a stray date).
+  const itemDate = (item, key) => (dated(key)
     ? (item?.date ? dayOf(item.date) : dateOf(item?.dayOfMonth, key))
     : (item?.dayOfMonth == null && item?.date ? dayOf(item.date) : dateOf(item?.dayOfMonth, key)));
 
@@ -289,6 +300,7 @@ function scheduleCalendar(schedule) {
     },
     days: (key) => daysIn(range(key)),
     kindOf,
+    dated,
     sameKind: (a, b) => stepOf(a) === stepOf(b),
     // How many of these periods a month holds, for figures kept per month.
     periodsPerMonth: (key) => {
@@ -310,7 +322,13 @@ function scheduleCalendar(schedule) {
     occurrences: (item, key) => {
       const r = range(key);
       if (isWeekly(item)) return weeklyDates(item, r.start, r.end);
-      if (owned(key)?.s.monthKeys) return isOnCycle(item, key) ? datesOnDay(item?.dayOfMonth, r.start, r.end).slice(0, 1) : [];
+      const p = owned(key);
+      if (p?.s.monthKeys) {
+        const usual = p.runOn ? p.natEnd : r.end;
+        const own = isOnCycle(item, key) ? datesOnDay(item?.dayOfMonth, r.start, usual).slice(0, 1) : [];
+        // Run on past its month to a switch, it also holds what falls in those days.
+        return p.runOn ? [...own, ...monthlyDates(item, addDays(usual, 1), r.end, cycleKey)] : own;
+      }
       return monthlyDates(item, r.start, r.end, cycleKey);
     },
     // The monthly period an every-N-months bill counts its cycle by.

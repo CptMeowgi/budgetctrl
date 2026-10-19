@@ -11,7 +11,8 @@ import { calendarFor, readSchedule } from "./calendar.js";
 import { capAt, withCap } from "./envelopes.js";
 import { isRecurringItem } from "./occurrences.js";
 import { isoDay, parseDay } from "./periods.js";
-import { emptyMonth, startPeriod } from "../model.js";
+import { emptyMonth, startPeriod, uid } from "../model.js";
+import { missingCopies } from "./occurrences.js";
 
 // The choices, as the Settings and welcome screens offer them.
 export const PAY_KINDS = [
@@ -160,7 +161,11 @@ export function switchSchedule(data, options, today) {
   const months = { ...data.months };
   for (const k of later) delete months[k];
   // Only the entries change: the running period keeps its income and fields.
-  months[curKey] = { ...data.months[curKey], expenses: stay.expenses, recurring: stay.recurring, upcoming: stay.upcoming, credits: stay.credits };
+  // ...and any bill the running period now holds but has no copy of: one in
+  // the days it runs on into, or one a replaced switch had moved out.
+  const topUp = (list, tmpls) => [...stay[list], ...(tmpls || []).flatMap((t) => missingCopies(t, newCal, curKey, stay[list], uid))];
+  months[curKey] = { ...data.months[curKey], expenses: stay.expenses, recurring: topUp("recurring", data.recurringTemplate),
+                     upcoming: stay.upcoming, credits: topUp("credits", data.creditTemplate) };
 
   // Budgets a switch still to come set for its periods go with it; the rest
   // convert from the first new period on.

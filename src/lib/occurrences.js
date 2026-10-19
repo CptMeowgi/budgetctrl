@@ -45,7 +45,7 @@ export function monthlyDates(item, start, end, cycleKey = monthKey) {
 
 // A period's copies carry their date when the day of the month can't say it:
 // a weekly item's, and every copy in a fortnight.
-const datedIn = (tpl, cal, periodKey) => isWeekly(tpl) || cal.kindOf(periodKey) === "weeks";
+const datedIn = (tpl, cal, periodKey) => isWeekly(tpl) || cal.dated(periodKey);
 
 // The copies a period gets of a template: one per date it falls on there.
 // In a monthly period a monthly item's copy stays undated, exactly as before.
@@ -63,7 +63,8 @@ export function copiesFor(tpl, cal, periodKey, newId) {
 export function missingCopies(tpl, cal, periodKey, items, newId) {
   const mine = (items || []).filter((x) => x.templateId === tpl.id);
   if (!datedIn(tpl, cal, periodKey)) return mine.length ? [] : copiesFor(tpl, cal, periodKey, newId);
-  const have = new Set(mine.map((x) => x.date));
+  // An undated copy stands on the date the calendar gives it.
+  const have = new Set(mine.map((x) => x.date || isoDay(cal.itemDate(x, periodKey))));
   return copiesFor(tpl, cal, periodKey, newId).filter((c) => !have.has(c.date));
 }
 

@@ -41,7 +41,7 @@ export function saveRecurring(data, kind, { cal, curKey, targetKey, editing, edi
       return { ...data, months: put(targetKey, target, items.map((x) => (x.id === editing.id ? { ...editing, ...fields } : x))) };
     }
     const nextTmpl = tmpl.map((x) => (x.id === editing.templateId ? { ...x, ...fields, ...schedule } : x));
-    if (isWeekly(editing) || isWeekly(schedule) || cal.kindOf(targetKey) === "weeks") {
+    if (isWeekly(editing) || isWeekly(schedule) || cal.dated(targetKey)) {
       // Weekly before or after, or any bill in a fortnight: this period's
       // copies are redone from the template. A date that stays keeps its
       // copy's id, so a reminder already shown for it isn't shown again. A

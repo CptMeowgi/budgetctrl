@@ -352,7 +352,7 @@ export default function App() {
       const el = e.target;
       const tag = (el?.tagName || "").toLowerCase();
       const typing = tag === "input" || tag === "textarea" || tag === "select" || el?.isContentEditable;
-      const dialogOpen = !!modal || settingsOpen || categoriesOpen || statementOpen || searchOpen || rulesOpen || setupOpen || !!pinDialog;
+      const dialogOpen = !!modal || settingsOpen || categoriesOpen || statementOpen || searchOpen || rulesOpen || setupOpen || !!pinDialog || !!payDialog;
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
       // Locking works from anywhere, open dialog or not.
@@ -378,7 +378,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [loaded, modal, settingsOpen, categoriesOpen, statementOpen, searchOpen, rulesOpen, setupOpen, pinDialog, lockCfg, locked, tab, undo, redo]);
+  }, [loaded, modal, settingsOpen, categoriesOpen, statementOpen, searchOpen, rulesOpen, setupOpen, pinDialog, payDialog, lockCfg, locked, tab, undo, redo]);
 
   useEffect(() => {
     let alive = true;
@@ -910,7 +910,7 @@ export default function App() {
                 <>
                   <TableHeader columns={ENTRY_COLUMNS.recurring} sorts={recurringView.sorts} onSort={onSortRecurring} />
                   {filteredRecurring.map((r) => (
-                    <RecurringRow key={r.id} entry={r} categories={data.categories} dated={cal.kindOf(curKey) === "weeks"}
+                    <RecurringRow key={r.id} entry={r} categories={data.categories} dated={cal.dated(curKey)}
                       onEdit={() => setModal({ type: "recurring", editId: r.id })}
                       onDelete={() => save(deleteRecurringCopy(data, "recurring", curKey, r))} />
                   ))}
@@ -973,7 +973,7 @@ export default function App() {
                 <EntryName name={c.name} note={c.note} schedule={c} />
                 <div style={{ flex: 1.2 }}><CategoryPill categoryName={c.category || c.source} categories={data.creditCategories || []} fallback={CREDIT_UNCATEGORIZED} /></div>
                 {kind === "recurring"
-                  ? <div style={{ flex: 1, textAlign: "center", color: theme.textMuted, fontSize: 13 }}>{(isWeekly(c) || cal.kindOf(curKey) === "weeks") && c.date ? shortDate(c.date) : (c.dayOfMonth || "—")}</div>
+                  ? <div style={{ flex: 1, textAlign: "center", color: theme.textMuted, fontSize: 13 }}>{(isWeekly(c) || cal.dated(curKey)) && c.date ? shortDate(c.date) : (c.dayOfMonth || "—")}</div>
                   : <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }} title={c.date}>{shortDate(c.date)}</div>}
                 <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: isReceived(c) ? theme.success : theme.textMuted }}>+{fmt(c.amount)}</div>
                 <RowActions
@@ -1160,7 +1160,7 @@ export default function App() {
                     <>
                       <TableHeader columns={ENTRY_COLUMNS.recurring} />
                       {m.recurring.map((r) => (
-                        <RecurringRow key={r.id} entry={r} categories={data.categories} dated={cal.kindOf(historyKey) === "weeks"}
+                        <RecurringRow key={r.id} entry={r} categories={data.categories} dated={cal.dated(historyKey)}
                           onEdit={() => setModal({ type: "recurring", editId: r.id, monthKey: historyKey })}
                           // Past-period deletion removes only this period's instance -
                           // the live template keeps governing future periods.
@@ -1304,7 +1304,7 @@ export default function App() {
         const editing = modal.editId ? targetMonth.recurring.find((x) => x.id === modal.editId) : null;
         // A copy corrected in a past period keeps its own date when it has one:
         // a weekly copy, or any copy in a fortnight. A new one gets a day of the month.
-        const dated = !touchesTemplate && !!editing && (isWeekly(editing) || cal.kindOf(targetKey) === "weeks");
+        const dated = !touchesTemplate && !!editing && (isWeekly(editing) || cal.dated(targetKey));
         // A bill not due this period has no instance here, only its template.
         const editingTpl = modal.templateId ? (data.recurringTemplate || []).find((x) => x.id === modal.templateId) : null;
         const tplOf = editing ? (data.recurringTemplate || []).find((x) => x.id === editing.templateId) : null;
@@ -1387,7 +1387,7 @@ export default function App() {
         const targetMonth = data.months[targetKey] || emptyMonth();
         const touchesTemplate = targetKey === curKey;
         const editing = modal.editId ? (targetMonth.credits || []).find((x) => x.id === modal.editId) : null;
-        const dated = !touchesTemplate && !!editing && (isWeekly(editing) || cal.kindOf(targetKey) === "weeks");
+        const dated = !touchesTemplate && !!editing && (isWeekly(editing) || cal.dated(targetKey));
         const editingTpl = modal.templateId ? (data.creditTemplate || []).find((x) => x.id === modal.templateId) : null;
         const tplOf = editing ? (data.creditTemplate || []).find((x) => x.id === editing.templateId) : null;
         const source = editingTpl || editing;

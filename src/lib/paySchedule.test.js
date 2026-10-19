@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { firstPaydayFor, payKindChosen, payKindNow, switchSchedule } from "./paySchedule.js";
-import { calendarFor } from "./calendar.js";
+import { calendarFor, readSchedule } from "./calendar.js";
+import { applySetup } from "./setup.js";
+import { isoDay } from "./periods.js";
+import { periodSpending } from "./totals.js";
 import { capAt, carryInto } from "./envelopes.js";
 
 // Paid on the 25th; today is 2 Nov 2026, in the period "2026-10" (25 Oct -
@@ -179,5 +182,47 @@ describe("switching again", () => {
     expect([earlier.current.end, earlier.current.change]).toEqual(["2026-11-15", "shortened"]);
     expect([later.current.end, later.current.change]).toEqual(["2026-11-23", "lengthened"]);
     expect(later.budgets.every((b) => b.before === b.after)).toBe(true);
+  });
+});
+
+describe("fixes from the review of switching", () => {
+  it("a budget set up as fortnightly switches before its first payday", () => {
+    // Set up on 16 Oct with the next payday on the 23rd: the first period is 9-22 Oct.
+    const OCT_16 = new Date(2026, 9, 16, 12);
+    const fresh = applySetup({ months: {}, categories: [{ name: "Uncategorized" }], savingsGoal: { monthly: 0 }, cutoffDay: 1 },
+      { pay: "weeks:2", nextPayday: "2026-10-23", income: 1900 }, OCT_16);
+    for (const options of [{ kind: "weeks", every: 2, firstPayday: "2026-10-20" }, { kind: "weeks", every: 1, firstPayday: "2026-10-20" }, { kind: "monthly", cutoffDay: 1 }]) {
+      const { data, preview } = switchSchedule(fresh, options, OCT_16);
+      expect(preview.error).toBeNull();
+      expect(readSchedule(data)).not.toBeNull();
+      expect(calendarFor(data).current(OCT_16)).toBe("2026-10-09");
+    }
+  });
+
+  it("a month running on to the first fortnight keeps the bills of the days it runs on into", () => {
+    // Calendar months, switched on 28 Oct to fortnights from 6 Nov: October runs to 5 Nov.
+    const OCT_28 = new Date(2026, 9, 28, 12);
+    const monthly = {
+      cutoffDay: 1,
+      months: { "2026-10": { income: 4000, expenses: [], upcoming: [], credits: [],
+        recurring: [{ id: "r1", name: "Rent", amount: 1000, dayOfMonth: 1, templateId: "tr" },
+                    { id: "r2", name: "Netflix", amount: 15, dayOfMonth: 3, templateId: "tn" }] } },
+      recurringTemplate: [{ id: "tr", name: "Rent", amount: 1000, dayOfMonth: 1 }, { id: "tn", name: "Netflix", amount: 15, dayOfMonth: 3 }],
+      creditTemplate: [], categories: [], savingsGoal: { monthly: 0 },
+    };
+    const { data } = switchSchedule(monthly, { kind: "weeks", every: 2, firstPayday: "2026-11-06" }, OCT_28);
+    const cal = calendarFor(data);
+    const oct = data.months["2026-10"];
+    expect(oct.recurring.map((r) => [r.name, isoDay(cal.itemDate(r, "2026-10"))]).sort())
+      .toEqual([["Netflix", "2026-10-03"], ["Netflix", "2026-11-03"], ["Rent", "2026-10-01"], ["Rent", "2026-11-01"]]);
+    expect(periodSpending(oct, "2026-10", new Date(2026, 10, 5, 12), cal).recurring).toBe(2030);
+  });
+
+  it("taking back or replacing a switch that moved bills out puts them back", () => {
+    const pending = fortnights("2026-11-06").data;
+    const back = switchSchedule(pending, { kind: "monthly", cutoffDay: 25 }, TODAY).data;
+    expect(back.months["2026-10"].recurring.map((r) => r.name).sort()).toEqual(["Phone", "Rent"]);
+    const later = switchSchedule(pending, { kind: "weeks", every: 2, firstPayday: "2026-11-27" }, TODAY).data;
+    expect(later.months["2026-10"].recurring.map((r) => r.name).sort()).toEqual(["Phone", "Rent"]);
   });
 });
