@@ -106,6 +106,8 @@ export default {
   "+{n} more": "+{n} más",
   "Income this month": "Ingresos este mes",
   "Income this period": "Ingresos este periodo",
+  "Add your income for this month": "Añade tus ingresos de este mes",
+  "Add your income for this period": "Añade tus ingresos de este periodo",
   "Your pay for this period. A new period starts with the last one's figure, so change it here when your pay changes. Credits are added on top.": "Tu sueldo de este periodo. Cada periodo nuevo empieza con la cifra del anterior, así que cámbiala aquí cuando cambie tu sueldo. Los abonos se suman aparte.",
   "+ {amount} credits": "+ {amount} en abonos",
   "{amount} pending": "{amount} pendiente",

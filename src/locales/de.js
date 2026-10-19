@@ -106,6 +106,8 @@ export default {
   "+{n} more": "+{n} weitere",
   "Income this month": "Einkommen diesen Monat",
   "Income this period": "Einkommen in diesem Zeitraum",
+  "Add your income for this month": "Trag dein Einkommen für diesen Monat ein",
+  "Add your income for this period": "Trag dein Einkommen für diesen Zeitraum ein",
   "Your pay for this period. A new period starts with the last one's figure, so change it here when your pay changes. Credits are added on top.": "Dein Gehalt für diesen Zeitraum. Ein neuer Zeitraum übernimmt den letzten Betrag, also ändere ihn hier, wenn sich dein Gehalt ändert. Gutschriften kommen obendrauf.",
   "+ {amount} credits": "+ {amount} Gutschriften",
   "{amount} pending": "{amount} ausstehend",

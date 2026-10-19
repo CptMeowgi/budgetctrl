@@ -106,6 +106,8 @@ export default {
   "+{n} more": "另有 {n} 项",
   "Income this month": "本月收入",
   "Income this period": "本周期收入",
+  "Add your income for this month": "添加本月收入",
+  "Add your income for this period": "添加本周期收入",
   "Your pay for this period. A new period starts with the last one's figure, so change it here when your pay changes. Credits are added on top.": "本周期的工资。新周期会沿用上一周期的金额，工资变动时在此修改即可。进账另行累加。",
   "+ {amount} credits": "+ {amount} 进账",
   "{amount} pending": "{amount} 待到账",

@@ -106,6 +106,8 @@ export default {
   "+{n} more": "+{n} więcej",
   "Income this month": "Dochód w tym miesiącu",
   "Income this period": "Dochód w tym okresie",
+  "Add your income for this month": "Dodaj dochód w tym miesiącu",
+  "Add your income for this period": "Dodaj dochód w tym okresie",
   "Your pay for this period. A new period starts with the last one's figure, so change it here when your pay changes. Credits are added on top.": "Twoja wypłata za ten okres. Nowy okres zaczyna się od kwoty z poprzedniego, więc zmień ją tutaj, gdy zmieni się wypłata. Wpływy są doliczane osobno.",
   "+ {amount} credits": "+ {amount} z wpływów",
   "{amount} pending": "{amount} oczekuje",

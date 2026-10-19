@@ -31,7 +31,7 @@ function Chip({ tone, children, title }) {
 }
 
 // Money left this period: the actual line so far, then the forecast to payday.
-function MoneyLeftCard({ data, curKey, today, cal, fc, remaining, sub, stillToPay, goalsLine }) {
+function MoneyLeftCard({ data, curKey, today, cal, fc, remaining, sub, stillToPay, goalsLine, needsIncome, onAddIncome }) {
   const { theme, s } = useThemed();
   const history = balanceHistory(data, curKey, today);
   const ahead = new Map(fc.series.map((p) => [p.date, p.withEveryday]));
@@ -56,7 +56,14 @@ function MoneyLeftCard({ data, curKey, today, cal, fc, remaining, sub, stillToPa
               ? <Chip tone="bad"><Icon name="arrow-down" size={12} />{t("Runs short around {date} at this pace", { date: shortDay(short) })}</Chip>
               : <Chip tone="good"><Icon name="arrow-up" size={12} />{t("About {amount} left at the end", { amount: fmt(fc.endWithEveryday) })}</Chip>)}
           </div>
-          <div style={{ fontSize: 12, color: theme.textFaint, marginTop: 6 }}>{sub}</div>
+          {/* With no income yet, Remaining is only what's spent: say what's missing. */}
+          {needsIncome ? (
+            <button style={{ ...s.linkBtn, padding: 0, marginTop: 6, fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }} onClick={onAddIncome}>
+              <Icon name="plus" size={12} />{monthly ? t("Add your income for this month") : t("Add your income for this period")}
+            </button>
+          ) : (
+            <div style={{ fontSize: 12, color: theme.textFaint, marginTop: 6 }}>{sub}</div>
+          )}
         </div>
         <div style={{ display: "flex", gap: SPACE.lg, flexShrink: 0, textAlign: "right" }}>
           <div>
@@ -258,6 +265,14 @@ export function Dashboard(props) {
   const lowerRef = useRef(null);
   useReflowAnimation(topRef);
   useReflowAnimation(lowerRef);
+  const planRef = useRef(null);
+  const incomeRef = useRef(null);
+  // No pay entered for this period: Remaining asks for it, and takes you to it.
+  const needsIncome = !(cur.income > 0);
+  const addIncome = () => {
+    planRef.current?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
+    incomeRef.current?.focus({ preventScroll: true });
+  };
 
   const goalsLine = goals.length > 0 ? {
     saved: fmt(goalsSaved),
@@ -289,36 +304,13 @@ export function Dashboard(props) {
 
       <section className="dash-top" ref={topRef}>
         <MoneyLeftCard data={data} curKey={curKey} today={today} cal={cal} fc={fc} remaining={remaining} sub={remainingSub}
-          stillToPay={totalUpcoming} goalsLine={goalsLine} />
+          stillToPay={totalUpcoming} goalsLine={goalsLine} needsIncome={needsIncome} onAddIncome={addIncome} />
         <SpendingCard data={data} curKey={curKey} today={today} cal={cal} spent={totalActuallySpent}
           effectiveIncome={effectiveIncome} spentByCat={spentByCat} onReports={() => onSetTab("reports")} />
       </section>
 
-      <section className="dash-lower" ref={lowerRef}>
-        <RecentCard data={data} cur={cur} cal={cal} isReceived={isReceived}
-          onOpen={(r) => onEdit({ type: r.kind, editId: r.e.id })} onViewAll={() => onSetTab("expenses")} />
-        <article style={{ ...s.card, borderRadius: 28, minHeight: 300 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <h2 style={{ ...s.cardTitle, margin: 0 }}>{t("Category Budgets")}</h2>
-            <button style={{ ...s.linkBtn, padding: 0 }} onClick={onManageCategories}>{t("Manage")}</button>
-          </div>
-          <div style={{ marginTop: 8 }}>
-            <CategoryBudgets
-              categories={data.categories}
-              spent={spentByCat}
-              average={(name) => categoryAverage(data, name, curKey, today)}
-              envelopeOf={(c, sp) => envelope(data, c, curKey, today, sp)}
-              onSetBudget={onSetBudget}
-              onStartFresh={onStartFresh}
-              monthly={cal.calendarMonths}
-              compact
-            />
-          </div>
-        </article>
-      </section>
-
       {/* This period's income, what to set aside, and where it is going */}
-      <div style={{ ...s.card, borderRadius: 28, marginTop: 18 }}>
+      <div ref={planRef} style={{ ...s.card, borderRadius: 28, marginTop: 18 }}>
         <div className="dash-plan">
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -326,7 +318,7 @@ export function Dashboard(props) {
               <InfoHint text={t("Your pay for this period. A new period starts with the last one's figure, so change it here when your pay changes. Credits are added on top.")} />
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
-              <input type="number" min={0} value={cur.income || ""} placeholder="0" aria-label={t("Income this period")}
+              <input ref={incomeRef} type="number" min={0} value={cur.income || ""} placeholder="0" aria-label={t("Income this period")}
                 onChange={(e) => patchCur({ income: Math.max(0, +e.target.value || 0) })}
                 style={{ ...s.input, width: 130, textAlign: "right", ...money, fontWeight: 700, fontSize: 18, color: theme.success }} />
               <span style={{ ...TYPE.caption, color: theme.textMuted, fontWeight: 600 }}>{data.currency}</span>
@@ -404,6 +396,30 @@ export function Dashboard(props) {
           </div>
         </div>
       </div>
+
+      <section className="dash-lower" ref={lowerRef}>
+        <RecentCard data={data} cur={cur} cal={cal} isReceived={isReceived}
+          onOpen={(r) => onEdit({ type: r.kind, editId: r.e.id })} onViewAll={() => onSetTab("expenses")} />
+        <article style={{ ...s.card, borderRadius: 28, minHeight: 300 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h2 style={{ ...s.cardTitle, margin: 0 }}>{t("Category Budgets")}</h2>
+            <button style={{ ...s.linkBtn, padding: 0 }} onClick={onManageCategories}>{t("Manage")}</button>
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <CategoryBudgets
+              categories={data.categories}
+              spent={spentByCat}
+              average={(name) => categoryAverage(data, name, curKey, today)}
+              envelopeOf={(c, sp) => envelope(data, c, curKey, today, sp)}
+              onSetBudget={onSetBudget}
+              onStartFresh={onStartFresh}
+              monthly={cal.calendarMonths}
+              compact
+            />
+          </div>
+        </article>
+      </section>
+
     </>
   );
 }
