@@ -14,6 +14,10 @@
 - Your income, what you set aside and where the money is going now sit
   right under Remaining on the Dashboard, instead of at the bottom. When a
   period has no income yet, Remaining says so and takes you to it.
+- Statement import reads MT940 (offered by most Polish and German banks),
+  OFX and QFX, and CAMT.053 files as well as CSV. These say what each part
+  is, so there are no columns to choose: you go straight to the preview.
+  The same checks stop anything being counted twice.
 - Import rules can do more. A rule can also say what the description must
   not contain, and check the amount: under, over or exactly a figure. So
   "ORLEN under 50 is Eating out, any other ORLEN is Transport" works.

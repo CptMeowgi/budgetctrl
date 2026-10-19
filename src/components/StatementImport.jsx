@@ -6,18 +6,21 @@ import { SPACE, TYPE, useThemed } from "../theme.js";
 import { SettingRow } from "./controls.jsx";
 import { Modal } from "./Modal.jsx";
 import { orderedRules, suggestMatch, upsertRule } from "../lib/rules.js";
+import { detectFormat, parseStatement } from "../lib/statementFormats.js";
 import { t, tk, tn } from "../i18n.js";
 import { catName } from "../text.js";
 
 const ACTION_LABEL = { expense: tk("Expense"), credit: tk("Credit"), markPaid: tk("Marks paid"), skip: tk("Skip") };
+const FORMAT_NAME = { mt940: "MT940", ofx: "OFX", camt053: "CAMT.053" };
 
 // Bank statement import. The parsing and the double-count matching live in
 // lib/importer.js where they are tested; this is the wizard over them:
-// pick a file, confirm what each column is, review every row, import.
+// pick a file, confirm what each column is (a CSV only: the other formats
+// say), review every row, import.
 export function StatementImport({ data, onClose, onImport }) {
   const { theme, s } = useThemed();
   const [step, setStep] = useState("pick");
-  const [file, setFile] = useState(null);       // { name, encoding, delimiter, rows, headerIndex }
+  const [file, setFile] = useState(null);       // CSV: { name, encoding, delimiter, rows, headerIndex }; else { name, encoding, format, statement }
   const [mapping, setMapping] = useState(null);
   const [splitAmounts, setSplitAmounts] = useState(false);
   const [invert, setInvert] = useState(false);
@@ -32,6 +35,15 @@ export function StatementImport({ data, onClose, onImport }) {
     if (!f) return;
     try {
       const { text, encoding } = decodeBytes(new Uint8Array(await f.arrayBuffer()));
+      const format = detectFormat(text);
+      if (format !== "csv") {
+        const statement = parseStatement(text, format);
+        if (!statement.transactions.length) { setError(t("No transactions found in that file.")); return; }
+        setFile({ name: f.name, encoding, format, statement });
+        setError("");
+        setStep("map");
+        return;
+      }
       const delimiter = sniffDelimiter(text);
       const parsed = parseCsv(text, delimiter);
       if (parsed.length < 2) { setError(t("That file doesn't contain a table of transactions.")); return; }
@@ -49,7 +61,7 @@ export function StatementImport({ data, onClose, onImport }) {
       setError("");
       setStep("map");
     } catch {
-      setError(t("Couldn't read that file. Export a CSV from your bank and try again."));
+      setError(t("Couldn't read that file. Export a statement from your bank and try again."));
     }
   };
 
@@ -61,9 +73,10 @@ export function StatementImport({ data, onClose, onImport }) {
     setRemembered(false);
   };
 
-  const header = file ? file.rows[file.headerIndex] : [];
+  const csv = file && !file.statement;
+  const header = csv ? file.rows[file.headerIndex] : [];
   const effective = mapping && (splitAmounts ? { ...mapping, amount: -1 } : { ...mapping, debit: -1, credit: -1 });
-  const preview = file && effective ? toTransactions(file.rows, file.headerIndex, effective, { invert }) : null;
+  const preview = file?.statement || (csv && effective ? toTransactions(file.rows, file.headerIndex, effective, { invert }) : null);
 
   const col = (key, label, hint) => (
     <SettingRow label={label} hint={hint}>
@@ -127,9 +140,9 @@ export function StatementImport({ data, onClose, onImport }) {
       if (rules.length > before) added++;
     }
     // The columns as confirmed, for the next statement with this header.
-    const importLayouts = rememberLayout(data.importLayouts, header, { mapping, splitAmounts, invert });
+    const importLayouts = csv ? rememberLayout(data.importLayouts, header, { mapping, splitAmounts, invert }) : data.importLayouts;
     const ordered = rules.length ? { importRules: rules, importRulesOrdered: true } : {};
-    const { data: next, counts } = applyImport({ ...data, ...ordered, importLayouts }, rows, newId);
+    const { data: next, counts } = applyImport({ ...data, ...ordered, ...(importLayouts ? { importLayouts } : {}) }, rows, newId);
     onImport(next, { ...counts, rules: added });
   };
 
@@ -139,17 +152,22 @@ export function StatementImport({ data, onClose, onImport }) {
     <Modal title={t("Import bank statement")} onClose={onClose} width={step === "review" ? 820 : 560}>
       {step === "pick" && (
         <div style={{ padding: `${SPACE.sm}px 0` }}>
-          <div style={{ ...TYPE.caption, color: theme.textMuted, lineHeight: 1.5, marginBottom: SPACE.md }}>{t("Export your transactions from online banking as CSV, then choose the file. You'll check every row before anything is added.")}</div>
+          <div style={{ ...TYPE.caption, color: theme.textMuted, lineHeight: 1.5, marginBottom: SPACE.md }}>{t("Export your transactions from online banking as CSV, MT940, OFX or CAMT.053, then choose the file. You'll check every row before anything is added.")}</div>
           <label style={{ ...s.addBtn, display: "inline-block" }}>
-            {t("Choose CSV file…")}
-            <input type="file" accept=".csv,.txt,text/csv" onChange={onFile} style={{ display: "none" }} />
+            {t("Choose statement file…")}
+            <input type="file" accept=".csv,.txt,text/csv,.sta,.mt940,.940,.ofx,.qfx,.xml" onChange={onFile} style={{ display: "none" }} />
           </label>
           {error && <div style={{ ...TYPE.caption, color: theme.danger, marginTop: SPACE.sm }}>{error}</div>}
           <div style={{ ...hint, marginTop: SPACE.md }}>{t("Payments already in your budget — recurring bills, your salary, things you entered by hand — are recognised and left unticked, so nothing is counted twice.")}</div>
         </div>
       )}
 
-      {step === "map" && file && (
+      {step === "map" && file && !csv && (
+        <div style={{ ...hint, marginBottom: SPACE.xs }}>
+          {file.name} · {FORMAT_NAME[file.format]} · {file.encoding === "utf-8" ? "UTF-8" : "Windows-1250"}
+        </div>
+      )}
+      {step === "map" && csv && (
         <div>
           <div style={{ ...hint, marginBottom: SPACE.xs }}>
             {file.name} · {file.encoding === "utf-8" ? "UTF-8" : "Windows-1250"} · {t("separated by {sep}", { sep: file.delimiter === "\t" ? t("tabs") : `"${file.delimiter}"` })}
@@ -179,7 +197,10 @@ export function StatementImport({ data, onClose, onImport }) {
               {t("My bank shows spending as positive numbers")}
             </label>
           )}
-
+        </div>
+      )}
+      {step === "map" && file && (
+        <div>
           <div style={{ ...s.cardTitle, marginTop: SPACE.md }}>{t("Preview")}</div>
           {preview && preview.transactions.length ? (
             <div style={{ marginTop: SPACE.xs }}>
@@ -195,7 +216,7 @@ export function StatementImport({ data, onClose, onImport }) {
               <div style={{ ...hint, marginTop: 6 }}>
                 {tn(preview.transactions.length, "{n} transaction read", "{n} transactions read")}
                 {preview.skipped ? ` · ${tn(preview.skipped, "{n} row without a date or amount ignored", "{n} rows without a date or amount ignored")}` : ""}
-                {` · ${t("dates read as {order}", { order: preview.dateOrder === "MDY" ? t("month/day") : preview.dateOrder === "YMD" ? t("year-month-day") : t("day/month") })}`}
+                {csv && ` · ${t("dates read as {order}", { order: preview.dateOrder === "MDY" ? t("month/day") : preview.dateOrder === "YMD" ? t("year-month-day") : t("day/month") })}`}
               </div>
             </div>
           ) : (
@@ -260,7 +281,7 @@ export function StatementImport({ data, onClose, onImport }) {
             })}
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: SPACE.md }}>
-            <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => setStep("map")}>{t("← Columns")}</button>
+            <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => setStep("map")}>{csv ? t("← Columns") : t("← Back")}</button>
             <button style={{ ...s.addBtn, opacity: kept.length ? 1 : 0.5 }} disabled={!kept.length} onClick={doImport}>
               {tn(kept.length, "Import {n} item", "Import {n} items")}
             </button>

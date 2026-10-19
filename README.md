@@ -31,8 +31,12 @@ A dark, glassy desktop budgeting app (with a light version), built around
 the month: what's left, what's coming, and where it went.
 
 **Budget periods that match your payday.** If you're paid on the 10th, a budget
-period runs the 10th to the 9th. Recurring bills resolve to the date they
-actually land inside that period, including short months.
+period runs the 10th to the 9th. Paid every week or every two weeks? Then each
+period runs from one payday to the day before the next, and bills that repeat
+monthly land in whichever period their date falls in. Recurring bills resolve
+to the date they actually land inside that period, including short months, and
+can repeat every week or two as well as every few months. Switching how you're
+paid shows what will change first, and Ctrl+Z undoes it.
 
 **Bills that chase you, not the other way round.** The app keeps running in the
 tray after you close the window and sends a daily digest of anything due within
@@ -73,10 +77,13 @@ and tells you what it needs per month to land on its date, or when you'll get
 there at your current pace. The Dashboard adds up what your dated goals need
 and offers to set that aside.
 
-**Statement import that learns.** Import your bank's CSV and nothing is counted
-twice. Tick **Always** on a row and that payee is named and filed for you on
-every import after. Payments that turn out to be monthly bills are spotted and
-offered as recurring bills.
+**Statement import that learns.** Import your bank's statement - CSV, MT940,
+OFX/QFX or CAMT.053 - and nothing is counted twice. The columns you pick for a
+bank's CSV are remembered for its next file. Tick **Always** on a row and that
+payee is named and filed for you on every import after; import rules can also
+look at the amount ("ORLEN under 50 is a snack, otherwise fuel") or exclude
+words. Payments that turn out to be monthly bills are spotted and offered as
+recurring bills.
 
 **See the month ahead.** A calendar of every bill and expected credit, and a
 forecast of the money left this month - its lowest point, what's left at the
@@ -251,12 +258,15 @@ desktop, `localStorage` when run in a browser - keyed by budget period:
 ```
 months: { "2026-09": { income, expenses[], recurring[], upcoming[], credits[] } }
 recurringTemplate[], creditTemplate[], categories[], creditCategories[]
-goals[], accounts[], importRules[], savingsGoal
-cutoffDay, currency, locale, language, reminders, updates
+goals[], accounts[], importRules[], importLayouts[], savingsGoal
+cutoffDay, paySchedule[]?, currency, locale, language, reminders, updates
 ```
 
-A period is keyed by the calendar month it *starts* in, so changing your cutoff
-day doesn't invalidate existing keys. Schema changes go through a single
+A monthly period is keyed by the calendar month it *starts* in, so changing your
+cutoff day doesn't invalidate existing keys. A budget that switches to weekly or
+fortnightly pay gets a `paySchedule`; from the switch on, each period is keyed by
+its first day (`"2026-11-06"`), so periods still sort by date and earlier months
+keep their keys. Schema changes go through a single
 `hydrate()` pipeline that every entry point — load, import, reset — runs, so a
 new migration is added in exactly one place.
 
