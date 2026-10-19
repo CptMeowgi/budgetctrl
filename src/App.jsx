@@ -56,6 +56,10 @@ const THEME_KEY = "budget-ctrl-theme";
 // shows. The installed app never reads these.
 const DEMO = import.meta.env.DEV ? new URLSearchParams(window.location.search) : null;
 
+// Saves the budget, unless it's the demo: that one lives only in memory, so
+// trying things in it never overwrites the budget it stands in for.
+const persist = (value) => (DEMO?.has("demo") ? Promise.resolve() : window.storage.set(STORAGE_KEY, JSON.stringify(value)));
+
 // The Dashboard greets rather than names the tab.
 function greeting(now) {
   const h = now.getHours();
@@ -205,7 +209,7 @@ export default function App() {
       setHistorySize({ past: h.past.length, future: 0 });
     }
     setData(next);
-    try { await window.storage.set(STORAGE_KEY, JSON.stringify(next)); } catch { /* in-memory state still updated; surfaced on next load */ }
+    try { await persist(next); } catch { /* in-memory state still updated; surfaced on next load */ }
   }, []);
 
   useEffect(() => {
@@ -338,7 +342,7 @@ export default function App() {
     h.lastPushAt = 0; // the next edit starts a fresh undo step
     setHistorySize({ past: h.past.length, future: h.future.length });
     setData(target);
-    try { await window.storage.set(STORAGE_KEY, JSON.stringify(target)); } catch { /* in-memory state still updated */ }
+    try { await persist(target); } catch { /* in-memory state still updated */ }
     setToast(label === "Undo" ? t("Undone") : t("Redone"));
   }, []);
   const undo = useCallback(() => restore("past", "future", "Undo"), [restore]);
