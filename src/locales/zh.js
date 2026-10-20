@@ -657,7 +657,7 @@ export default {
   "Change…": "更改…",
   "Data": "数据",
   "Bank statement": "银行流水",
-  "Add transactions from your bank's CSV export, without counting anything twice.": "从银行导出的 CSV 中添加交易，不会重复计算。",
+  "Add transactions from your bank's statement (CSV, MT940, OFX or CAMT.053), without counting anything twice.": "从银行对账单（CSV、MT940、OFX 或 CAMT.053）中添加交易，不会重复计算。",
   "Import…": "导入…",
   "Name and file bank transactions for you when you import a statement.": "导入流水时自动为银行交易命名并归类。",
   "Back up everything": "备份全部数据",

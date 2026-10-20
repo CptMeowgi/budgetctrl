@@ -657,7 +657,7 @@ export default {
   "Change…": "Zmień…",
   "Data": "Dane",
   "Bank statement": "Wyciąg bankowy",
-  "Add transactions from your bank's CSV export, without counting anything twice.": "Dodaj transakcje z eksportu CSV z banku, bez liczenia czegokolwiek podwójnie.",
+  "Add transactions from your bank's statement (CSV, MT940, OFX or CAMT.053), without counting anything twice.": "Dodaj transakcje z wyciągu z banku (CSV, MT940, OFX lub CAMT.053), bez liczenia czegokolwiek podwójnie.",
   "Import…": "Importuj…",
   "Name and file bank transactions for you when you import a statement.": "Nadają nazwy i kategorie transakcjom z banku przy imporcie wyciągu.",
   "Back up everything": "Kopia zapasowa wszystkiego",

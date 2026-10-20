@@ -225,7 +225,7 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
 
       <div style={divider} />
       <div style={group}>{t("Data")}</div>
-      <SettingRow label={t("Bank statement")} hint={t("Add transactions from your bank's CSV export, without counting anything twice.")}>
+      <SettingRow label={t("Bank statement")} hint={t("Add transactions from your bank's statement (CSV, MT940, OFX or CAMT.053), without counting anything twice.")}>
         <button style={{ ...s.linkBtn, padding: 0 }} onClick={onImportStatement}>{t("Import…")}</button>
       </SettingRow>
       <SettingRow label={t("Import rules")}
