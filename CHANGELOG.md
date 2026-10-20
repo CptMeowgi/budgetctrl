@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.0
 
 This release fits Budget Ctrl to how you're paid, and reads more of what
 your bank gives you. If you're paid every week or every two weeks, your
