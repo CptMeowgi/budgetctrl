@@ -2,18 +2,23 @@
 
 ## Unreleased
 
+This release fits Budget Ctrl to how you're paid, and reads more of what
+your bank gives you. If you're paid every week or every two weeks, your
+budget can now follow your paycheck. Statement import reads MT940, OFX and
+CAMT.053 files, remembers each bank's columns, and its rules can look at
+the amount.
+
 - You can now tell Budget Ctrl you're paid every week or every two weeks
   (Settings → You're paid, or when you start). Each budget period then runs
   from one payday to the day before the next. Switching shows what will
   change first, converts your category budgets to the new period, takes a
   backup, and Ctrl+Z undoes it. Earlier months stay as they were.
+- Recurring bills and credits can repeat every week or every two weeks:
+  choose it under Repeats and give the first date. Each payment shows on
+  its own date in Recurring, the forecast, the bill calendar and
+  reminders, and statement imports match each one.
 - Budgets whose periods aren't calendar months now say "period" in Category
   Budgets, Savings and History, and goals say what they need per paycheck.
-- After an update, Budget Ctrl shows what's new, once. The notes are
-  always there under Settings → About → What's new.
-- Your income, what you set aside and where the money is going now sit
-  right under Remaining on the Dashboard, instead of at the bottom. When a
-  period has no income yet, Remaining says so and takes you to it.
 - Statement import reads MT940 (offered by most Polish and German banks),
   OFX and QFX, and CAMT.053 files as well as CSV. These say what each part
   is, so there are no columns to choose: you go straight to the preview.
@@ -32,20 +37,11 @@
   transaction details instead of "Imported transaction", and a payment
   abroad counts what left your account, not the amount in the foreign
   currency.
-- In dark mode, the lists that drop down from a choice (an account's type,
-  a category, a frequency) were white with near-white text and couldn't be
-  read. They now follow the theme.
-- Editing a recurring credit from History, search or the bill calendar now
-  opens the recurring credit form, instead of the one for one-off credits,
-  which could leave a stray date on it.
-- Recurring bills and credits can repeat every week or every two weeks:
-  choose it under Repeats and give the first date. Each payment shows on
-  its own date in Recurring, the forecast, the bill calendar and
-  reminders, and statement imports match each one.
-- In the Americas and anywhere else west of Greenwich, dates are now read
-  as the day you entered. Before, a payment that pays itself counted as paid
-  a day early, a reminder showed its due date a day early, and changing your
-  payday could move an entry dated on the new payday into the period before.
+- Your income, what you set aside and where the money is going now sit
+  right under Remaining on the Dashboard, instead of at the bottom. When a
+  period has no income yet, Remaining says so and takes you to it.
+- After an update, Budget Ctrl shows what's new, once. The notes are
+  always there under Settings → About → What's new.
 - The Dashboard handles a narrowing window gracefully. Total Spent is
   squeezed down first and only moves below once it can't get any narrower,
   and it glides there instead of jumping, like a bubble being pushed out.
@@ -54,6 +50,16 @@
   move without animating.
 - The category amounts under Total Spent always fit inside their bubbles. A
   narrow card puts fewer in a row instead of letting the figures spill out.
+- In dark mode, the lists that drop down from a choice (an account's type,
+  a category, a frequency) were white with near-white text and couldn't be
+  read. They now follow the theme.
+- Editing a recurring credit from History, search or the bill calendar now
+  opens the recurring credit form, instead of the one for one-off credits,
+  which could leave a stray date on it.
+- In the Americas and anywhere else west of Greenwich, dates are now read
+  as the day you entered. Before, a payment that pays itself counted as paid
+  a day early, a reminder showed its due date a day early, and changing your
+  payday could move an entry dated on the new payday into the period before.
 - Changing your payday so that a new period starts straight away now starts
   it properly, with income carried over and its recurring bills and credits.
   Before, if any entries moved into it, it began with no income and none of
