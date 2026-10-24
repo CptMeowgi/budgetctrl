@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { countUsage, deleteCategory, isFallback, renameCategory, restyleCategory } from "../lib/categories.js";
+import { countUsage, deleteCategory, isFallback, renameCategory, restyleCategory, setHideFromReports } from "../lib/categories.js";
 import { ensureCategory, ensureCreditCategory, PICKER_COLORS, PICKER_ICONS } from "../model.js";
 import { FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
 import { Modal } from "./Modal.jsx";
 import { t, tn } from "../i18n.js";
 import { catName } from "../text.js";
 
-function CategoryRow({ cat, kind, data, onRename, onRestyle, onDelete }) {
+function CategoryRow({ cat, kind, data, onRename, onRestyle, onHide, onDelete }) {
   const { theme, s } = useThemed();
   const shown = catName(cat.name);
   const [draft, setDraft] = useState(shown);
@@ -59,6 +59,7 @@ function CategoryRow({ cat, kind, data, onRename, onRestyle, onDelete }) {
                      color: theme.text, ...TYPE.caption, fontFamily: FONT, outline: "none", minWidth: 0 }}
           />
         )}
+        {cat.hideFromReports && <span style={{ ...TYPE.microLegal, color: theme.warning, whiteSpace: "nowrap" }}>{t("left out of reports")}</span>}
         <span style={{ ...TYPE.finePrint, color: theme.textFaint, whiteSpace: "nowrap" }}>{usageText}</span>
         {!locked && (
           <button style={s.delBtn} title={t("Delete category")} onClick={() => setDeleting((v) => !v)}>✕</button>
@@ -82,6 +83,13 @@ function CategoryRow({ cat, kind, data, onRename, onRestyle, onDelete }) {
                          border: `1px solid ${ic === cat.icon ? theme.accent : theme.border}` }}>{ic}</button>
             ))}
           </div>
+          {kind === "spend" && (
+            <label style={{ display: "flex", alignItems: "flex-start", gap: 8, ...TYPE.finePrint, lineHeight: 1.5, color: theme.textMuted, cursor: "pointer" }}>
+              <input type="checkbox" checked={!!cat.hideFromReports} onChange={(e) => onHide(cat.name, e.target.checked)}
+                style={{ accentColor: theme.accent, marginTop: 2 }} />
+              <span>{t("Leave out of reports. For a one-off big purchase, or expenses you're paid back for. Your budget still counts it.")}</span>
+            </label>
+          )}
         </div>
       )}
 
@@ -159,12 +167,13 @@ export function CategoryManager({ data, onClose, onChange }) {
         {segBtn("spend", t("Spending"))}
         {segBtn("credit", t("Income sources"))}
       </div>
-      <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginBottom: SPACE.xs }}>{t("Rename by editing a name — renaming onto an existing one merges them. Click a badge to change its colour and icon.")}</div>
+      <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginBottom: SPACE.xs }}>{t("Rename by editing a name — renaming onto an existing one merges them. Click a badge to change its colour and icon, or to leave the category out of reports.")}</div>
       <div style={{ maxHeight: "52vh", overflowY: "auto", paddingRight: 4 }}>
         {ordered.map((c) => (
           <CategoryRow key={`${kind}:${c.name}`} cat={c} kind={kind} data={data}
             onRename={onRename}
             onRestyle={(name, style) => run(() => restyleCategory(data, kind, name, style))}
+            onHide={(name, hide) => run(() => setHideFromReports(data, name, hide))}
             onDelete={(name, moveTo) => run(() => deleteCategory(data, kind, name, moveTo))}
           />
         ))}

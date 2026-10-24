@@ -3,7 +3,8 @@
 // went. Everything is built from periodSpending / periodIncome, so a report can
 // never disagree with the Dashboard about a period.
 
-import { periodSpending, periodIncome } from "./totals.js";
+import { periodSpending, periodIncome, UNCATEGORIZED_NAME } from "./totals.js";
+import { splitParts } from "./splits.js";
 import { asCalendar, calendarFor } from "./calendar.js";
 import { dayRangeLabel, monthLabel } from "./periods.js";
 import { csvDialect, csvEscape, guardText, formatAmount } from "./csv.js";
@@ -113,23 +114,30 @@ export function payeeKey(name) {
 
 // `runningKey` is the period still in progress. It counts toward totals but not
 // averages, which are over completed periods whenever there are any.
+//
+// A category hidden from reports (a one-off big purchase, expenses paid back
+// later) is left out of everything here, and of a split payment only its
+// part; the budget still counts it. `leftOut` says what was left out.
 export function buildReport(data, keys, today, { runningKey } = {}) {
   const cal = calendarFor(data);
-  const periods = keys.map((key) => ({
-    key,
-    spending: periodSpending(data.months[key], key, today, cal),
-    income: periodIncome(data.months[key], key, today, cal),
-  }));
+  const hidden = new Set((data.categories || []).filter((c) => c.hideFromReports).map((c) => c.name));
+  const periods = keys.map((key) => {
+    const spending = periodSpending(data.months[key], key, today, cal);
+    const away = [...hidden].reduce((a, name) => a + (spending.byCategory.get(name) || 0), 0);
+    return { key, spending, spent: spending.total - away, income: periodIncome(data.months[key], key, today, cal) };
+  });
   const income = sum(periods, (p) => p.income.total);
-  const spent = sum(periods, (p) => p.spending.total);
+  const spent = sum(periods, (p) => p.spent);
 
   const averaged = keys.filter((k) => k !== runningKey);
   const use = averaged.length ? averaged : keys;
   const averageOf = (perPeriod) => (use.length ? perPeriod.filter((_, i) => use.includes(keys[i])).reduce((a, v) => a + v, 0) / use.length : 0);
 
   const rows = new Map();
+  const leftOut = new Map();
   periods.forEach((p, i) => {
     for (const [name, v] of p.spending.byCategory) {
+      if (hidden.has(name)) { leftOut.set(name, (leftOut.get(name) || 0) + v); continue; }
       if (!rows.has(name)) rows.set(name, { name, total: 0, perPeriod: new Array(periods.length).fill(0) });
       const row = rows.get(name);
       row.perPeriod[i] += v;
@@ -145,12 +153,17 @@ export function buildReport(data, keys, today, { runningKey } = {}) {
   if (base) sources.set(BASE_INCOME_NAME, base);
   for (const p of periods) for (const [name, v] of p.income.bySource) sources.set(name, (sources.get(name) || 0) + v);
 
-  const counted = periods.flatMap((p) => p.spending.items.map((it) => ({ ...it, periodKey: p.key })));
+  // Each payment with the amount the report counts: all of it, or the parts
+  // not in a hidden category.
+  const shown = (entry) => splitParts(entry).filter((part) => !hidden.has(part.category || UNCATEGORIZED_NAME))
+    .reduce((a, part) => a + (part.amount || 0), 0);
+  const counted = periods.flatMap((p) => p.spending.items.map((it) => ({ ...it, periodKey: p.key, amount: shown(it.entry) })))
+    .filter((it) => it.amount > 0);
   // One-off spending only: rent is the biggest payment every month, and listing
   // it twelve times says nothing.
   const biggest = counted
     .filter((it) => it.kind !== "recurring")
-    .sort((a, b) => (b.entry.amount || 0) - (a.entry.amount || 0))
+    .sort((a, b) => b.amount - a.amount)
     .slice(0, 8);
 
   const payeeMap = new Map();
@@ -158,7 +171,7 @@ export function buildReport(data, keys, today, { runningKey } = {}) {
     const k = payeeKey(it.entry.name);
     if (!k) continue;
     const p = payeeMap.get(k) || { key: k, total: 0, count: 0, spellings: new Map() };
-    p.total += it.entry.amount || 0;
+    p.total += it.amount;
     p.count += 1;
     const spelling = String(it.entry.name).trim();
     p.spellings.set(spelling, (p.spellings.get(spelling) || 0) + 1);
@@ -180,14 +193,15 @@ export function buildReport(data, keys, today, { runningKey } = {}) {
     saved: income - spent,
     savingsRate: income > 0 ? (income - spent) / income : null,
     averagedOver: use.length,
-    averageSpent: averageOf(periods.map((p) => p.spending.total)),
+    averageSpent: averageOf(periods.map((p) => p.spent)),
     averageIncome: averageOf(periods.map((p) => p.income.total)),
-    averageSaved: averageOf(periods.map((p) => p.income.total - p.spending.total)),
-    periods: periods.map((p) => ({ key: p.key, income: p.income.total, spent: p.spending.total })),
+    averageSaved: averageOf(periods.map((p) => p.income.total - p.spent)),
+    periods: periods.map((p) => ({ key: p.key, income: p.income.total, spent: p.spent })),
     categories,
     incomeSources: [...sources.entries()].map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value),
     biggest,
     payees,
+    leftOut: [...leftOut.entries()].filter(([, total]) => total > 0).map(([name, total]) => ({ name, total })),
   };
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { renameCategory, deleteCategory, restyleCategory, countUsage, isFallback } from "./categories.js";
+import { renameCategory, deleteCategory, restyleCategory, countUsage, isFallback, setHideFromReports } from "./categories.js";
 
 // A document with spending and income categories referenced from two periods
 // and both templates - the five places a category name actually lives.
@@ -200,5 +200,22 @@ describe("restyleCategory and countUsage", () => {
     expect(countUsage(fixture(), "spend", "Food")).toEqual({ entries: 3, templates: 1 });
     expect(countUsage(fixture(), "credit", "Gift")).toEqual({ entries: 1, templates: 1 });
     expect(countUsage(fixture(), "spend", "Fun")).toEqual({ entries: 1, templates: 0 });
+  });
+});
+
+describe("leaving a category out of reports", () => {
+  it("marks and unmarks one category, changing nothing else", () => {
+    const d = fixture();
+    const hidden = setHideFromReports(d, "Fun", true);
+    expect(hidden.categories.find((c) => c.name === "Fun").hideFromReports).toBe(true);
+    expect(hidden.categories.filter((c) => c.hideFromReports)).toHaveLength(1);
+    expect(hidden.months).toBe(d.months);
+    const shown = setHideFromReports(hidden, "Fun", false);
+    expect("hideFromReports" in shown.categories.find((c) => c.name === "Fun")).toBe(false);
+  });
+
+  it("keeps the mark through a rename", () => {
+    const d = setHideFromReports(fixture(), "Fun", true);
+    expect(renameCategory(d, "spend", "Fun", "Leisure").categories.find((c) => c.name === "Leisure").hideFromReports).toBe(true);
   });
 });

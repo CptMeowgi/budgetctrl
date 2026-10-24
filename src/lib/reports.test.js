@@ -162,6 +162,31 @@ describe("buildReport", () => {
     expect(only.averageSpent).toBe(2120);
   });
 
+  it("leaves out a category hidden from reports, everywhere in the report", () => {
+    const hid = { ...data, categories: [{ name: "Food" }, { name: "Home" }, { name: "Health", hideFromReports: true }] };
+    const h = buildReport(hid, keys, TODAY);
+    expect(h.spent).toBe(r.spent - 300);
+    expect(h.categories.map((c) => c.name)).toEqual(["Home", "Food"]);
+    expect(h.periods.map((p) => p.spent)).toEqual([2600, 2800, 2400, 2120]);
+    expect(h.biggest.some((b) => b.entry.name === "Dentist")).toBe(false);
+    expect(h.payees.some((p) => p.name === "Dentist")).toBe(false);
+    expect(h.leftOut).toEqual([{ name: "Health", total: 300 }]);
+    expect(r.leftOut).toEqual([]);
+  });
+
+  it("counts only the shown part of a split payment", () => {
+    const split = {
+      cutoffDay: 1,
+      categories: [{ name: "Food" }, { name: "Work", hideFromReports: true }],
+      months: { "2026-10": month(8000, [{ name: "Office supplies and lunch", amount: 100, date: "2026-10-02", category: "Work",
+        splits: [{ category: "Work", amount: 70 }, { category: "Food", amount: 30 }] }]) },
+    };
+    const s = buildReport(split, ["2026-10"], TODAY);
+    expect(s.spent).toBe(30);
+    expect(s.biggest.map((b) => b.amount)).toEqual([30]);
+    expect(s.payees[0].total).toBe(30);
+  });
+
   it("is empty but well formed for no periods", () => {
     const empty = buildReport(data, [], TODAY);
     expect(empty.spent).toBe(0);

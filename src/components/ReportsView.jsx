@@ -9,6 +9,7 @@ import { CategoryDonut, MonthlyBarChart } from "./charts.jsx";
 import { CategoryPill, StatCard } from "./controls.jsx";
 import { isSplit } from "../lib/splits.js";
 import { fmtDate, t, tk, tn } from "../i18n.js";
+import { catName } from "../text.js";
 
 // Two-digit alpha suffix for a #rrggbb colour.
 function alphaHex(a) {
@@ -215,6 +216,12 @@ export function ReportsView({ data, today, curKey, range, onRange, onOpenPeriod 
                 ? (monthly ? tn(report.averagedOver, "Spent, over {n} completed month", "Spent, over {n} completed months") : tn(report.averagedOver, "Spent, over {n} completed period", "Spent, over {n} completed periods"))
                 : (monthly ? tn(report.averagedOver, "Spent, over {n} month", "Spent, over {n} months") : tn(report.averagedOver, "Spent, over {n} period", "Spent, over {n} periods"))} icon="◐" />
           </div>
+          {report.leftOut.length > 0 && (
+            <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, margin: `-${SPACE.xs}px 0 ${SPACE.md}px` }}>
+              {t("Left out of these reports: {list}. Your budget still counts them; change it in Categories.",
+                { list: report.leftOut.map((c) => `${catName(c.name)} (${fmt(c.total)})`).join(", ") })}
+            </div>
+          )}
 
           <div style={s.card}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: SPACE.md }}>
@@ -279,7 +286,7 @@ export function ReportsView({ data, today, curKey, range, onRange, onOpenPeriod 
               {report.biggest.length === 0 ? (
                 <div style={s.emptySmall}>{t("No one-off payments in this range.")}</div>
               ) : (
-                report.biggest.map(({ entry, periodKey }) => (
+                report.biggest.map(({ entry, periodKey, amount }) => (
                   <div key={`${periodKey}-${entry.id}`} style={{ ...s.tableRow, gap: SPACE.md }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ ...ellipsis, fontWeight: 600 }} title={entry.name}>{entry.name}</div>
@@ -287,7 +294,7 @@ export function ReportsView({ data, today, curKey, range, onRange, onOpenPeriod 
                         {isSplit(entry) ? t("Split · {parts}", { parts: entry.splits.map((p) => p.category).join(", ") }) : (entry.category || t("Uncategorized"))} · {shortDate(entry.date || entry.dueDate)}
                       </div>
                     </div>
-                    <div style={{ fontWeight: 700, color: theme.danger, whiteSpace: "nowrap", ...money }}>{fmt(entry.amount)}</div>
+                    <div style={{ fontWeight: 700, color: theme.danger, whiteSpace: "nowrap", ...money }}>{fmt(amount)}</div>
                   </div>
                 ))
               )}

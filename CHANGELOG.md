@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- A spending category can be left out of Reports, for a one-off big
+  purchase or expenses you're paid back for. Tick it in Categories (click
+  the category's badge). Reports then leave it out of every figure and say
+  so; your budget and the Dashboard still count it.
 - You can select several expenses, or one-off credits, and file them all
   under one category or delete them together. Click **Select** above the
   list. Handy after a big statement import; one Ctrl+Z undoes it. Split

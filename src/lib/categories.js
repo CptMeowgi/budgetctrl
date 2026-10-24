@@ -140,6 +140,20 @@ export function restyleCategory(data, kind, name, style) {
   };
 }
 
+// Leave a spending category out of Reports, or put it back: for a one-off big
+// purchase, or expenses paid back later. Budgets still count it.
+export function setHideFromReports(data, name, hide) {
+  return {
+    ...data,
+    categories: (data.categories || []).map((c) => {
+      if (!sameName(c.name, name)) return c;
+      if (hide) return { ...c, hideFromReports: true };
+      const { hideFromReports: _gone, ...rest } = c;
+      return rest;
+    }),
+  };
+}
+
 // Delete a category, moving anything that used it to `moveTo` (the fallback by
 // default). The fallback itself cannot be deleted - it is what everything lands
 // in - and is recreated if it has somehow gone missing.
