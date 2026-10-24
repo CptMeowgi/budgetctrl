@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- A check-up in Settings → Data looks for anything that might be wrong in
+  your budget: entries filed under a category that's gone, possible
+  duplicates (often a statement imported twice), payments in past periods
+  never marked paid, rollover budgets deep in the red, and spending with no
+  category. Each one opens with a click. A duplicate can be deleted and a
+  payment marked paid right there, and Ctrl+Z undoes either.
+
 ## 0.7.0
 
 This release fits Budget Ctrl to how you're paid, and reads more of what

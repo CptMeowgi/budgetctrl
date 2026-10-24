@@ -11,6 +11,7 @@ import { goalsMonthlyNeed, leftOverHistory } from "./lib/goals.js";
 import { analyzeImport } from "./lib/importer.js";
 import { calendarFor } from "./lib/calendar.js";
 import { copiesFor } from "./lib/occurrences.js";
+import { checkUp } from "./lib/checkup.js";
 
 // Five years of heavy use: 60 payday periods, 150 purchases in each, bills,
 // credits, upcoming payments, rollover budgets, accounts and import rules.
@@ -153,6 +154,12 @@ describe("five years of data", () => {
     let history;
     expect(time(() => { history = leftOverHistory(data, TODAY); goalsMonthlyNeed(data.goals, data, TODAY, history); })).toBeLessThan(LIMIT_MS);
     expect(history.monthsCounted).toBeGreaterThan(50);
+  });
+
+  it("runs the check-up over five years quickly", () => {
+    let found;
+    expect(time(() => { found = checkUp(data, TODAY); })).toBeLessThan(LIMIT_MS);
+    expect(Array.isArray(found)).toBe(true);
   });
 
   it("checks a 300-line statement against five years quickly", () => {

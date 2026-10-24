@@ -13,7 +13,7 @@ import { calendarFor, readSchedule } from "../lib/calendar.js";
 import { PAY_KINDS, payKindChosen } from "../lib/paySchedule.js";
 
 export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onChangeLocale, onRestore, onManageCategories, updater, onChangeUpdates, onInstallUpdate,
-  onChangeCutoff, onChangePay, onWhatsNew, today, onExport, onExportCsv, onImport, onImportStatement, onReset, onManageRules, lockCfg, onPinAction, onChangeLock, onChangeLanguage }) {
+  onChangeCutoff, onChangePay, onWhatsNew, onCheckup, today, onExport, onExportCsv, onImport, onImportStatement, onReset, onManageRules, lockCfg, onPinAction, onChangeLock, onChangeLanguage }) {
   const { theme, s } = useThemed();
   const [openedAt] = useState(() => Date.now());
   const rem = data.reminders || { enabled: true, leadDays: 3 };
@@ -231,6 +231,9 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
       <SettingRow label={t("Import rules")}
         hint={`${(data.importRules || []).length ? tn((data.importRules || []).length, "{n} rule.", "{n} rules.") : t("No rules yet.")} ${t("Name and file bank transactions for you when you import a statement.")}`}>
         <button style={{ ...s.linkBtn, padding: 0 }} onClick={onManageRules}>{t("Manage…")}</button>
+      </SettingRow>
+      <SettingRow label={t("Check-up")} hint={t("Looks for anything that might be wrong: entries under a category that's gone, possible duplicates, past payments never marked paid.")}>
+        <button style={{ ...s.linkBtn, padding: 0 }} onClick={onCheckup}>{t("Check…")}</button>
       </SettingRow>
       <SettingRow label={t("Back up everything")} hint={t("Your whole budget in one file, to keep somewhere safe or move to another computer.")}>
         <button style={{ ...s.linkBtn, padding: 0 }} onClick={onExport}>{t("Export…")}</button>

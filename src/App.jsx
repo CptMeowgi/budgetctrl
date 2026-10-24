@@ -13,6 +13,8 @@ import { isRecurringItem, isWeekly, missingCopies, occursIn } from "./lib/occurr
 import { deleteRecurringCopy, deleteTemplate, editFormFor, saveRecurring } from "./lib/recurringEdits.js";
 import { allNotes, APP_VERSION, loadChangelog, whatsNewAtLaunch } from "./lib/whatsNew.js";
 import { WhatsNewModal } from "./components/WhatsNewModal.jsx";
+import { CheckupModal } from "./components/CheckupModal.jsx";
+import { fixFinding } from "./lib/checkup.js";
 import { creditReceived, periodIncome, periodSpending } from "./lib/totals.js";
 import { AccountModal, AccountsView } from "./components/AccountsView.jsx";
 import { CategoryManager } from "./components/CategoryManager.jsx";
@@ -132,6 +134,9 @@ export default function App() {
   const [whatsNew, setWhatsNew] = useState(null);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [checkupOpen, setCheckupOpen] = useState(false);
+  // An entry opened from the check-up returns to it once its dialog closes.
+  const backToCheckup = useRef(false);
   // The welcome screens: shown once, for a budget created on this launch.
   const [setupOpen, setSetupOpen] = useState(false);
   // App lock: undefined until lock.json has been read, so the budget is never
@@ -261,6 +266,13 @@ export default function App() {
   }, [save]);
 
   useEffect(() => {
+    if (!modal && backToCheckup.current) {
+      backToCheckup.current = false;
+      setCheckupOpen(true);
+    }
+  }, [modal]);
+
+  useEffect(() => {
     if (!pendingDelete) return;
     const t = setTimeout(() => setPendingDelete(null), 3000);
     return () => clearTimeout(t);
@@ -363,7 +375,7 @@ export default function App() {
       const el = e.target;
       const tag = (el?.tagName || "").toLowerCase();
       const typing = tag === "input" || tag === "textarea" || tag === "select" || el?.isContentEditable;
-      const dialogOpen = !!modal || settingsOpen || categoriesOpen || statementOpen || searchOpen || rulesOpen || setupOpen || !!pinDialog || !!payDialog || !!whatsNew;
+      const dialogOpen = !!modal || settingsOpen || categoriesOpen || statementOpen || searchOpen || rulesOpen || setupOpen || !!pinDialog || !!payDialog || !!whatsNew || checkupOpen;
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
       // Locking works from anywhere, open dialog or not.
@@ -389,7 +401,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [loaded, modal, settingsOpen, categoriesOpen, statementOpen, searchOpen, rulesOpen, setupOpen, pinDialog, payDialog, whatsNew, lockCfg, locked, tab, undo, redo]);
+  }, [loaded, modal, settingsOpen, categoriesOpen, statementOpen, searchOpen, rulesOpen, setupOpen, pinDialog, payDialog, whatsNew, checkupOpen, lockCfg, locked, tab, undo, redo]);
 
   useEffect(() => {
     let alive = true;
@@ -1538,6 +1550,25 @@ export default function App() {
         <CategoryManager data={data} onClose={() => setCategoriesOpen(false)} onChange={(next) => save(next)} />
       )}
 
+      {checkupOpen && (
+        <CheckupModal data={data} today={today} onClose={() => setCheckupOpen(false)} onFix={(f) => save(fixFinding(data, f))}
+          onOpen={(f) => {
+            setCheckupOpen(false);
+            if (f.kind === "category") { setTab("dashboard"); return; }
+            backToCheckup.current = true;
+            if (f.kind === "recurringTemplate" || f.kind === "creditTemplate") {
+              // Through this period's copy when there is one, so the copy
+              // changes with the bill; otherwise the bill itself.
+              const list = f.kind === "recurringTemplate" ? "recurring" : "credits";
+              const type = f.kind === "recurringTemplate" ? "recurring" : "creditRecurring";
+              const copy = (cur[list] || []).find((x) => x.templateId === f.entry.id);
+              setModal(copy ? { type, editId: copy.id } : { type, templateId: f.entry.id });
+              return;
+            }
+            const type = editFormFor({ expense: "expense", recurring: "recurring", upcoming: "upcoming", credit: "credit" }[f.kind], f.entry);
+            setModal({ type, editId: f.entry.id, monthKey: f.periodKey });
+          }} />
+      )}
       {whatsNew && (
         <WhatsNewModal entries={whatsNew.entries} onClose={() => setWhatsNew(null)}
           title={whatsNew.launch ? t("What's new in Budget Ctrl {version}", { version: whatsNew.entries[0]?.version === "Unreleased" ? APP_VERSION : whatsNew.entries[0]?.version || APP_VERSION }) : t("What's new")} />
@@ -1557,6 +1588,7 @@ export default function App() {
           onInstallUpdate={installUpdate}
           onChangeCutoff={onChangeCutoff}
           onChangePay={(opts) => { setSettingsOpen(false); setPayDialog(opts); }}
+          onCheckup={() => { setSettingsOpen(false); setCheckupOpen(true); }}
           onWhatsNew={() => loadChangelog().then((all) => { setSettingsOpen(false); setWhatsNew({ entries: allNotes(all, import.meta.env.DEV), launch: false }); }).catch(() => { /* notes are a courtesy */ })}
           today={today}
           onExport={() => exportData(data)}
