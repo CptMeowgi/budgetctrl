@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- You can select several expenses, or one-off credits, and file them all
+  under one category or delete them together. Click **Select** above the
+  list. Handy after a big statement import; one Ctrl+Z undoes it. Split
+  payments are left as they are.
 - A check-up in Settings → Data looks for anything that might be wrong in
   your budget: entries filed under a category that's gone, possible
   duplicates (often a statement imported twice), payments in past periods

@@ -14,6 +14,8 @@ import { deleteRecurringCopy, deleteTemplate, editFormFor, saveRecurring } from 
 import { allNotes, APP_VERSION, loadChangelog, whatsNewAtLaunch } from "./lib/whatsNew.js";
 import { WhatsNewModal } from "./components/WhatsNewModal.jsx";
 import { CheckupModal } from "./components/CheckupModal.jsx";
+import { BulkBar } from "./components/BulkBar.jsx";
+import { bulkCategory, bulkDelete } from "./lib/bulk.js";
 import { fixFinding } from "./lib/checkup.js";
 import { creditReceived, periodIncome, periodSpending } from "./lib/totals.js";
 import { AccountModal, AccountsView } from "./components/AccountsView.jsx";
@@ -28,7 +30,7 @@ import { LockScreen, PinDialog } from "./components/LockScreen.jsx";
 import { FormModal } from "./components/FormModal.jsx";
 import { ExpenseModal } from "./components/ExpenseModal.jsx";
 import { ReportsView } from "./components/ReportsView.jsx";
-import { EntryName, ExpenseRow, MissingFromTemplate, NotDueThisPeriod, RecurringRow, RowActions, UpcomingRow } from "./components/rows.jsx";
+import { EntryName, ExpenseRow, MissingFromTemplate, NotDueThisPeriod, RecurringRow, RowActions, SelectCell, UpcomingRow } from "./components/rows.jsx";
 import { SettingsModal } from "./components/SettingsModal.jsx";
 import { PayScheduleModal } from "./components/PayScheduleModal.jsx";
 import { perPeriodOf } from "./lib/paySchedule.js";
@@ -44,7 +46,7 @@ import { ENTRY_COLUMNS, filterAndSort, toggleSort } from "./listView.js";
 import { countRebucketMoves, CREDIT_UNCATEGORIZED, defaultData, emptyMonth, ensureCategory, ensureCreditCategory, ensureCurrentMonth, hydrate, migrate, rebucketData, STORAGE_KEY, uid } from "./model.js";
 import { currencyCode, fmt, setMoneyFormat } from "./money.js";
 import { isLinux, isTauri } from "./platform.js";
-import { due, ordinal, shortDate } from "./text.js";
+import { catName, due, ordinal, shortDate } from "./text.js";
 import { readBackup, readLock, setAsideUnreadable, writeBackup, writeLock } from "./storage.js";
 import { RecoveryScreen } from "./components/RecoveryScreen.jsx";
 import { DARK_THEME, FOCUS_RING, FONT, LIGHT_THEME, makeStyles, RADIUS, SPACE, ThemeContext, TYPE } from "./theme.js";
@@ -135,6 +137,10 @@ export default function App() {
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [checkupOpen, setCheckupOpen] = useState(false);
+  // Bulk editing: which list is being selected from ("expenses", "credits"),
+  // and the ids picked so far.
+  const [selecting, setSelecting] = useState(null);
+  const [selected, setSelected] = useState(() => new Set());
   // An entry opened from the check-up returns to it once its dialog closes.
   const backToCheckup = useRef(false);
   // The welcome screens: shown once, for a budget created on this launch.
@@ -271,6 +277,9 @@ export default function App() {
       setCheckupOpen(true);
     }
   }, [modal]);
+
+  // A selection belongs to the list it was made in.
+  useEffect(() => { setSelecting(null); setSelected(new Set()); }, [tab]);
 
   useEffect(() => {
     if (!pendingDelete) return;
@@ -553,6 +562,26 @@ export default function App() {
   const onSortCredits = (col, shift) =>
     setCreditsView((v) => ({ ...v, sorts: toggleSort(v.sorts || [], col, shift) }));
   const filteredCredits = filterAndSort(cur.credits || [], creditsView);
+  const toggleSelected = (id) => setSelected((set) => {
+    const next = new Set(set);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const stopSelecting = () => { setSelecting(null); setSelected(new Set()); };
+  // One save each, so one Ctrl+Z undoes the whole change.
+  const bulkFile = (list, category) => {
+    const { entries, changed, skipped } = bulkCategory(cur[list] || [], selected, category);
+    if (changed) patchCur({ [list]: entries });
+    setToast(skipped
+      ? `${tn(changed, "{n} filed under {category}.", "{n} filed under {category}.", { category: catName(category) })} ${tn(skipped, "{n} split payment left as it is.", "{n} split payments left as they are.")}`
+      : tn(changed, "{n} filed under {category}.", "{n} filed under {category}.", { category: catName(category) }));
+  };
+  const bulkRemove = (list) => {
+    const { entries, removed } = bulkDelete(cur[list] || [], selected);
+    patchCur({ [list]: entries });
+    setToast(tn(removed, "{n} deleted. Ctrl+Z brings it back.", "{n} deleted. Ctrl+Z brings them back."));
+    stopSelecting();
+  };
   const onChangeCutoff = (next) => {
     const clamped = Math.max(1, Math.min(28, next || 1));
     // A budget with a pay schedule changes payday by adding to the schedule,
@@ -866,6 +895,9 @@ export default function App() {
                 <div style={{ display: "flex", alignItems: "center", gap: SPACE.md }}>
                   <div style={s.cardTitle}>{t("All Expenses")}</div>
                   <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => setStatementOpen(true)}>{t("Import from bank")}</button>
+                  {selecting !== "expenses" && filteredExpenses.length > 1 && (
+                    <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => { setSelected(new Set()); setSelecting("expenses"); }}>{t("Select")}</button>
+                  )}
                 </div>
                 <div style={{ fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: theme.danger, fontSize: 16 }}>{t("Total: {amount}", { amount: fmt(totalExpenses) })}</div>
               </div>
@@ -878,9 +910,15 @@ export default function App() {
               />
               {filteredExpenses.length === 0 ? <div style={s.empty}>{expensesView.search ? t("No expenses match \"{search}\".", { search: expensesView.search }) : t("No expenses yet. Click \"+ Add Expense\" to start tracking.")}</div> : (
                 <>
-                  <TableHeader columns={ENTRY_COLUMNS.expenses} sorts={expensesView.sorts} onSort={onSortExpenses} />
+                  {selecting === "expenses" && (
+                    <BulkBar count={selected.size} shown={filteredExpenses.length} categories={(data.categories || []).map((c) => c.name)}
+                      onSelectAll={() => setSelected(new Set(filteredExpenses.map((e) => e.id)))} onSelectNone={() => setSelected(new Set())}
+                      onCategory={(c) => bulkFile("expenses", c)} onDelete={() => bulkRemove("expenses")} onDone={stopSelecting} />
+                  )}
+                  <TableHeader columns={ENTRY_COLUMNS.expenses} sorts={expensesView.sorts} onSort={onSortExpenses} leading={selecting === "expenses" ? " " : null} />
                   {filteredExpenses.map((e) => (
                     <ExpenseRow key={e.id} entry={e} categories={data.categories}
+                      selected={selecting === "expenses" ? selected.has(e.id) : undefined} onSelect={() => toggleSelected(e.id)}
                       onEdit={() => setModal({ type: "expense", editId: e.id })}
                       onDelete={() => patchCur({ expenses: cur.expenses.filter((x) => x.id !== e.id) })} />
                   ))}
@@ -996,6 +1034,7 @@ export default function App() {
             const oneOffCredits = filteredCredits.filter((c) => !isRecurringItem(c));
             const creditRow = (c, kind) => (
               <div key={c.id} style={s.tableRow}>
+                {kind === "oneoff" && <SelectCell name={c.name} selected={selecting === "credits" ? selected.has(c.id) : undefined} onSelect={() => toggleSelected(c.id)} />}
                 <EntryName name={c.name} note={c.note} schedule={c} />
                 <div style={{ flex: 1.2 }}><CategoryPill categoryName={c.category || c.source} categories={data.creditCategories || []} fallback={CREDIT_UNCATEGORIZED} /></div>
                 {kind === "recurring"
@@ -1060,14 +1099,24 @@ export default function App() {
 
                 <div style={{ ...s.card, marginTop: 16 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={s.cardTitle}>{t("One-off Credits")}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: SPACE.md }}>
+                      <div style={s.cardTitle}>{t("One-off Credits")}</div>
+                      {selecting !== "credits" && oneOffCredits.length > 1 && (
+                        <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => { setSelected(new Set()); setSelecting("credits"); }}>{t("Select")}</button>
+                      )}
+                    </div>
                     <button style={s.linkBtn} onClick={() => setModal({ type: "credit" })}>{t("+ Add Credit")}</button>
                   </div>
                   {oneOffCredits.length === 0 ? (
                     <div style={s.emptySmall}>{creditsView.search ? t("No one-off credits match your search.") : (cal.calendarMonths ? t("No one-off credits this month. Log a refund, gift, or bonus.") : t("No one-off credits this period. Log a refund, gift, or bonus."))}</div>
                   ) : (
                     <>
-                      <TableHeader columns={[{ label: tk("NAME"), flex: 2, sortKey: "name" }, { label: tk("SOURCE"), flex: 1.2, sortKey: "category" }, { label: tk("DATE"), flex: 1, sortKey: "date" }, { label: tk("AMOUNT"), flex: 1, align: "right", sortKey: "amount" }, { label: "", flex: 0.6, align: "center" }]} sorts={creditsView.sorts} onSort={onSortCredits} />
+                      {selecting === "credits" && (
+                        <BulkBar count={selected.size} shown={oneOffCredits.length} categories={(data.creditCategories || []).map((c) => c.name)}
+                          onSelectAll={() => setSelected(new Set(oneOffCredits.map((c) => c.id)))} onSelectNone={() => setSelected(new Set())}
+                          onCategory={(c) => bulkFile("credits", c)} onDelete={() => bulkRemove("credits")} onDone={stopSelecting} />
+                      )}
+                      <TableHeader columns={[{ label: tk("NAME"), flex: 2, sortKey: "name" }, { label: tk("SOURCE"), flex: 1.2, sortKey: "category" }, { label: tk("DATE"), flex: 1, sortKey: "date" }, { label: tk("AMOUNT"), flex: 1, align: "right", sortKey: "amount" }, { label: "", flex: 0.6, align: "center" }]} sorts={creditsView.sorts} onSort={onSortCredits} leading={selecting === "credits" ? " " : null} />
                       {oneOffCredits.map((c) => creditRow(c, "oneoff"))}
                     </>
                   )}

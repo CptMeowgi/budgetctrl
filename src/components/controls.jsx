@@ -19,11 +19,16 @@ export function StatCard({ label, value, accent, sub }) {
   );
 }
 
-export function TableHeader({ columns, sorts, onSort }) {
+// The width of the selection checkbox cell on a list being bulk edited.
+export const SELECT_CELL = 28;
+
+// `leading`: a cell before the columns, over the rows' selection checkboxes.
+export function TableHeader({ columns, sorts, onSort, leading }) {
   const { theme, s } = useThemed();
   const showPriority = (sorts?.length || 0) > 1;
   return (
     <div style={s.tableHeader}>
+      {leading && <div style={{ width: SELECT_CELL, flexShrink: 0 }}>{leading}</div>}
       {columns.map((col, i) => {
         const isSortable = col.sortKey && onSort;
         const idx = sorts ? sorts.findIndex((sr) => sr.col === col.sortKey) : -1;

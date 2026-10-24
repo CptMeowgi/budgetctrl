@@ -5,7 +5,7 @@ import { isWeekly, nextPeriodOf } from "../lib/occurrences.js";
 import { DeleteArmContext } from "../contexts.js";
 import { fmt } from "../money.js";
 import { FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
-import { CategoryPill } from "./controls.jsx";
+import { CategoryPill, SELECT_CELL } from "./controls.jsx";
 import { isSplit } from "../lib/splits.js";
 import { t, tn } from "../i18n.js";
 import { shortDate } from "../text.js";
@@ -81,10 +81,24 @@ export function NotDueThisPeriod({ items, curKey, cal, categories, fallback, pos
 // One row definition per entry type, used by the live tab and by History. They
 // were duplicated character-for-character apart from which period the edit and
 // delete callbacks targeted, so that is all the caller supplies.
-export function ExpenseRow({ entry: e, categories, onEdit, onDelete }) {
+// A checkbox for a row while its list is being bulk edited (`selected` is
+// true or false then, undefined otherwise).
+export function SelectCell({ name, selected, onSelect }) {
+  const { theme } = useThemed();
+  if (selected === undefined) return null;
+  return (
+    <div style={{ width: SELECT_CELL, flexShrink: 0 }}>
+      <input type="checkbox" checked={selected} onChange={onSelect} aria-label={t("Select {name}", { name })}
+        style={{ accentColor: theme.accent, width: 16, height: 16, cursor: "pointer" }} />
+    </div>
+  );
+}
+
+export function ExpenseRow({ entry: e, categories, onEdit, onDelete, selected, onSelect }) {
   const { theme, s } = useThemed();
   return (
     <div style={s.tableRow}>
+      <SelectCell name={e.name} selected={selected} onSelect={onSelect} />
       <EntryName name={e.name} note={e.note} />
       <div style={{ flex: 1.2 }}>
         {isSplit(e) ? (
