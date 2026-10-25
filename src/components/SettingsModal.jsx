@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
+import { LOCK_CHOICES } from "../lib/pastLock.js";
 import { currencyOptions, LOCALE_OPTIONS } from "../money.js";
 import { isLinux, isTauri, isWindows, openExternal } from "../platform.js";
 import { issueUrl } from "../lib/feedback.js";
@@ -13,7 +14,7 @@ import { calendarFor, readSchedule } from "../lib/calendar.js";
 import { PAY_KINDS, payKindChosen } from "../lib/paySchedule.js";
 
 export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onChangeLocale, onRestore, onManageCategories, updater, onChangeUpdates, onInstallUpdate,
-  onChangeCutoff, onChangePay, onWhatsNew, onCheckup, today, onExport, onExportCsv, onImport, onImportStatement, onReset, onManageRules, lockCfg, onPinAction, onChangeLock, onChangeLanguage }) {
+  onChangeCutoff, onChangePay, onWhatsNew, onCheckup, onChangeLockPast, today, onExport, onExportCsv, onImport, onImportStatement, onReset, onManageRules, lockCfg, onPinAction, onChangeLock, onChangeLanguage }) {
   const { theme, s } = useThemed();
   const [openedAt] = useState(() => Date.now());
   const rem = data.reminders || { enabled: true, leadDays: 3 };
@@ -131,6 +132,11 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
         </SettingRow>
       )}
 
+      <SettingRow label={t("Lock past periods")} hint={t("Old periods can't be changed by a stray click. You can still unlock one in History when you need to.")}>
+        <select value={Number(data.lockPastMonths) || 0} onChange={(e) => onChangeLockPast(+e.target.value)} style={{ ...s.input, width: 200 }}>
+          {LOCK_CHOICES.map((n) => <option key={n} value={n}>{n ? tn(n, "Older than {n} month", "Older than {n} months") : t("Off")}</option>)}
+        </select>
+      </SettingRow>
       <SettingRow label={t("Categories")} hint={t("Rename, merge, recolour or remove spending categories and income sources.")}>
         <button style={{ ...s.linkBtn, padding: 0 }} onClick={onManageCategories}>{t("Manage…")}</button>
       </SettingRow>

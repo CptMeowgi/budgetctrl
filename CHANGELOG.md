@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Past periods can be locked, so a stray click can't change last year's
+  figures. In Settings, choose to lock periods older than 1, 3, 6 or 12
+  months. A locked period says so in History and asks to be unlocked
+  before anything in it is edited; it locks again when you close the app.
+  It's off unless you turn it on.
 - Categories can be put in groups, such as Bills, Everyday or Fun: click a
   category's badge in Categories and type a group. The Dashboard's category
   budgets and the Reports table then show each group with its totals, and

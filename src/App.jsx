@@ -14,9 +14,11 @@ import { deleteRecurringCopy, deleteTemplate, editFormFor, saveRecurring } from 
 import { allNotes, APP_VERSION, loadChangelog, whatsNewAtLaunch } from "./lib/whatsNew.js";
 import { WhatsNewModal } from "./components/WhatsNewModal.jsx";
 import { CheckupModal } from "./components/CheckupModal.jsx";
+import { Modal } from "./components/Modal.jsx";
 import { BulkBar } from "./components/BulkBar.jsx";
 import { bulkCategory, bulkDelete } from "./lib/bulk.js";
 import { fixFinding } from "./lib/checkup.js";
+import { isPeriodLocked } from "./lib/pastLock.js";
 import { creditReceived, periodIncome, periodSpending } from "./lib/totals.js";
 import { AccountModal, AccountsView } from "./components/AccountsView.jsx";
 import { CategoryManager } from "./components/CategoryManager.jsx";
@@ -117,7 +119,20 @@ export default function App() {
   const [historySize, setHistorySize] = useState({ past: 0, future: 0 });
   const [toast, setToast] = useState(null);
   const [tab, setTab] = useState(() => DEMO?.get("tab") || "dashboard");
-  const [modal, setModal] = useState(null);
+  const [modal, setModalState] = useState(null);
+  // "Lock past periods": an entry in a locked period asks for the period to
+  // be unlocked (until the app closes) before it opens for editing, and a
+  // change made straight to one is refused.
+  const [lockAsk, setLockAsk] = useState(null);
+  const [unlocked, setUnlocked] = useState(() => new Set());
+  const unlockedRef = useRef(unlocked);
+  unlockedRef.current = unlocked;
+  const periodLocked = useCallback((key) => isPeriodLocked(dataRef.current, calendarFor(dataRef.current), key, new Date())
+    && !unlockedRef.current.has(key), []);
+  const setModal = useCallback((m) => {
+    if (m?.monthKey && periodLocked(m.monthKey)) { setLockAsk(m); return; }
+    setModalState(m);
+  }, [periodLocked]);
   const [loaded, setLoaded] = useState(false);
   const [historyKey, setHistoryKey] = useState(null);
   const [reportRange, setReportRange] = useState(null);
@@ -298,6 +313,7 @@ export default function App() {
   const { theme, s } = themedValue;
 
   const patchMonth = useCallback((key, patch) => {
+    if (periodLocked(key)) { setToast(t("This period is locked. Unlock it in History to change it.")); return; }
     const m = data.months[key] || emptyMonth();
     // An edit to an already-closed period is a retroactive correction, so stamp
     // it. The Savings table surfaces this, otherwise a hand-corrected figure is
@@ -311,7 +327,7 @@ export default function App() {
         [key]: { ...m, ...patch, ...(closed ? { editedAt: new Date().toISOString() } : {}) },
       },
     });
-  }, [data, save]);
+  }, [data, save, periodLocked]);
 
   const patchCur = useCallback((patch) => {
     patchMonth(calendarFor(data).current(), patch);
@@ -384,7 +400,7 @@ export default function App() {
       const el = e.target;
       const tag = (el?.tagName || "").toLowerCase();
       const typing = tag === "input" || tag === "textarea" || tag === "select" || el?.isContentEditable;
-      const dialogOpen = !!modal || settingsOpen || categoriesOpen || statementOpen || searchOpen || rulesOpen || setupOpen || !!pinDialog || !!payDialog || !!whatsNew || checkupOpen;
+      const dialogOpen = !!modal || settingsOpen || categoriesOpen || statementOpen || searchOpen || rulesOpen || setupOpen || !!pinDialog || !!payDialog || !!whatsNew || checkupOpen || !!lockAsk;
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
       // Locking works from anywhere, open dialog or not.
@@ -410,7 +426,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [loaded, modal, settingsOpen, categoriesOpen, statementOpen, searchOpen, rulesOpen, setupOpen, pinDialog, payDialog, whatsNew, checkupOpen, lockCfg, locked, tab, undo, redo]);
+  }, [loaded, modal, settingsOpen, categoriesOpen, statementOpen, searchOpen, rulesOpen, setupOpen, pinDialog, payDialog, whatsNew, checkupOpen, lockAsk, lockCfg, locked, tab, undo, redo, setModal]);
 
   useEffect(() => {
     let alive = true;
@@ -1198,9 +1214,28 @@ export default function App() {
                 {cal.label(historyKey).range && (
                   <div style={{ fontSize: 12, color: theme.textMuted, marginBottom: 12 }}>{cal.label(historyKey).range}</div>
                 )}
+                {isPeriodLocked(data, cal, historyKey, today) && (
+                  <div style={{ ...s.card, borderRadius: 16, padding: "10px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: SPACE.md, flexWrap: "wrap" }}>
+                    <Icon name="lock" size={15} />
+                    <span style={{ ...TYPE.caption, color: theme.textMuted, flex: 1 }}>
+                      {unlocked.has(historyKey)
+                        ? t("Unlocked until you close Budget Ctrl.")
+                        : tn(Number(data.lockPastMonths) || 0, "Locked: this period ended more than {n} month ago.", "Locked: this period ended more than {n} months ago.")}
+                    </span>
+                    <button style={{ ...s.linkBtn, padding: 0 }}
+                      onClick={() => {
+                        const next = new Set(unlocked);
+                        if (next.has(historyKey)) next.delete(historyKey); else next.add(historyKey);
+                        unlockedRef.current = next;
+                        setUnlocked(next);
+                      }}>
+                      {unlocked.has(historyKey) ? t("Lock again") : t("Unlock")}
+                    </button>
+                  </div>
+                )}
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
                   <span style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1.5, color: theme.textMuted, fontWeight: 600 }}>{t("Income")}</span>
-                  <input type="number" value={m.income || ""}
+                  <input type="number" value={m.income || ""} readOnly={periodLocked(historyKey)}
                     onChange={(ev) => patchMonth(historyKey, { income: +ev.target.value || 0 })}
                     placeholder="0" style={{ ...s.input, width: 140 }} />
                   <span style={{ fontSize: 12, color: theme.textMuted, fontWeight: 600 }}>{data.currency}</span>
@@ -1599,8 +1634,29 @@ export default function App() {
         <CategoryManager data={data} onClose={() => setCategoriesOpen(false)} onChange={(next) => save(next)} />
       )}
 
+      {lockAsk && (
+        <Modal title={t("This period is locked")} onClose={() => setLockAsk(null)} width={460}>
+          <p style={{ ...TYPE.caption, color: theme.text, lineHeight: 1.6, margin: `${SPACE.xs}px 0 ${SPACE.md}px` }}>
+            {tn(Number(data.lockPastMonths) || 0,
+              "{period} ended more than {n} month ago, so it's locked against changes. Unlock it to edit it; it locks again when you close Budget Ctrl.",
+              "{period} ended more than {n} months ago, so it's locked against changes. Unlock it to edit it; it locks again when you close Budget Ctrl.",
+              { period: cal.label(lockAsk.monthKey).range || cal.label(lockAsk.monthKey).primary })}
+          </p>
+          <div style={{ display: "flex", gap: SPACE.md, justifyContent: "flex-end" }}>
+            <button style={s.linkBtn} onClick={() => setLockAsk(null)}>{t("Cancel")}</button>
+            <button style={{ ...s.saveBtn, width: "auto", padding: "10px 24px" }}
+              onClick={() => {
+                const next = new Set(unlocked).add(lockAsk.monthKey);
+                unlockedRef.current = next;
+                setUnlocked(next);
+                setModalState(lockAsk);
+                setLockAsk(null);
+              }}>{t("Unlock and edit")}</button>
+          </div>
+        </Modal>
+      )}
       {checkupOpen && (
-        <CheckupModal data={data} today={today} onClose={() => setCheckupOpen(false)} onFix={(f) => save(fixFinding(data, f))}
+        <CheckupModal data={data} today={today} onClose={() => setCheckupOpen(false)} onFix={(f) => (periodLocked(f.periodKey) ? setToast(t("This period is locked. Unlock it in History to change it.")) : save(fixFinding(data, f)))}
           onOpen={(f) => {
             setCheckupOpen(false);
             if (f.kind === "category") { setTab("dashboard"); return; }
@@ -1638,6 +1694,7 @@ export default function App() {
           onChangeCutoff={onChangeCutoff}
           onChangePay={(opts) => { setSettingsOpen(false); setPayDialog(opts); }}
           onCheckup={() => { setSettingsOpen(false); setCheckupOpen(true); }}
+          onChangeLockPast={(n) => save({ ...data, lockPastMonths: n || undefined })}
           onWhatsNew={() => loadChangelog().then((all) => { setSettingsOpen(false); setWhatsNew({ entries: allNotes(all, import.meta.env.DEV), launch: false }); }).catch(() => { /* notes are a courtesy */ })}
           today={today}
           onExport={() => exportData(data)}
