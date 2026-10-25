@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- You can save up for bills that come round every few months or once a
+  year. Tick **Save up for it** on the bill, and each period sets a share
+  aside, so a 1,200 yearly bill costs 100 a month instead of 1,200 in one.
+  The Dashboard shows how far along each one is and when it's due. If you
+  start late, or a month has nothing left over, the share goes up a little
+  to catch up. When the bill is paid, it comes out of what was saved.
 - New to Budget Ctrl? The welcome screen can open a sample budget, made
   up so you can look around before entering anything of your own. Nothing
   you do in it is saved, it sends no reminders, and **Start my own budget**

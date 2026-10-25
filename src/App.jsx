@@ -19,6 +19,7 @@ import { BulkBar } from "./components/BulkBar.jsx";
 import { bulkCategory, bulkDelete } from "./lib/bulk.js";
 import { fixFinding } from "./lib/checkup.js";
 import { isPeriodLocked } from "./lib/pastLock.js";
+import { fundTotals, sinkingFunds } from "./lib/sinking.js";
 import { creditReceived, periodIncome, periodSpending } from "./lib/totals.js";
 import { AccountModal, AccountsView } from "./components/AccountsView.jsx";
 import { CategoryManager } from "./components/CategoryManager.jsx";
@@ -542,7 +543,11 @@ export default function App() {
   const totalActuallySpent = spending.total;
   const totalStillScheduled = totalRecurringFuture + totalUnpaidUpcoming;
   const totalCommitted = totalActuallySpent;
-  const availableAfterCommitted = Math.max(0, effectiveIncome - totalCommitted);
+  // Bills being saved up for: this period's shares, and in the period one is
+  // due, the bill paid out of what was saved rather than this period's money.
+  const funds = sinkingFunds(data, today);
+  const fundsNow = fundTotals(funds);
+  const availableAfterCommitted = Math.max(0, effectiveIncome - totalCommitted + fundsNow.paidFromFund);
   const savingsGoal = data.savingsGoal || { monthly: 0 };
   // Kept per month, set aside per period: a fortnight sets aside 12/26 of it.
   const setAside = perPeriodOf(savingsGoal.monthly, cal, curKey);
@@ -551,7 +556,9 @@ export default function App() {
   // the goal. The gap is surfaced rather than hidden.
   const savingsTarget = Math.min(setAside, availableAfterCommitted);
   const savingsShortfall = Math.max(0, setAside - availableAfterCommitted);
-  const leftToSpend = Math.max(0, availableAfterCommitted - savingsTarget);
+  // Saving up for bills comes after the set-aside, out of what's still free.
+  const fundsTarget = Math.min(fundsNow.setAside, availableAfterCommitted - savingsTarget);
+  const leftToSpend = Math.max(0, availableAfterCommitted - savingsTarget - fundsTarget);
   const remaining = effectiveIncome - totalCommitted;
   // Only bills due THIS period can be missing from it. Without the cycle check a
   // yearly bill would be reported missing in the eleven periods it is not due.
@@ -842,6 +849,7 @@ export default function App() {
           {/* DASHBOARD */}
           {tab === "dashboard" && (
             <Dashboard
+              funds={funds} fundsTarget={fundsTarget}
               data={data} cur={cur} curKey={curKey} today={today} cal={cal} fc={fc}
               remaining={remaining}
               remainingSub={fc.series.length < 2 || fc.lowestWithEveryday.date === fc.series[0].date
@@ -1460,6 +1468,13 @@ export default function App() {
             ] : []),
             { key: "autoPay", label: t("Pays itself"), type: "checkbox", defaultValue: source?.autoPay,
               hint: t("Direct debit or card on file. Never sends a reminder.") },
+            // Saving up belongs to the bill, so it's offered where the bill is edited,
+            // for one that comes round every few months or yearly.
+            ...(touchesTemplate ? [
+              { key: "saveUp", label: t("Save up for it"), type: "checkbox", defaultValue: !!sched.saveUp,
+                hint: t("Sets a share aside each period, so the bill is paid from what was saved."),
+                when: (vals) => (REPEAT_OPTIONS.find((o) => o.label === vals.repeats)?.months || 1) > 1 },
+            ] : []),
             NOTE_FIELD(source),
           ]} onClose={() => setModal(null)} onSave={(v) => {
             const { categories, category } = ensureCategory(data.categories, v.category);
@@ -1468,6 +1483,9 @@ export default function App() {
                              category: category.name, autoPay: !!v.autoPay, note: cleanNote(v.note) };
             // A cycle counts in the budget's monthly periods: from the one this period starts in.
             const schedule = scheduleFromForm(v, sched, cal.cycleKey(cal.range(targetKey).start), cal.newEntryDate(curKey, today));
+            // Saving starts with this period; one already under way keeps its start.
+            const monthsApart = REPEAT_OPTIONS.find((o) => o.label === v.repeats)?.months || 1;
+            if (touchesTemplate) schedule.saveUp = v.saveUp && monthsApart > 1 ? (sched.saveUp || { from: curKey }) : undefined;
             save({ ...saveRecurring(data, "recurring", { cal, curKey, targetKey, editing, editingTpl, fields, schedule, newId: uid, today }), categories });
             setModal(null);
           }} />

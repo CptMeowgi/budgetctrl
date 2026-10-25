@@ -12,6 +12,7 @@ import { analyzeImport } from "./lib/importer.js";
 import { calendarFor } from "./lib/calendar.js";
 import { copiesFor } from "./lib/occurrences.js";
 import { checkUp } from "./lib/checkup.js";
+import { sinkingFunds } from "./lib/sinking.js";
 
 // Five years of heavy use: 60 payday periods, 150 purchases in each, bills,
 // credits, upcoming payments, rollover budgets, accounts and import rules.
@@ -154,6 +155,15 @@ describe("five years of data", () => {
     let history;
     expect(time(() => { history = leftOverHistory(data, TODAY); goalsMonthlyNeed(data.goals, data, TODAY, history); })).toBeLessThan(LIMIT_MS);
     expect(history.monthsCounted).toBeGreaterThan(50);
+  });
+
+  it("works out bills saved up for quickly", () => {
+    const yearly = { id: "save-ins", name: "Insurance", amount: 1200, dayOfMonth: 10, every: 12, anchor: "2022-03", saveUp: { from: "2022-04" } };
+    const quarterly = { id: "save-tax", name: "Tax", amount: 600, dayOfMonth: 20, every: 3, anchor: "2022-01", saveUp: { from: "2022-01" } };
+    const withFunds = { ...data, recurringTemplate: [...(data.recurringTemplate || []), yearly, quarterly] };
+    let funds;
+    expect(time(() => { funds = sinkingFunds(withFunds, TODAY); })).toBeLessThan(LIMIT_MS);
+    expect(funds).toHaveLength(2);
   });
 
   it("runs the check-up over five years quickly", () => {

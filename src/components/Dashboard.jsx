@@ -7,7 +7,7 @@ import { isRecurringItem } from "../lib/occurrences.js";
 import { envelope } from "../lib/envelopes.js";
 import { findCategory, CREDIT_UNCATEGORIZED, UNCATEGORIZED } from "../model.js";
 import { fmt } from "../money.js";
-import { catName, due } from "../text.js";
+import { catName, due, shortDate } from "../text.js";
 import { FONT, SPACE, TYPE, useThemed } from "../theme.js";
 import { CategoryBudgets } from "./CategoryBudgets.jsx";
 import { InfoHint } from "./controls.jsx";
@@ -253,11 +253,51 @@ function RecentCard({ data, cur, cal, isReceived, onOpen, onViewAll }) {
   );
 }
 
+// Bills saved up for: how far along each is, this period's share, and when
+// it's due.
+const FUND_COLOR = "#38bdf8";
+
+function SavingUpCard({ funds, cal }) {
+  const { theme, s } = useThemed();
+  const monthly = cal.calendarMonths;
+  return (
+    <div style={{ ...s.card, borderRadius: 28, marginTop: 18 }}>
+      <div style={s.cardTitle}>{t("Saving up for bills")}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: SPACE.md, marginTop: SPACE.sm }}>
+        {funds.map((f) => {
+          const pct = f.amount > 0 ? Math.min(100, (f.savedAfter / f.amount) * 100) : 0;
+          return (
+            <div key={f.id} style={{ padding: "10px 12px", borderRadius: 14, background: theme.bg }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: SPACE.sm, alignItems: "baseline" }}>
+                <strong style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</strong>
+                <span style={{ ...money, fontSize: 12, color: theme.textMuted, whiteSpace: "nowrap" }}>{fmt(f.savedAfter)} / {fmt(f.amount)}</span>
+              </div>
+              <div style={{ height: 6, background: theme.track, borderRadius: 99, overflow: "hidden", margin: "8px 0 6px" }}>
+                <div style={{ width: `${pct}%`, height: "100%", borderRadius: 99, background: FUND_COLOR, transition: "width .3s" }} />
+              </div>
+              <div style={{ fontSize: 11, color: theme.textFaint, lineHeight: 1.5 }}>
+                {f.dueNow && f.paidFromFund > 0
+                  ? t("Paid this period, {amount} of it from what was saved", { amount: fmt(f.paidFromFund) })
+                  : f.dueNow
+                    ? t("Due {date} · {amount} set aside this period", { date: shortDate(f.dueDate), amount: fmt(f.thisPeriod) })
+                    : (monthly
+                      ? t("Due {date} · {amount} set aside this month", { date: shortDate(f.dueDate), amount: fmt(f.thisPeriod) })
+                      : t("Due {date} · {amount} set aside this period", { date: shortDate(f.dueDate), amount: fmt(f.thisPeriod) }))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function Dashboard(props) {
   const {
     data, cur, curKey, today, cal, fc, remaining, remainingSub, totalUpcoming, totalActuallySpent, goals, goalsSaved, goalsTarget,
     dueBills, totalCredits, totalCreditsPending, savingsGoal, setAside, savingsShortfall, savingsTarget, leftToSpend, goalsNeed, effectiveIncome,
     totalStillScheduled, spentByCat, isReceived, onSetTab, onEdit, patchCur, save, onManageCategories, onSetBudget, onStartFresh,
+    funds = [], fundsTarget = 0,
   } = props;
   const { theme, s } = useThemed();
   const topRef = useRef(null);
@@ -370,6 +410,7 @@ export function Dashboard(props) {
                     { pct: (totalActuallySpent / effectiveIncome) * 100, color: theme.danger },
                     { pct: (totalStillScheduled / effectiveIncome) * 100, color: theme.warning },
                     { pct: (savingsTarget / effectiveIncome) * 100, color: theme.accent },
+                    { pct: (fundsTarget / effectiveIncome) * 100, color: FUND_COLOR },
                     { pct: (leftToSpend / effectiveIncome) * 100, color: theme.success },
                   ].filter((x) => x.pct > 0 && isFinite(x.pct)).map((seg, i) => (
                     <div key={i} style={{ height: "100%", borderRadius: 99, background: seg.color, width: `${Math.min(seg.pct, 100)}%`, transition: "width .3s" }} />
@@ -380,6 +421,7 @@ export function Dashboard(props) {
                     { color: theme.danger, label: tk("Spent"), val: totalActuallySpent },
                     { color: theme.warning, label: tk("Upcoming"), val: totalStillScheduled },
                     { color: theme.accent, label: tk("Savings"), val: savingsTarget },
+                    ...(funds.length ? [{ color: FUND_COLOR, label: tk("Saving for bills"), val: fundsTarget }] : []),
                     { color: theme.success, label: tk("Left to spend"), val: leftToSpend },
                   ].map((l) => (
                     <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12 }}>
@@ -396,6 +438,8 @@ export function Dashboard(props) {
           </div>
         </div>
       </div>
+
+      {funds.length > 0 && <SavingUpCard funds={funds} cal={cal} />}
 
       <section className="dash-lower" ref={lowerRef}>
         <RecentCard data={data} cur={cur} cal={cal} isReceived={isReceived}
