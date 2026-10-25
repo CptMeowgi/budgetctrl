@@ -14,7 +14,7 @@ import { calendarFor, readSchedule } from "../lib/calendar.js";
 import { PAY_KINDS, payKindChosen } from "../lib/paySchedule.js";
 
 export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onChangeLocale, onRestore, onManageCategories, updater, onChangeUpdates, onInstallUpdate,
-  onChangeCutoff, onChangePay, onWhatsNew, onCheckup, onChangeLockPast, today, onExport, onExportCsv, onImport, onImportStatement, onReset, onManageRules, lockCfg, onPinAction, onChangeLock, onChangeLanguage }) {
+  onChangeCutoff, onChangePay, onWhatsNew, onCheckup, onChangeLockPast, sample, today, onExport, onExportCsv, onImport, onImportStatement, onReset, onManageRules, lockCfg, onPinAction, onChangeLock, onChangeLanguage }) {
   const { theme, s } = useThemed();
   const [openedAt] = useState(() => Date.now());
   const rem = data.reminders || { enabled: true, leadDays: 3 };
@@ -205,6 +205,8 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
         </SettingRow>
       )}
 
+      {/* The sample budget changes nothing outside itself: no PIN, no autostart. */}
+      {!sample && (<>
       <div style={divider} />
       <div style={group}>{t("Privacy")}</div>
       <SettingRow label={t("Lock with a PIN")} hint={t("Keeps Budget Ctrl closed to anyone else using this computer. It doesn't encrypt your budget file.")}>
@@ -228,6 +230,7 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
           </SettingRow>
         </>
       )}
+      </>)}
 
       <div style={divider} />
       <div style={group}>{t("Data")}</div>
@@ -318,11 +321,13 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
             );
           })()}
 
+          {!sample && (<>
           <div style={divider} />
           <div style={group}>{t("Startup")}</div>
           <SettingRow label={isWindows ? t("Start with Windows") : t("Start when you log in")} hint={t("Launches hidden in the tray, so reminders work from boot.")}>
             <Switch checked={!!autostart} onChange={toggleAutostart} />
           </SettingRow>
+          </>)}
         </>
       )}
 

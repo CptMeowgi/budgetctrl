@@ -4,7 +4,7 @@ import { capAt, startFresh, withCap, withRollover } from "./lib/envelopes.js";
 import { goalStatus, goalsMonthlyNeed, leftOverHistory } from "./lib/goals.js";
 import { convertToRecurring, dismissRegular, findRegularPayments } from "./lib/regular.js";
 import { forecast } from "./lib/forecast.js";
-import { applySetup } from "./lib/setup.js";
+import { applySetup, needsSetup } from "./lib/setup.js";
 import { isoDay, setLabelLocale } from "./lib/periods.js";
 import { calendarFor } from "./lib/calendar.js";
 import { collectDueBills, OVERDUE_GRACE_DAYS, upcomingSettled } from "./lib/reminders.js";
@@ -54,7 +54,7 @@ import { RecoveryScreen } from "./components/RecoveryScreen.jsx";
 import { DARK_THEME, FOCUS_RING, FONT, LIGHT_THEME, makeStyles, RADIUS, SPACE, ThemeContext, TYPE } from "./theme.js";
 import { BrandMark, Icon } from "./components/Icon.jsx";
 import { Dashboard } from "./components/Dashboard.jsx";
-import { dateLocale, fmtDate, setLanguage, t, tk, tn } from "./i18n.js";
+import { dateLocale, fmtDate, getLanguage, setLanguage, t, tk, tn } from "./i18n.js";
 
 const UNDO_LIMIT = 50;
 const THEME_KEY = "budget-ctrl-theme";
@@ -152,6 +152,11 @@ export default function App() {
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [checkupOpen, setCheckupOpen] = useState(false);
+  // The sample budget from the welcome screens: made up, in memory only, and
+  // never saved over the real budget (which stays as the welcome screens
+  // left it). Reminders stay off, so made-up bills send no notifications.
+  const [sample, setSample] = useState(false);
+  const sampleRef = useRef(false);
   // Bulk editing: which list is being selected from ("expenses", "credits"),
   // and the ids picked so far.
   const [selecting, setSelecting] = useState(null);
@@ -239,6 +244,7 @@ export default function App() {
       setHistorySize({ past: h.past.length, future: 0 });
     }
     setData(next);
+    if (sampleRef.current) return;
     try { await persist(next); } catch { /* in-memory state still updated; surfaced on next load */ }
   }, []);
 
@@ -256,6 +262,7 @@ export default function App() {
         return;
       }
       let stored = null;
+      let unfinished = false;
       try {
         const r = await window.storage.get(STORAGE_KEY);
         stored = r?.value ?? null;
@@ -266,6 +273,9 @@ export default function App() {
           if (migrated !== raw) {
             try { await window.storage.set(STORAGE_KEY, JSON.stringify(migrated)); } catch { /* migration re-runs next load if this fails */ }
           }
+          // Left halfway through the welcome screens (or for the sample budget): back to them.
+          unfinished = needsSetup(migrated);
+          if (unfinished) setSetupOpen(true);
         } else {
           // Persist immediately rather than holding defaults in memory, so the
           // data file exists from first launch instead of first edit.
@@ -281,7 +291,7 @@ export default function App() {
         return;
       }
       setLoaded(true);
-      whatsNewAtLaunch(!!stored).then((entries) => { if (entries.length) setWhatsNew({ entries, launch: true }); }).catch(() => { /* notes are a courtesy */ });
+      whatsNewAtLaunch(!!stored && !unfinished).then((entries) => { if (entries.length) setWhatsNew({ entries, launch: true }); }).catch(() => { /* notes are a courtesy */ });
     })();
     // `save` has no deps of its own, so this still runs exactly once.
   }, [save]);
@@ -356,7 +366,7 @@ export default function App() {
 
   // What's due now sits at the top of Upcoming; a clicked reminder lands there.
   const openDueSoon = useCallback(() => setTab("upcoming"), []);
-  useReminders(data, loaded, setTodayKey, openDueSoon);
+  useReminders(data, loaded && !sample, setTodayKey, openDueSoon);
   const updater = useUpdater(data.updates?.auto !== false, loaded);
 
   // "Start with Windows" is a login entry holding the app's path, and that path
@@ -386,7 +396,9 @@ export default function App() {
     h.lastPushAt = 0; // the next edit starts a fresh undo step
     setHistorySize({ past: h.past.length, future: h.future.length });
     setData(target);
-    try { await persist(target); } catch { /* in-memory state still updated */ }
+    if (!sampleRef.current) {
+      try { await persist(target); } catch { /* in-memory state still updated */ }
+    }
     setToast(label === "Undo" ? t("Undone") : t("Redone"));
   }, []);
   const undo = useCallback(() => restore("past", "future", "Undo"), [restore]);
@@ -817,6 +829,16 @@ export default function App() {
         <div style={s.content}>
           <div style={s.contentInner}>
           <UpdateBanner updater={updater} onInstall={installUpdate} />
+          {sample && (
+            <div style={{ ...s.card, borderRadius: 16, padding: "10px 16px", marginBottom: 18, display: "flex", alignItems: "center", gap: SPACE.md, flexWrap: "wrap",
+                          border: `1px solid ${theme.accent}` }}>
+              <span style={{ ...TYPE.caption, color: theme.text, flex: 1, minWidth: 220 }}>
+                {t("This is a sample budget, made up so you can look around. Nothing you do here is saved.")}
+              </span>
+              {/* A fresh start: the real budget, still as the welcome screens left it. */}
+              <button style={{ ...s.addBtn, height: 34 }} onClick={() => window.location.reload()}>{t("Start my own budget")}</button>
+            </div>
+          )}
           {/* DASHBOARD */}
           {tab === "dashboard" && (
             <Dashboard
@@ -1572,6 +1594,15 @@ export default function App() {
             if (then === "statement") setStatementOpen(true);
           }}
           onRestore={() => { setSetupOpen(false); triggerImport(); }}
+          onSample={async () => {
+            const { demoData } = await import("./demo.js");
+            sampleRef.current = true;
+            setSample(true);
+            setSetupOpen(false);
+            historyRef.current = { past: [], future: [], lastPushAt: 0 };
+            setHistorySize({ past: 0, future: 0 });
+            setData(hydrate(demoData(new Date(), getLanguage())));
+          }}
           onSkip={() => { save({ ...data, setupDone: true }, { undoable: false }); setSetupOpen(false); }}
           onChangeLanguage={(language) => save({ ...data, language }, { undoable: false })} />
       )}
@@ -1694,6 +1725,7 @@ export default function App() {
           onChangeCutoff={onChangeCutoff}
           onChangePay={(opts) => { setSettingsOpen(false); setPayDialog(opts); }}
           onCheckup={() => { setSettingsOpen(false); setCheckupOpen(true); }}
+          sample={sample}
           onChangeLockPast={(n) => save({ ...data, lockPastMonths: n || undefined })}
           onWhatsNew={() => loadChangelog().then((all) => { setSettingsOpen(false); setWhatsNew({ entries: allNotes(all, import.meta.env.DEV), launch: false }); }).catch(() => { /* notes are a courtesy */ })}
           today={today}

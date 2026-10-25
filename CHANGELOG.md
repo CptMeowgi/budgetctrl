@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- New to Budget Ctrl? The welcome screen can open a sample budget, made
+  up so you can look around before entering anything of your own. Nothing
+  you do in it is saved, it sends no reminders, and **Start my own budget**
+  takes you back to the welcome screens.
+- If you close Budget Ctrl before finishing the welcome screens, they're
+  there again next time, instead of an empty budget.
 - Past periods can be locked, so a stray click can't change last year's
   figures. In Settings, choose to lock periods older than 1, 3, 6 or 12
   months. A locked period says so in History and asks to be unlocked

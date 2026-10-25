@@ -13,7 +13,7 @@ const STEPS = [tk("Money"), tk("Your pay"), tk("Categories")];
 
 // Three short screens for a brand-new budget. Everything here can be changed
 // later in Settings, and Skip leaves the defaults.
-export function SetupWizard({ data, onFinish, onRestore, onSkip, onChangeLanguage }) {
+export function SetupWizard({ data, onFinish, onRestore, onSample, onSkip, onChangeLanguage }) {
   const { theme, s } = useThemed();
   const [step, setStep] = useState(0);
   const [currency, setCurrency] = useState(data.currency || "PLN");
@@ -78,6 +78,11 @@ export function SetupWizard({ data, onFinish, onRestore, onSkip, onChangeLanguag
             <div style={hint}>
               {t("Moving from another computer? {restore} instead.", {
                 restore: <button key="r" style={{ ...s.linkBtn, padding: 0, ...TYPE.finePrint, fontWeight: 600 }} onClick={onRestore}>{t("Restore a backup file")}</button>,
+              })}
+            </div>
+            <div style={{ ...hint, marginTop: SPACE.xs }}>
+              {t("Just looking? {sample} first.", {
+                sample: <button key="s" style={{ ...s.linkBtn, padding: 0, ...TYPE.finePrint, fontWeight: 600 }} onClick={onSample}>{t("Try a sample budget")}</button>,
               })}
             </div>
           </>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applySetup, STARTER_CATEGORIES } from "./setup.js";
+import { applySetup, needsSetup, STARTER_CATEGORIES } from "./setup.js";
 
 const fresh = {
   months: { "2026-10": { income: 0, expenses: [], recurring: [], upcoming: [], credits: [] } },
@@ -62,5 +62,23 @@ describe("applySetup for pay every week or two", () => {
     const answers = { cutoffDay: 25, income: 4000, setAside: 300 };
     expect(applySetup(fresh, { ...answers, pay: "monthly" }, OCT_15)).toEqual(applySetup(fresh, answers, OCT_15));
     expect("paySchedule" in applySetup(fresh, answers, OCT_15)).toBe(false);
+  });
+});
+
+describe("needsSetup", () => {
+  it("asks again when the welcome screens were left before the end and nothing was entered", () => {
+    expect(needsSetup(fresh)).toBe(true);
+  });
+
+  it("doesn't ask once they were finished or skipped", () => {
+    expect(needsSetup({ ...fresh, setupDone: true })).toBe(false);
+  });
+
+  it("never asks a budget that has anything in it, even one from before the welcome screens", () => {
+    const entered = { ...fresh, months: { "2026-10": { ...fresh.months["2026-10"], expenses: [{ id: "e", name: "Shop", amount: 5 }] } } };
+    expect(needsSetup(entered)).toBe(false);
+    expect(needsSetup({ ...fresh, months: { "2026-10": { ...fresh.months["2026-10"], income: 4000 } } })).toBe(false);
+    expect(needsSetup({ ...fresh, recurringTemplate: [{ id: "t", name: "Rent", amount: 900, dayOfMonth: 1 }] })).toBe(false);
+    expect(needsSetup({ ...fresh, accounts: [{ id: "a", name: "Bank" }] })).toBe(false);
   });
 });

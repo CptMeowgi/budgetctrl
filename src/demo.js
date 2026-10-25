@@ -1,6 +1,6 @@
-// A made-up budget for screenshots and for trying things in development:
-// open the dev server with ?demo. Never part of the installed app - App only
-// loads this behind import.meta.env.DEV.
+// A made-up budget: the sample a new user can look around from the welcome
+// screens, and in development, `?demo` for screenshots and trying things.
+// Loaded only when it's opened, and never saved.
 //
 // Everything is placed relative to `today`, so it always looks current: three
 // finished months and this one up to today. `?demo&pay=fortnightly` gives the

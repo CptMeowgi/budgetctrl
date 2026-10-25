@@ -61,3 +61,15 @@ export function applySetup(data, answers, today) {
     setupDone: true,
   };
 }
+
+// Whether to show the welcome screens on opening: they were never finished
+// or skipped, and nothing has been entered. That's a budget left halfway
+// through them (closed, or left for the sample budget), not one from before
+// they existed, which has things in it.
+export function needsSetup(data) {
+  if (data.setupDone) return false;
+  const months = Object.values(data.months || {});
+  const entered = months.some((m) => m.income > 0 || ["expenses", "recurring", "upcoming", "credits"].some((k) => (m[k] || []).length));
+  const other = ["recurringTemplate", "creditTemplate", "accounts", "goals"].some((k) => (data[k] || []).length);
+  return !entered && !other;
+}
