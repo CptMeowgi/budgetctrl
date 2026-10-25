@@ -10,6 +10,8 @@ import { CategoryPill, StatCard } from "./controls.jsx";
 import { isSplit } from "../lib/splits.js";
 import { fmtDate, t, tk, tn } from "../i18n.js";
 import { catName } from "../text.js";
+import { groupRows, groupTotals } from "../lib/groups.js";
+import { useCollapsed } from "../hooks/useCollapsed.js";
 
 // Two-digit alpha suffix for a #rrggbb colour.
 function alphaHex(a) {
@@ -25,8 +27,12 @@ function shortPeriod(cal, key, withYear) {
 // row's quietest and busiest period, so a category's rhythm shows at a glance
 // whatever its size - and a bill that never changes stays pale instead of
 // lighting up the whole row.
-function CategoryTrends({ report, categories, curKey, cal, onOpenPeriod }) {
+function CategoryTrends({ report, categories, curKey, cal, onOpenPeriod, groupOrder }) {
   const { theme } = useThemed();
+  // Categories in groups show under their group's line, which folds away.
+  const [collapsed, toggleGroup] = useCollapsed("reports");
+  const sections = groupRows(report.categories, { categories, categoryGroups: groupOrder });
+  const grouped = sections.some((g) => g.group != null);
   const withYear = report.keys.length > 0 && report.keys[0].slice(0, 4) !== report.keys[report.keys.length - 1].slice(0, 4);
   const line = `1px solid ${theme.border}`;
   const th = { ...TYPE.finePrint, textTransform: "uppercase", letterSpacing: "0.6px", color: theme.textFaint, fontWeight: 600,
@@ -41,6 +47,53 @@ function CategoryTrends({ report, categories, curKey, cal, onOpenPeriod }) {
     { label: tk("Saved"), values: report.periods.map((p) => p.income - p.spent), total: report.saved, avg: report.averageSaved,
       color: (v) => (v >= 0 ? theme.success : theme.danger) },
   ];
+  // One category, period by period.
+  const categoryRow = (row) => {
+    const cat = findCategory(categories, row.name) || { name: row.name, color: "#9ca3af", icon: "·" };
+    // Scaled on completed periods: a half-finished month is always low
+    // and would make every full one look busy.
+    const settled = row.perPeriod.filter((_, i) => report.keys[i] !== curKey);
+    const scale = settled.length ? settled : row.perPeriod;
+    const lo = Math.min(...scale);
+    const hi = Math.max(...scale);
+    const shade = (v) => `${cat.color}${alphaHex(0.06 + (hi > lo ? 0.24 * Math.min(1, Math.max(0, (v - lo) / (hi - lo))) : 0))}`;
+    return (
+      <tr key={row.name}>
+        <td style={{ ...td, ...sticky, ...(grouped ? { paddingLeft: 26 } : null) }}>
+          <CategoryPill categoryName={row.name} categories={categories} fallback={cat} />
+        </td>
+        {row.perPeriod.map((v, i) => (
+          <td key={report.keys[i]} style={{
+            ...td, color: v ? theme.text : theme.textFaint,
+            background: v > 0 ? shade(v) : "transparent",
+          }}>{v ? fmtWhole(v) : "–"}</td>
+        ))}
+        <td style={{ ...td, fontWeight: 700 }}>{fmtWhole(row.total)}</td>
+        <td style={{ ...td, color: theme.textMuted }}>{fmtWhole(row.average)}</td>
+      </tr>
+    );
+  };
+
+  // A group's own line: its categories added up, and a way to fold them away.
+  const groupRow = (g) => {
+    const key = g.group ?? "";
+    const sum = groupTotals(g.rows);
+    return (
+      <tr key={`group-${key}`}>
+        <td style={{ ...td, ...sticky, fontFamily: FONT }}>
+          <button onClick={() => toggleGroup(key)} aria-expanded={!collapsed.has(key)}
+            style={{ all: "unset", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontWeight: 700, color: theme.text }}>
+            <span style={{ display: "inline-block", transform: collapsed.has(key) ? "rotate(-90deg)" : "none", transition: "transform .15s" }}>▾</span>
+            {g.group ?? t("Not in a group")}
+          </button>
+        </td>
+        {sum.perPeriod.map((v, i) => <td key={report.keys[i]} style={{ ...td, fontWeight: 700 }}>{v ? fmtWhole(v) : "–"}</td>)}
+        <td style={{ ...td, fontWeight: 700 }}>{fmtWhole(sum.total)}</td>
+        <td style={{ ...td, color: theme.textMuted, fontWeight: 600 }}>{fmtWhole(sum.average)}</td>
+      </tr>
+    );
+  };
+
   return (
     <div style={{ overflowX: "auto", marginTop: SPACE.md }}>
       <table style={{ borderCollapse: "separate", borderSpacing: 0, width: "100%" }}>
@@ -61,31 +114,10 @@ function CategoryTrends({ report, categories, curKey, cal, onOpenPeriod }) {
           </tr>
         </thead>
         <tbody>
-          {report.categories.map((row) => {
-            const cat = findCategory(categories, row.name) || { name: row.name, color: "#9ca3af", icon: "·" };
-            // Scaled on completed periods: a half-finished month is always low
-            // and would make every full one look busy.
-            const settled = row.perPeriod.filter((_, i) => report.keys[i] !== curKey);
-            const scale = settled.length ? settled : row.perPeriod;
-            const lo = Math.min(...scale);
-            const hi = Math.max(...scale);
-            const shade = (v) => `${cat.color}${alphaHex(0.06 + (hi > lo ? 0.24 * Math.min(1, Math.max(0, (v - lo) / (hi - lo))) : 0))}`;
-            return (
-              <tr key={row.name}>
-                <td style={{ ...td, ...sticky }}>
-                  <CategoryPill categoryName={row.name} categories={categories} fallback={cat} />
-                </td>
-                {row.perPeriod.map((v, i) => (
-                  <td key={report.keys[i]} style={{
-                    ...td, color: v ? theme.text : theme.textFaint,
-                    background: v > 0 ? shade(v) : "transparent",
-                  }}>{v ? fmtWhole(v) : "–"}</td>
-                ))}
-                <td style={{ ...td, fontWeight: 700 }}>{fmtWhole(row.total)}</td>
-                <td style={{ ...td, color: theme.textMuted }}>{fmtWhole(row.average)}</td>
-              </tr>
-            );
-          })}
+          {sections.flatMap((g) => [
+            grouped ? groupRow(g) : null,
+            ...(grouped && collapsed.has(g.group ?? "") ? [] : g.rows.map(categoryRow)),
+          ])}
         </tbody>
         <tfoot>
           {footer.map((f) => (
@@ -238,7 +270,7 @@ export function ReportsView({ data, today, curKey, range, onRange, onOpenPeriod 
             </div>
             {report.categories.length === 0
               ? <div style={s.emptySmall}>{t("Nothing spent in this range.")}</div>
-              : <CategoryTrends report={report} categories={data.categories || []} curKey={curKey} cal={cal} onOpenPeriod={onOpenPeriod} />}
+              : <CategoryTrends report={report} categories={data.categories || []} groupOrder={data.categoryGroups} curKey={curKey} cal={cal} onOpenPeriod={onOpenPeriod} />}
           </div>
 
           <div style={grid}>

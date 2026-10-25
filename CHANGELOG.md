@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Categories can be put in groups, such as Bills, Everyday or Fun: click a
+  category's badge in Categories and type a group. The Dashboard's category
+  budgets and the Reports table then show each group with its totals, and
+  a group folds away with a click.
 - A spending category can be left out of Reports, for a one-off big
   purchase or expenses you're paid back for. Tick it in Categories (click
   the category's badge). Reports then leave it out of every figure and say

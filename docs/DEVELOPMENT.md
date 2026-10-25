@@ -67,7 +67,7 @@ desktop, `localStorage` in a browser. It's keyed by budget period:
 
 ```
 months: { "2026-09": { income, expenses[], recurring[], upcoming[], credits[] } }
-recurringTemplate[], creditTemplate[], categories[], creditCategories[]
+recurringTemplate[], creditTemplate[], categories[], creditCategories[], categoryGroups[]
 goals[], accounts[], importRules[], importLayouts[], savingsGoal
 cutoffDay, paySchedule[]?, currency, locale, language, reminders, updates
 ```

@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { countUsage, deleteCategory, isFallback, renameCategory, restyleCategory, setHideFromReports } from "../lib/categories.js";
 import { ensureCategory, ensureCreditCategory, PICKER_COLORS, PICKER_ICONS } from "../model.js";
+import { groupNames, setCategoryGroup } from "../lib/groups.js";
 import { FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
 import { Modal } from "./Modal.jsx";
 import { t, tn } from "../i18n.js";
 import { catName } from "../text.js";
 
-function CategoryRow({ cat, kind, data, onRename, onRestyle, onHide, onDelete }) {
+function CategoryRow({ cat, kind, data, onRename, onRestyle, onHide, onGroup, onDelete }) {
   const { theme, s } = useThemed();
   const shown = catName(cat.name);
   const [draft, setDraft] = useState(shown);
@@ -59,6 +60,7 @@ function CategoryRow({ cat, kind, data, onRename, onRestyle, onHide, onDelete })
                      color: theme.text, ...TYPE.caption, fontFamily: FONT, outline: "none", minWidth: 0 }}
           />
         )}
+        {cat.group && <span style={{ ...TYPE.microLegal, color: theme.textMuted, whiteSpace: "nowrap" }}>{cat.group}</span>}
         {cat.hideFromReports && <span style={{ ...TYPE.microLegal, color: theme.warning, whiteSpace: "nowrap" }}>{t("left out of reports")}</span>}
         <span style={{ ...TYPE.finePrint, color: theme.textFaint, whiteSpace: "nowrap" }}>{usageText}</span>
         {!locked && (
@@ -83,6 +85,15 @@ function CategoryRow({ cat, kind, data, onRename, onRestyle, onHide, onDelete })
                          border: `1px solid ${ic === cat.icon ? theme.accent : theme.border}` }}>{ic}</button>
             ))}
           </div>
+          {kind === "spend" && (
+            <label style={{ display: "flex", alignItems: "center", gap: 8, ...TYPE.finePrint, color: theme.textMuted }}>
+              {t("Group")}
+              <input key={cat.group || ""} list="category-groups" defaultValue={cat.group || ""} placeholder={t("e.g. Bills, Everyday, Fun")}
+                onBlur={(e) => { if ((e.target.value.trim() || "") !== (cat.group || "")) onGroup(cat.name, e.target.value); }}
+                onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                style={{ ...s.input, width: 200, minHeight: 32, padding: "4px 8px", ...TYPE.finePrint }} />
+            </label>
+          )}
           {kind === "spend" && (
             <label style={{ display: "flex", alignItems: "flex-start", gap: 8, ...TYPE.finePrint, lineHeight: 1.5, color: theme.textMuted, cursor: "pointer" }}>
               <input type="checkbox" checked={!!cat.hideFromReports} onChange={(e) => onHide(cat.name, e.target.checked)}
@@ -167,17 +178,19 @@ export function CategoryManager({ data, onClose, onChange }) {
         {segBtn("spend", t("Spending"))}
         {segBtn("credit", t("Income sources"))}
       </div>
-      <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginBottom: SPACE.xs }}>{t("Rename by editing a name — renaming onto an existing one merges them. Click a badge to change its colour and icon, or to leave the category out of reports.")}</div>
+      <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginBottom: SPACE.xs }}>{t("Rename by editing a name — renaming onto an existing one merges them. Click a badge to change its colour and icon, put it in a group, or leave it out of reports.")}</div>
       <div style={{ maxHeight: "52vh", overflowY: "auto", paddingRight: 4 }}>
         {ordered.map((c) => (
           <CategoryRow key={`${kind}:${c.name}`} cat={c} kind={kind} data={data}
             onRename={onRename}
             onRestyle={(name, style) => run(() => restyleCategory(data, kind, name, style))}
             onHide={(name, hide) => run(() => setHideFromReports(data, name, hide))}
+            onGroup={(name, group) => run(() => setCategoryGroup(data, name, group))}
             onDelete={(name, moveTo) => run(() => deleteCategory(data, kind, name, moveTo))}
           />
         ))}
       </div>
+      <datalist id="category-groups">{groupNames(data).map((g) => <option key={g} value={g} />)}</datalist>
       <div style={{ display: "flex", gap: SPACE.sm, marginTop: SPACE.md }}>
         <input value={newName} onChange={(e) => setNewName(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") onAdd(); }}

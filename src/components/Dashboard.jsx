@@ -408,6 +408,7 @@ export function Dashboard(props) {
           <div style={{ marginTop: 8 }}>
             <CategoryBudgets
               categories={data.categories}
+              groupOrder={data.categoryGroups}
               spent={spentByCat}
               average={(name) => categoryAverage(data, name, curKey, today)}
               envelopeOf={(c, sp) => envelope(data, c, curKey, today, sp)}
