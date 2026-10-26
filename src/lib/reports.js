@@ -207,7 +207,7 @@ export function buildReport(data, keys, today, { runningKey } = {}) {
     .sort((a, b) => b.total - a.total)
     .slice(0, 8);
 
-  const report = {
+  return {
     keys,
     income,
     spent,
@@ -219,16 +219,12 @@ export function buildReport(data, keys, today, { runningKey } = {}) {
     averageSaved: averageOf(periods.map((p) => p.income.total - p.spent)),
     periods: periods.map((p) => ({ key: p.key, income: p.income.total, spent: p.spent })),
     categories,
+    byPerson,
     incomeSources: [...sources.entries()].map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value),
     biggest,
     payees,
     leftOut: [...leftOut.entries()].filter(([, total]) => total > 0).map(([name, total]) => ({ name, total })),
   };
-  // Always there to read, but with nobody to name it stays out of the report's
-  // own fields, so a budget without people gets exactly the report it always did
-  // (the calendar adoption snapshot pins that).
-  Object.defineProperty(report, "byPerson", { value: byPerson, enumerable: byPerson.length > 0 });
-  return report;
 }
 
 // Per-period averages, so a range with fewer tracked periods compares fairly.

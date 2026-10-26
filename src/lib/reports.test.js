@@ -219,11 +219,6 @@ describe("buildReport, who paid", () => {
     expect(buildReport(oneOnly, ["2026-08"], TODAY, {}).byPerson).toEqual([]);
   });
 
-  it("leaves a budget without people with the report it always had", () => {
-    expect(Object.keys(buildReport(oneOnly, ["2026-08"], TODAY, {}))).not.toContain("byPerson");
-    expect(Object.keys(buildReport(sharedData, ["2026-08"], TODAY, {}))).toContain("byPerson");
-  });
-
   it("adds up to the report's spent figure", () => {
     const r = buildReport(sharedData, ["2026-08", "2026-09"], TODAY, {});
     expect(r.byPerson.reduce((a, p) => a + p.total, 0)).toBe(r.spent);
