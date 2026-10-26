@@ -5,6 +5,7 @@ import { currencyCode, fmt } from "../money.js";
 import { SPACE, TYPE, useThemed } from "../theme.js";
 import { CategoryPicker } from "./FormModal.jsx";
 import { Modal } from "./Modal.jsx";
+import { PaidByPicker } from "./PaidByPicker.jsx";
 import { t } from "../i18n.js";
 import { catName } from "../text.js";
 
@@ -13,13 +14,16 @@ const blankPart = () => ({ category: "", amount: "" });
 // Add or edit an expense. "Split across categories" turns the one category
 // into parts - a supermarket receipt that is part food, part household - that
 // must add up to the amount before it will save.
-export function ExpenseModal({ editing, categories, defaultDate, onClose, onSave }) {
+// `payer` is null when the budget isn't shared; otherwise { data, defaultValue }
+// and the form asks who paid, handing back { paidBy, paidWith } as `payer`.
+export function ExpenseModal({ editing, categories, defaultDate, payer, onClose, onSave }) {
   const { theme, s } = useThemed();
   const [name, setName] = useState(editing?.name || "");
   const [amount, setAmount] = useState(editing ? String(editing.amount) : "");
   const [category, setCategory] = useState(catName(editing?.category || ""));
   const [date, setDate] = useState(editing?.date || defaultDate);
   const [note, setNote] = useState(editing?.note || "");
+  const [paid, setPaid] = useState(payer?.defaultValue || {});
   const [splitting, setSplitting] = useState(isSplit(editing));
   const [parts, setParts] = useState(isSplit(editing)
     ? editing.splits.map((p) => ({ category: catName(p.category), amount: String(p.amount) }))
@@ -61,6 +65,7 @@ export function ExpenseModal({ editing, categories, defaultDate, onClose, onSave
     const out = { name: name.trim(), amount: Math.round(total * 100) / 100, date, note: note.trim() || undefined };
     if (splitting && split.splits) { out.category = split.category; out.splits = split.splits; }
     else out.category = splitting ? split.category : category;
+    if (payer) out.payer = paid;
     onSave(out);
   };
 
@@ -113,6 +118,11 @@ export function ExpenseModal({ editing, categories, defaultDate, onClose, onSave
           <label style={label}>{t("Date")}</label>
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={s.input} />
         </div>
+        {payer && (
+          <div style={{ gridColumn: "1 / -1" }}>
+            <PaidByPicker data={payer.data} value={paid} onChange={setPaid} />
+          </div>
+        )}
         <div style={{ gridColumn: "1 / -1" }}>
           <label style={label}>{t("Note")}</label>
           <textarea rows={2} value={note} placeholder={t("Optional — reference, who, why")} onChange={(e) => setNote(e.target.value)}

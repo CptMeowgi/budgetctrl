@@ -937,4 +937,8 @@ export default {
   "Joint": "共同",
   "Everyone": "所有人",
   "Add the people you share this budget with. With two or more, every entry can say who paid.": "添加和你共用这份预算的人。有两人或更多时，每笔记录都可以注明是谁付的款。",
+  "Paid by": "付款人",
+  "Paid with": "付款账户",
+  "Brought in by": "入账人",
+  "Not set": "未设置",
 };

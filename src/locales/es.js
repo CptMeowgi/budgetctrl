@@ -934,7 +934,11 @@ export default {
   "+ Add person": "+ Añadir persona",
   "Remove {name}": "Quitar a {name}",
   "Whose account": "De quién es la cuenta",
-  "Joint": "Conjunta",
+  "Joint": "En común",
   "Everyone": "De todos",
   "Add the people you share this budget with. With two or more, every entry can say who paid.": "Añade a las personas con las que compartes este presupuesto. Con dos o más, cada entrada puede indicar quién pagó.",
+  "Paid by": "Pagado por",
+  "Paid with": "Pagado con",
+  "Brought in by": "Aportado por",
+  "Not set": "Sin indicar",
 };

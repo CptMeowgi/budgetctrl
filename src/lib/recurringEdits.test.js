@@ -51,6 +51,42 @@ describe("saveRecurring, monthly (as the forms always did)", () => {
   });
 });
 
+describe("saveRecurring, who paid", () => {
+  const rent = { name: "Rent", amount: 900, dayOfMonth: 1 };
+
+  it("keeps who paid on the template and its copies, and only on the copy in a past period", () => {
+    const b = base();
+    const now = saveRecurring(b, "recurring", opts({ editing: b.months["2026-10"].recurring[0], fields: { ...rent, paidBy: "a", paidWith: "visa" }, schedule: MONTHLY }));
+    expect(now.recurringTemplate[0]).toMatchObject({ paidBy: "a", paidWith: "visa" });
+    expect(now.months["2026-10"].recurring[0]).toMatchObject({ paidBy: "a", paidWith: "visa" });
+    const past = saveRecurring(now, "recurring", opts({ targetKey: "2026-09", editing: now.months["2026-09"].recurring[0], fields: { ...rent, paidBy: "t" }, schedule: MONTHLY }));
+    expect(past.months["2026-09"].recurring[0].paidBy).toBe("t");
+    expect(past.recurringTemplate[0].paidBy).toBe("a");
+  });
+
+  it("a new bill starts with it, on the template and this period's copy", () => {
+    const out = saveRecurring(base(), "recurring", opts({ fields: { name: "Gym", amount: 30, dayOfMonth: 5, paidBy: "joint" }, schedule: MONTHLY }));
+    expect(out.recurringTemplate.at(-1)).toMatchObject({ name: "Gym", paidBy: "joint" });
+    expect(out.months["2026-10"].recurring.at(-1)).toMatchObject({ name: "Gym", paidBy: "joint" });
+  });
+
+  it("every dated copy of a weekly bill carries it", () => {
+    const b = base();
+    const out = saveRecurring(b, "recurring", opts({ editing: b.months["2026-10"].recurring[1], fields: { name: "Cleaner", amount: 40, paidBy: "a", paidWith: "visa" }, schedule: WEEKLY }));
+    const copies = out.months["2026-10"].recurring.filter((r) => r.templateId === "tw");
+    expect(copies.length).toBeGreaterThan(1);
+    for (const c of copies) expect(c).toMatchObject({ paidBy: "a", paidWith: "visa" });
+  });
+
+  it("saving with nothing chosen clears what was there, on the template and the copy", () => {
+    const b = base();
+    const set = saveRecurring(b, "recurring", opts({ editing: b.months["2026-10"].recurring[0], fields: { ...rent, paidBy: "a", paidWith: "visa" }, schedule: MONTHLY }));
+    const cleared = saveRecurring(set, "recurring", opts({ editing: set.months["2026-10"].recurring[0], fields: { ...rent, paidBy: undefined, paidWith: undefined }, schedule: MONTHLY }));
+    expect(cleared.recurringTemplate[0].paidBy).toBeUndefined();
+    expect(cleared.months["2026-10"].recurring[0].paidWith).toBeUndefined();
+  });
+});
+
 describe("saveRecurring, weekly", () => {
   it("adds a template and a copy for each date this period", () => {
     const out = saveRecurring(base(), "recurring", opts({ fields: { name: "Dog walker", amount: 15 }, schedule: { ...WEEKLY, every: 2, startDate: "2026-10-05" } }));

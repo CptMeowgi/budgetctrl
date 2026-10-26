@@ -937,4 +937,8 @@ export default {
   "Joint": "Gemeinsam",
   "Everyone": "Alle",
   "Add the people you share this budget with. With two or more, every entry can say who paid.": "Füge die Personen hinzu, mit denen du dieses Budget teilst. Ab zwei Personen kann jeder Eintrag angeben, wer bezahlt hat.",
+  "Paid by": "Bezahlt von",
+  "Paid with": "Bezahlt mit",
+  "Brought in by": "Eingebracht von",
+  "Not set": "Nicht festgelegt",
 };

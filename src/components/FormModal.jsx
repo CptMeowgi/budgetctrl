@@ -4,6 +4,7 @@ import { Modal } from "./Modal.jsx";
 import { t } from "../i18n.js";
 import { catName } from "../text.js";
 import { parseAmount } from "../lib/importer.js";
+import { PaidByPicker } from "./PaidByPicker.jsx";
 
 export function CategoryPicker({ value, onChange, categories }) {
   const { s } = useThemed();
@@ -44,7 +45,7 @@ export function FormModal({ title, fields, onClose, onSave }) {
   const [vals, setVals] = useState(() => {
     const init = {};
     fields.forEach((f) => {
-      init[f.key] = f.type === "checkbox" ? !!f.defaultValue : f.type === "category" ? catName(f.defaultValue || "") : (f.defaultValue || "");
+      init[f.key] = f.type === "checkbox" ? !!f.defaultValue : f.type === "category" ? catName(f.defaultValue || "") : f.type === "payer" ? { ...f.defaultValue } : (f.defaultValue || "");
     });
     return init;
   });
@@ -55,8 +56,9 @@ export function FormModal({ title, fields, onClose, onSave }) {
     <Modal title={title} onClose={onClose}>
       <div style={{ display: "grid", gridTemplateColumns: shown.length > 3 ? "1fr 1fr" : "1fr", gap: 16, padding: "20px 0" }}>
         {shown.map((f) => (
-          <div key={f.key} style={f.type === "checkbox" || f.type === "textarea" ? { gridColumn: "1 / -1" } : undefined}>
-            {f.type !== "checkbox" && (
+          <div key={f.key} style={f.type === "checkbox" || f.type === "textarea" || f.type === "payer" ? { gridColumn: "1 / -1" } : undefined}>
+            {/* The payer field labels its own two selects. */}
+            {f.type !== "checkbox" && f.type !== "payer" && (
               <label style={{ fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 6, display: "block", fontWeight: 600 }}>{f.label}</label>
             )}
             {f.type === "checkbox" ? (
@@ -73,6 +75,8 @@ export function FormModal({ title, fields, onClose, onSave }) {
               <select value={vals[f.key]} onChange={(e) => setVals({ ...vals, [f.key]: e.target.value })} style={s.input}>
                 {f.options.map((o) => <option key={o} value={o}>{t(o)}</option>)}
               </select>
+            ) : f.type === "payer" ? (
+              <PaidByPicker data={f.data} incoming={f.incoming} value={vals[f.key]} onChange={(v) => setVals({ ...vals, [f.key]: v })} />
             ) : f.type === "category" ? (
               <CategoryPicker value={vals[f.key] || ""} onChange={(v) => setVals({ ...vals, [f.key]: v })} categories={f.categories} />
             ) : f.type === "textarea" ? (

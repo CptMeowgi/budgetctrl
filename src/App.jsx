@@ -33,16 +33,17 @@ import { LockScreen, PinDialog } from "./components/LockScreen.jsx";
 import { FormModal } from "./components/FormModal.jsx";
 import { ExpenseModal } from "./components/ExpenseModal.jsx";
 import { ReportsView } from "./components/ReportsView.jsx";
-import { EntryName, ExpenseRow, MissingFromTemplate, NotDueThisPeriod, RecurringRow, RowActions, SelectCell, UpcomingRow } from "./components/rows.jsx";
+import { EntryName, ExpenseRow, MissingFromTemplate, NotDueThisPeriod, PayerLabel, RecurringRow, RowActions, SelectCell, UpcomingRow } from "./components/rows.jsx";
 import { SettingsModal } from "./components/SettingsModal.jsx";
 import { PayScheduleModal } from "./components/PayScheduleModal.jsx";
 import { perPeriodOf } from "./lib/paySchedule.js";
+import { isShared } from "./lib/people.js";
 import { StatementImport } from "./components/StatementImport.jsx";
 import { UpdateBanner } from "./components/UpdateBanner.jsx";
 import { WindowControls } from "./components/WindowControls.jsx";
 import { DeleteArmContext } from "./contexts.js";
 import { exportCsv, exportData } from "./exportFiles.js";
-import { cleanNote, NOTE_FIELD } from "./forms.js";
+import { cleanNote, NOTE_FIELD, payerField, payerToSave, startingPayer } from "./forms.js";
 import { useReminders } from "./hooks/useReminders.js";
 import { useUpdater } from "./hooks/useUpdater.js";
 import { ENTRY_COLUMNS, filterAndSort, toggleSort } from "./listView.js";
@@ -977,7 +978,7 @@ export default function App() {
                   )}
                   <TableHeader columns={ENTRY_COLUMNS.expenses} sorts={expensesView.sorts} onSort={onSortExpenses} leading={selecting === "expenses" ? " " : null} />
                   {filteredExpenses.map((e) => (
-                    <ExpenseRow key={e.id} entry={e} categories={data.categories}
+                    <ExpenseRow key={e.id} entry={e} data={data} categories={data.categories}
                       selected={selecting === "expenses" ? selected.has(e.id) : undefined} onSelect={() => toggleSelected(e.id)}
                       onEdit={() => setModal({ type: "expense", editId: e.id })}
                       onDelete={() => patchCur({ expenses: cur.expenses.filter((x) => x.id !== e.id) })} />
@@ -1034,13 +1035,13 @@ export default function App() {
                 <>
                   <TableHeader columns={ENTRY_COLUMNS.recurring} sorts={recurringView.sorts} onSort={onSortRecurring} />
                   {filteredRecurring.map((r) => (
-                    <RecurringRow key={r.id} entry={r} categories={data.categories} dated={cal.dated(curKey)}
+                    <RecurringRow key={r.id} entry={r} data={data} categories={data.categories} dated={cal.dated(curKey)}
                       onEdit={() => setModal({ type: "recurring", editId: r.id })}
                       onDelete={() => save(deleteRecurringCopy(data, "recurring", curKey, r))} />
                   ))}
                 </>
               )}
-              <NotDueThisPeriod items={offCycleRecurring} curKey={curKey} cal={cal} categories={data.categories}
+              <NotDueThisPeriod items={offCycleRecurring} data={data} curKey={curKey} cal={cal} categories={data.categories}
                 onEdit={(tpl) => setModal({ type: "recurring", templateId: tpl.id })}
                 onDelete={(tpl) => save(deleteTemplate(data, "recurring", curKey, tpl.id))} />
             </div>
@@ -1078,7 +1079,7 @@ export default function App() {
                 <>
                   <TableHeader columns={ENTRY_COLUMNS.upcoming} sorts={upcomingView.sorts} onSort={onSortUpcoming} />
                   {filteredUpcoming.map((u) => (
-                    <UpcomingRow key={u.id} entry={u} categories={data.categories} today={today}
+                    <UpcomingRow key={u.id} entry={u} data={data} categories={data.categories} today={today}
                       onTogglePaid={() => patchCur({ upcoming: cur.upcoming.map((x) => x.id === u.id ? { ...x, paid: !x.paid } : x) })}
                       onEdit={() => setModal({ type: "upcoming", editId: u.id })}
                       onDelete={() => patchCur({ upcoming: cur.upcoming.filter((x) => x.id !== u.id) })} />
@@ -1095,7 +1096,7 @@ export default function App() {
             const creditRow = (c, kind) => (
               <div key={c.id} style={s.tableRow}>
                 {kind === "oneoff" && <SelectCell name={c.name} selected={selecting === "credits" ? selected.has(c.id) : undefined} onSelect={() => toggleSelected(c.id)} />}
-                <EntryName name={c.name} note={c.note} schedule={c} />
+                <EntryName name={c.name} note={c.note} schedule={c}><PayerLabel data={data} entry={c} /></EntryName>
                 <div style={{ flex: 1.2 }}><CategoryPill categoryName={c.category || c.source} categories={data.creditCategories || []} fallback={CREDIT_UNCATEGORIZED} /></div>
                 {kind === "recurring"
                   ? <div style={{ flex: 1, textAlign: "center", color: theme.textMuted, fontSize: 13 }}>{(isWeekly(c) || cal.dated(curKey)) && c.date ? shortDate(c.date) : (c.dayOfMonth || "—")}</div>
@@ -1151,7 +1152,7 @@ export default function App() {
                       {recurringCredits.map((c) => creditRow(c, "recurring"))}
                     </>
                   )}
-                  <NotDueThisPeriod items={offCycleCredits} curKey={curKey} cal={cal}
+                  <NotDueThisPeriod items={offCycleCredits} data={data} curKey={curKey} cal={cal}
                     categories={data.creditCategories || []} fallback={CREDIT_UNCATEGORIZED} positive
                     onEdit={(tpl) => setModal({ type: "creditRecurring", templateId: tpl.id })}
                     onDelete={(tpl) => save(deleteTemplate(data, "credits", curKey, tpl.id))} />
@@ -1298,7 +1299,7 @@ export default function App() {
                     <>
                       <TableHeader columns={[{ label: tk("NAME"), flex: 2 }, { label: tk("CATEGORY"), flex: 1.2 }, { label: tk("DATE"), flex: 1 }, { label: tk("AMOUNT"), flex: 1, align: "right" }, { label: "", flex: 0.6, align: "center" }]} />
                       {m.expenses.map((e) => (
-                        <ExpenseRow key={e.id} entry={e} categories={data.categories}
+                        <ExpenseRow key={e.id} entry={e} data={data} categories={data.categories}
                           onEdit={() => setModal({ type: "expense", editId: e.id, monthKey: historyKey })}
                           onDelete={() => patchMonth(historyKey, { expenses: m.expenses.filter((x) => x.id !== e.id) })} />
                       ))}
@@ -1314,7 +1315,7 @@ export default function App() {
                     <>
                       <TableHeader columns={ENTRY_COLUMNS.recurring} />
                       {m.recurring.map((r) => (
-                        <RecurringRow key={r.id} entry={r} categories={data.categories} dated={cal.dated(historyKey)}
+                        <RecurringRow key={r.id} entry={r} data={data} categories={data.categories} dated={cal.dated(historyKey)}
                           onEdit={() => setModal({ type: "recurring", editId: r.id, monthKey: historyKey })}
                           // Past-period deletion removes only this period's instance -
                           // the live template keeps governing future periods.
@@ -1332,7 +1333,7 @@ export default function App() {
                     <>
                       <TableHeader columns={ENTRY_COLUMNS.upcoming} />
                       {m.upcoming.map((u) => (
-                        <UpcomingRow key={u.id} entry={u} categories={data.categories} today={today}
+                        <UpcomingRow key={u.id} entry={u} data={data} categories={data.categories} today={today}
                           onTogglePaid={() => patchMonth(historyKey, { upcoming: m.upcoming.map((x) => x.id === u.id ? { ...x, paid: !x.paid } : x) })}
                           onEdit={() => setModal({ type: "upcoming", editId: u.id, monthKey: historyKey })}
                           onDelete={() => patchMonth(historyKey, { upcoming: m.upcoming.filter((x) => x.id !== u.id) })} />
@@ -1350,7 +1351,7 @@ export default function App() {
                       <TableHeader columns={[{ label: tk("NAME"), flex: 2 }, { label: tk("SOURCE"), flex: 1.2 }, { label: tk("DATE"), flex: 1 }, { label: tk("AMOUNT"), flex: 1, align: "right" }, { label: "", flex: 0.6, align: "center" }]} />
                       {(m.credits || []).map((c) => (
                         <div key={c.id} style={s.tableRow}>
-                          <EntryName name={c.name} note={c.note} schedule={c} />
+                          <EntryName name={c.name} note={c.note} schedule={c}><PayerLabel data={data} entry={c} /></EntryName>
                           <div style={{ flex: 1.2 }}><CategoryPill categoryName={c.category || c.source} categories={data.creditCategories || []} fallback={CREDIT_UNCATEGORIZED} /></div>
                           <div style={{ flex: 1, color: theme.textMuted, fontSize: 13 }} title={c.date}>{shortDate(c.date)}</div>
                           <div style={{ flex: 1, textAlign: "right", fontFamily: FONT, fontVariantNumeric: "tabular-nums", fontWeight: 700, color: theme.success }}>+{fmt(c.amount)}</div>
@@ -1429,12 +1430,13 @@ export default function App() {
         const editing = modal.editId ? targetMonth.expenses.find((x) => x.id === modal.editId) : null;
         return (
           <ExpenseModal editing={editing} categories={data.categories} defaultDate={cal.newEntryDate(targetKey, today)}
+            payer={isShared(data) ? { data, defaultValue: startingPayer(data, editing) } : null}
             onClose={() => setModal(null)}
             onSave={(v) => {
               // Every category named - the one, or each part's - is created if new.
               let categories = data.categories;
               const resolve = (n) => { const r = ensureCategory(categories, n); categories = r.categories; return r.category.name; };
-              const fields = { name: v.name, amount: v.amount, date: v.date, note: v.note, category: resolve(v.category) };
+              const fields = { name: v.name, amount: v.amount, date: v.date, note: v.note, category: resolve(v.category), ...payerToSave(data, v.payer, !editing) };
               if (v.splits) fields.splits = v.splits.map((p) => ({ ...p, category: resolve(p.category) }));
               const build = (base) => {
                 const e = { ...base, ...fields };
@@ -1480,6 +1482,7 @@ export default function App() {
               { key: "startDate", label: t("First date"), type: "date", defaultValue: sched.startDate || cal.newEntryDate(curKey, today),
                 when: (vals) => !!weeklyChoice(vals) },
             ] : []),
+            ...payerField(data, source),
             { key: "autoPay", label: t("Pays itself"), type: "checkbox", defaultValue: source?.autoPay,
               hint: t("Direct debit or card on file. Never sends a reminder.") },
             // Saving up belongs to the bill, so it's offered where the bill is edited,
@@ -1494,7 +1497,7 @@ export default function App() {
             const { categories, category } = ensureCategory(data.categories, v.category);
             // A dated copy keeps its date; anything else falls on a day of the month.
             const fields = { name: v.name, amount: +v.amount, ...(dated ? { date: v.date || editing?.date } : { dayOfMonth: dayOfMonthFrom(v.dayOfMonth) }),
-                             category: category.name, autoPay: !!v.autoPay, note: cleanNote(v.note) };
+                             category: category.name, autoPay: !!v.autoPay, note: cleanNote(v.note), ...payerToSave(data, v.payer, !source) };
             // A cycle counts in the budget's monthly periods: from the one this period starts in.
             const schedule = scheduleFromForm(v, sched, cal.cycleKey(cal.range(targetKey).start), cal.newEntryDate(curKey, today));
             // Saving starts with this period; one already under way keeps its start.
@@ -1515,11 +1518,13 @@ export default function App() {
             { key: "amount", label: t("Amount ({currency})", { currency: currencyCode() }), type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
             { key: "category", label: t("Category"), type: "category", categories: data.categories, defaultValue: editing?.category },
             { key: "dueDate", label: t("Due Date"), type: "date", defaultValue: editing?.dueDate || cal.newEntryDate(targetKey, today) },
+            ...payerField(data, editing),
             { key: "autoPay", label: t("Pays itself"), type: "checkbox", defaultValue: editing?.autoPay,
               hint: t("Direct debit or card on file. Counts as paid on its due date and never sends a reminder.") },
             NOTE_FIELD(editing),
           ]} onClose={() => setModal(null)} onSave={(v) => {
             const { categories, category } = ensureCategory(data.categories, v.category);
+            const payer = payerToSave(data, v.payer, !editing);
             if (editing) {
               save({
                 ...data,
@@ -1529,13 +1534,13 @@ export default function App() {
                   [targetKey]: {
                     ...targetMonth,
                     upcoming: targetMonth.upcoming.map((x) => x.id === editing.id
-                      ? { ...x, name: v.name, amount: +v.amount, dueDate: v.dueDate, category: category.name, autoPay: !!v.autoPay, note: cleanNote(v.note) }
+                      ? { ...x, name: v.name, amount: +v.amount, dueDate: v.dueDate, category: category.name, autoPay: !!v.autoPay, note: cleanNote(v.note), ...payer }
                       : x),
                   },
                 },
               });
             } else {
-              const newItem = { id: uid(), name: v.name, amount: +v.amount, dueDate: v.dueDate, paid: false, autoPay: !!v.autoPay, category: category.name, note: cleanNote(v.note) };
+              const newItem = { id: uid(), name: v.name, amount: +v.amount, dueDate: v.dueDate, paid: false, autoPay: !!v.autoPay, category: category.name, note: cleanNote(v.note), ...payer };
               save({
                 ...data,
                 categories,
@@ -1572,13 +1577,14 @@ export default function App() {
               { key: "startDate", label: t("First date"), type: "date", defaultValue: sched.startDate || cal.newEntryDate(curKey, today),
                 when: (vals) => !!weeklyChoice(vals) },
             ] : []),
+            ...payerField(data, source, { incoming: true }),
             NOTE_FIELD(source),
           ]} onClose={() => setModal(null)} onSave={(v) => {
             const amt = +v.amount;
             if (!v.name || !(amt > 0)) { setModal(null); return; }
             const { categories: creditCategories, category } = ensureCreditCategory(data.creditCategories || [], v.category);
             const fields = { name: v.name, amount: amt, ...(dated ? { date: v.date || editing?.date } : { dayOfMonth: dayOfMonthFrom(v.dayOfMonth) }),
-                             category: category.name, note: cleanNote(v.note) };
+                             category: category.name, note: cleanNote(v.note), ...payerToSave(data, v.payer, !source) };
             // A cycle counts in the budget's monthly periods: from the one this period starts in.
             const schedule = scheduleFromForm(v, sched, cal.cycleKey(cal.range(targetKey).start), cal.newEntryDate(curKey, today));
             save({ ...saveRecurring(data, "credits", { cal, curKey, targetKey, editing, editingTpl, fields, schedule, newId: uid, today }), creditCategories });
@@ -1596,16 +1602,18 @@ export default function App() {
             { key: "amount", label: t("Amount ({currency})", { currency: currencyCode() }), type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
             { key: "category", label: t("Source"), type: "category", categories: data.creditCategories || [], defaultValue: editing?.category || editing?.source },
             { key: "date", label: t("Date"), type: "date", defaultValue: editing?.date || cal.newEntryDate(targetKey, today) },
+            ...payerField(data, editing, { incoming: true }),
             NOTE_FIELD(editing),
           ]} onClose={() => setModal(null)} onSave={(v) => {
             const amt = +v.amount;
             if (!v.name || !(amt > 0)) { setModal(null); return; }
             const { categories: creditCategories, category } = ensureCreditCategory(data.creditCategories || [], v.category);
+            const payer = payerToSave(data, v.payer, !editing);
             const nextCredits = editing
               ? (targetMonth.credits || []).map((x) => x.id === editing.id
-                  ? { ...x, name: v.name, amount: amt, date: v.date, category: category.name, note: cleanNote(v.note) }
+                  ? { ...x, name: v.name, amount: amt, date: v.date, category: category.name, note: cleanNote(v.note), ...payer }
                   : x)
-              : [...(targetMonth.credits || []), { id: uid(), name: v.name, amount: amt, date: v.date, category: category.name, note: cleanNote(v.note) }];
+              : [...(targetMonth.credits || []), { id: uid(), name: v.name, amount: amt, date: v.date, category: category.name, note: cleanNote(v.note), ...payer }];
             save({
               ...data,
               creditCategories,

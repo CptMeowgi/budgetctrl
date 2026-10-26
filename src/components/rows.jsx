@@ -6,6 +6,7 @@ import { DeleteArmContext } from "../contexts.js";
 import { fmt } from "../money.js";
 import { FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
 import { CategoryPill, SELECT_CELL } from "./controls.jsx";
+import { isShared, JOINT, payerParts } from "../lib/people.js";
 import { isSplit } from "../lib/splits.js";
 import { t, tn } from "../i18n.js";
 import { shortDate } from "../text.js";
@@ -53,10 +54,22 @@ export function EntryName({ name, note, strike, schedule, children }) {
   );
 }
 
+// Who paid an entry and with what, small beside its name: "Anna, Visa",
+// "Joint" or "Anna". Nothing in a budget without two people, or when it
+// isn't set.
+export function PayerLabel({ data, entry }) {
+  const { theme } = useThemed();
+  if (!isShared(data)) return null;
+  const { who, how } = payerParts(data, entry);
+  const text = [who === JOINT ? t("Joint") : who, how].filter(Boolean).join(", ");
+  if (!text) return null;
+  return <span style={{ ...TYPE.microLegal, color: theme.textFaint, marginLeft: 6 }}>{text}</span>;
+}
+
 // Recurring bills or credits that exist in the template but fall in a later
 // period. Without this they would vanish from view entirely between occurrences
 // - a yearly bill set up in October would be invisible until March.
-export function NotDueThisPeriod({ items, curKey, cal, categories, fallback, positive, onEdit, onDelete }) {
+export function NotDueThisPeriod({ items, data, curKey, cal, categories, fallback, positive, onEdit, onDelete }) {
   const { theme, s } = useThemed();
   if (!items.length) return null;
   return (
@@ -64,7 +77,7 @@ export function NotDueThisPeriod({ items, curKey, cal, categories, fallback, pos
       <div style={{ ...s.cardTitle, marginBottom: SPACE.xxs }}>{t("Not due this period")}</div>
       {items.map((tpl) => (
         <div key={tpl.id} style={{ ...s.tableRow, opacity: 0.8 }}>
-          <EntryName name={tpl.name} note={tpl.note} />
+          <EntryName name={tpl.name} note={tpl.note}><PayerLabel data={data} entry={tpl} /></EntryName>
           <div style={{ flex: 1.2 }}><CategoryPill categoryName={tpl.category} categories={categories} fallback={fallback} /></div>
           <div style={{ flex: 1.5, color: theme.textMuted, ...TYPE.caption }}>
             {t("{frequency} · next {period}", { frequency: t(repeatLabel(tpl)), period: cal.label(nextPeriodOf(tpl, cal, curKey)).primary })}
@@ -94,12 +107,12 @@ export function SelectCell({ name, selected, onSelect }) {
   );
 }
 
-export function ExpenseRow({ entry: e, categories, onEdit, onDelete, selected, onSelect }) {
+export function ExpenseRow({ entry: e, data, categories, onEdit, onDelete, selected, onSelect }) {
   const { theme, s } = useThemed();
   return (
     <div style={s.tableRow}>
       <SelectCell name={e.name} selected={selected} onSelect={onSelect} />
-      <EntryName name={e.name} note={e.note} />
+      <EntryName name={e.name} note={e.note}><PayerLabel data={data} entry={e} /></EntryName>
       <div style={{ flex: 1.2 }}>
         {isSplit(e) ? (
           <span title={e.splits.map((p) => `${p.category}: ${fmt(p.amount)}`).join("\n")}
@@ -116,12 +129,13 @@ export function ExpenseRow({ entry: e, categories, onEdit, onDelete, selected, o
   );
 }
 
-export function RecurringRow({ entry: r, categories, onEdit, onDelete, dated }) {
+export function RecurringRow({ entry: r, data, categories, onEdit, onDelete, dated }) {
   const { theme, s } = useThemed();
   return (
     <div style={s.tableRow}>
       <EntryName name={r.name} note={r.note} schedule={r}>
         {r.autoPay && <span title={t("Pays itself")} style={{ ...TYPE.microLegal, color: theme.textFaint, marginLeft: 6 }}>{t("auto")}</span>}
+        <PayerLabel data={data} entry={r} />
       </EntryName>
       <div style={{ flex: 1.2 }}><CategoryPill categoryName={r.category} categories={categories} /></div>
       {/* In a fortnight every copy carries its date. */}
@@ -132,7 +146,7 @@ export function RecurringRow({ entry: r, categories, onEdit, onDelete, dated }) 
   );
 }
 
-export function UpcomingRow({ entry: u, categories, today, onTogglePaid, onEdit, onDelete }) {
+export function UpcomingRow({ entry: u, data, categories, today, onTogglePaid, onEdit, onDelete }) {
   const { theme, s } = useThemed();
   const settled = upcomingSettled(u, today);
   return (
@@ -144,6 +158,7 @@ export function UpcomingRow({ entry: u, categories, today, onTogglePaid, onEdit,
       </div>
       <EntryName name={u.name} note={u.note} strike={settled}>
         {u.autoPay && <span title={t("Pays itself")} style={{ ...TYPE.microLegal, color: theme.textFaint, marginLeft: 6 }}>{t("auto")}</span>}
+        <PayerLabel data={data} entry={u} />
       </EntryName>
       <div style={{ flex: 1.2 }}><CategoryPill categoryName={u.category} categories={categories} /></div>
       <div style={{ flex: 1, color: theme.textMuted, ...TYPE.caption }} title={u.dueDate}>{shortDate(u.dueDate)}</div>
