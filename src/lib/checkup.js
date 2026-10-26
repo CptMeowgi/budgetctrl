@@ -15,6 +15,7 @@ import { calendarFor } from "./calendar.js";
 import { capAt, carryInto } from "./envelopes.js";
 import { fold } from "./search.js";
 import { isSplit } from "./splits.js";
+import { isoDay } from "./periods.js";
 import { UNCATEGORIZED_NAME } from "./totals.js";
 
 const ORDER = ["missingCategory", "duplicate", "unpaidPast", "rolloverDeficit", "uncategorized"];
@@ -55,17 +56,23 @@ export function checkUp(data, today = new Date()) {
     for (const u of m.upcoming || []) {
       if (u.category && u.category !== UNCATEGORIZED_NAME && !spend.has(u.category)) add("missingCategory", { kind: "upcoming", entry: u, periodKey, category: u.category });
       // Settled means ticked paid, or a payment that pays itself.
-      if (periodKey < curKey && !u.paid && !u.autoPay) add("unpaidPast", { kind: "upcoming", entry: u, periodKey });
+      // Past means its due date has gone by, too: one filed early isn't late.
+      const overdue = periodKey < curKey && (!u.dueDate || u.dueDate < isoDay(today));
+      if (overdue && !u.paid && !u.autoPay) add("unpaidPast", { kind: "upcoming", entry: u, periodKey });
     }
     for (const c of m.credits || []) if (!credits.has(c.templateId)) checkMoneyIn("credit", c, periodKey);
 
+    // Two identical rows from statements are taken as two payments: a
+    // statement lists each one, and imports already skip what's entered.
     for (const [kind, list] of [["expense", m.expenses], ["credit", m.credits]]) {
-      const first = new Map();
+      const seen = new Map();
       for (const e of list || []) {
         if (!e.date) continue;
         const key = `${e.date}|${cents(e.amount)}|${sameName(e.name)}`;
-        if (first.has(key)) add("duplicate", { kind, entry: e, periodKey, of: first.get(key) });
-        else first.set(key, e);
+        const earlier = seen.get(key) || [];
+        const of = earlier.find((o) => !(o.imported && e.imported));
+        if (of) add("duplicate", { kind, entry: e, periodKey, of });
+        seen.set(key, [...earlier, e]);
       }
     }
   }

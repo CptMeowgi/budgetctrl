@@ -337,3 +337,26 @@ describe("opening a budget saved after switching to fortnights", () => {
     expect(periodSpending(d.months["2026-09"], "2026-09", today(), cal).total).toBeCloseTo(2811.19, 2);
   });
 });
+
+describe("changing the payday with periods locked", () => {
+  it("leaves entries in a locked period where they are, and moves none into one", () => {
+    const TODAY = new Date(2026, 9, 20, 12);
+    const m = (expenses) => ({ income: 1000, expenses, recurring: [], upcoming: [], credits: [] });
+    const data = hydrate({
+      cutoffDay: 1,
+      months: {
+        "2026-03": m([{ id: "a", name: "Early March", amount: 5, date: "2026-03-05", category: "Food" }]),
+        "2026-04": m([{ id: "b", name: "Early April", amount: 5, date: "2026-04-05", category: "Food" }]),
+        "2026-09": m([{ id: "c", name: "Early September", amount: 5, date: "2026-09-05", category: "Food" }]),
+        "2026-10": m([]),
+      },
+    });
+    const isLocked = (k) => k < "2026-07";
+    const out = rebucketData(data, 10, TODAY, { isLocked });
+    // With the 10th as payday, the 5th belongs to the period before.
+    expect(out.months["2026-03"].expenses.map((e) => e.id)).toEqual(["a"]);
+    expect(out.months["2026-04"].expenses.map((e) => e.id)).toEqual(["b"]);
+    expect(out.months["2026-08"].expenses.map((e) => e.id)).toEqual(["c"]);
+    expect(countRebucketMoves(data, 10, TODAY, { isLocked })).toBe(1);
+  });
+});

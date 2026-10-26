@@ -297,6 +297,14 @@ export default function App() {
     // `save` has no deps of its own, so this still runs exactly once.
   }, [save]);
 
+  // Not unlocking after all: back to where the entry was opened from.
+  const cancelLockAsk = () => {
+    setLockAsk(null);
+    if (backToCheckup.current) {
+      backToCheckup.current = false;
+      setCheckupOpen(true);
+    }
+  };
   useEffect(() => {
     if (!modal && backToCheckup.current) {
       backToCheckup.current = false;
@@ -603,18 +611,23 @@ export default function App() {
     return next;
   });
   const stopSelecting = () => { setSelecting(null); setSelected(new Set()); };
-  // One save each, so one Ctrl+Z undoes the whole change.
-  const bulkFile = (list, category) => {
-    const { entries, changed, skipped } = bulkCategory(cur[list] || [], selected, category);
+  // Only what's selected and still shown: a search narrows the list, and a
+  // row the reader can't see is never changed. One save each, so one Ctrl+Z
+  // undoes the whole change.
+  const shownSelected = (rows) => new Set(rows.map((e) => e.id).filter((id) => selected.has(id)));
+  const bulkFile = (list, rows, category) => {
+    const { entries, changed, skipped } = bulkCategory(cur[list] || [], shownSelected(rows), category);
     if (changed) patchCur({ [list]: entries });
     setToast(skipped
       ? `${tn(changed, "{n} filed under {category}.", "{n} filed under {category}.", { category: catName(category) })} ${tn(skipped, "{n} split payment left as it is.", "{n} split payments left as they are.")}`
       : tn(changed, "{n} filed under {category}.", "{n} filed under {category}.", { category: catName(category) }));
   };
-  const bulkRemove = (list) => {
-    const { entries, removed } = bulkDelete(cur[list] || [], selected);
-    patchCur({ [list]: entries });
-    setToast(tn(removed, "{n} deleted. Ctrl+Z brings it back.", "{n} deleted. Ctrl+Z brings them back."));
+  const bulkRemove = (list, rows) => {
+    const { entries, removed } = bulkDelete(cur[list] || [], shownSelected(rows));
+    if (removed) {
+      patchCur({ [list]: entries });
+      setToast(tn(removed, "{n} deleted. Ctrl+Z brings it back.", "{n} deleted. Ctrl+Z brings them back."));
+    }
     stopSelecting();
   };
   const onChangeCutoff = (next) => {
@@ -623,20 +636,21 @@ export default function App() {
     // never by re-sorting its months.
     if (cal.scheduled) { setPayDialog({ kind: "monthly", cutoffDay: clamped }); return; }
     if (clamped === cal.cutoffDay) return;
-    const moves = countRebucketMoves(data, clamped, today);
+    const moves = countRebucketMoves(data, clamped, today, { isLocked: periodLocked });
     if (moves === 0) { save({ ...data, cutoffDay: clamped }); return; }
     const ok = confirm(
       tn(moves, "Move {n} entry to match the new start day?", "Move {n} entries to match the new start day?") + "\n\n" +
       t("Expenses, one-off credits, upcoming payments and weekly items will move to the period their date falls in. Monthly recurring items and income stay where they are.") + "\n\n" +
       t("Choose Cancel to change the start day without moving anything.")
     );
-    save(ok ? { ...rebucketData(data, clamped, today), cutoffDay: clamped } : { ...data, cutoffDay: clamped });
+    save(ok ? { ...rebucketData(data, clamped, today, { isLocked: periodLocked }), cutoffDay: clamped } : { ...data, cutoffDay: clamped });
   };
 
   // A switch of pay schedule: a backup of the budget as it was, then one
   // save, so Ctrl+Z undoes it.
   const onSwitchSchedule = async (next) => {
-    if (isTauri) {
+    // Backups are of the real budget; the sample isn't it.
+    if (isTauri && !sampleRef.current) {
       try {
         const current = await window.storage.get(STORAGE_KEY);
         if (current?.value) await writeBackup(current.value, "before-pay-schedule");
@@ -849,7 +863,7 @@ export default function App() {
           {/* DASHBOARD */}
           {tab === "dashboard" && (
             <Dashboard
-              funds={funds} fundsTarget={fundsTarget}
+              funds={funds} fundsTarget={fundsTarget} paidFromFund={fundsNow.paidFromFund}
               data={data} cur={cur} curKey={curKey} today={today} cal={cal} fc={fc}
               remaining={remaining}
               remainingSub={fc.series.length < 2 || fc.lowestWithEveryday.date === fc.series[0].date
@@ -957,9 +971,9 @@ export default function App() {
               {filteredExpenses.length === 0 ? <div style={s.empty}>{expensesView.search ? t("No expenses match \"{search}\".", { search: expensesView.search }) : t("No expenses yet. Click \"+ Add Expense\" to start tracking.")}</div> : (
                 <>
                   {selecting === "expenses" && (
-                    <BulkBar count={selected.size} shown={filteredExpenses.length} categories={(data.categories || []).map((c) => c.name)}
+                    <BulkBar count={shownSelected(filteredExpenses).size} shown={filteredExpenses.length} categories={(data.categories || []).map((c) => c.name)}
                       onSelectAll={() => setSelected(new Set(filteredExpenses.map((e) => e.id)))} onSelectNone={() => setSelected(new Set())}
-                      onCategory={(c) => bulkFile("expenses", c)} onDelete={() => bulkRemove("expenses")} onDone={stopSelecting} />
+                      onCategory={(c) => bulkFile("expenses", filteredExpenses, c)} onDelete={() => bulkRemove("expenses", filteredExpenses)} onDone={stopSelecting} />
                   )}
                   <TableHeader columns={ENTRY_COLUMNS.expenses} sorts={expensesView.sorts} onSort={onSortExpenses} leading={selecting === "expenses" ? " " : null} />
                   {filteredExpenses.map((e) => (
@@ -1158,9 +1172,9 @@ export default function App() {
                   ) : (
                     <>
                       {selecting === "credits" && (
-                        <BulkBar count={selected.size} shown={oneOffCredits.length} categories={(data.creditCategories || []).map((c) => c.name)}
+                        <BulkBar count={shownSelected(oneOffCredits).size} shown={oneOffCredits.length} categories={(data.creditCategories || []).map((c) => c.name)}
                           onSelectAll={() => setSelected(new Set(oneOffCredits.map((c) => c.id)))} onSelectNone={() => setSelected(new Set())}
-                          onCategory={(c) => bulkFile("credits", c)} onDelete={() => bulkRemove("credits")} onDone={stopSelecting} />
+                          onCategory={(c) => bulkFile("credits", oneOffCredits, c)} onDelete={() => bulkRemove("credits", oneOffCredits)} onDone={stopSelecting} />
                       )}
                       <TableHeader columns={[{ label: tk("NAME"), flex: 2, sortKey: "name" }, { label: tk("SOURCE"), flex: 1.2, sortKey: "category" }, { label: tk("DATE"), flex: 1, sortKey: "date" }, { label: tk("AMOUNT"), flex: 1, align: "right", sortKey: "amount" }, { label: "", flex: 0.6, align: "center" }]} sorts={creditsView.sorts} onSort={onSortCredits} leading={selecting === "credits" ? " " : null} />
                       {oneOffCredits.map((c) => creditRow(c, "oneoff"))}
@@ -1637,11 +1651,11 @@ export default function App() {
       )}
 
       {statementOpen && (
-        <StatementImport data={data} onClose={() => setStatementOpen(false)}
+        <StatementImport data={data} isLocked={periodLocked} onClose={() => setStatementOpen(false)}
           onImport={async (next, counts) => {
             // A statement can add hundreds of rows at once. Snapshot first, so a
             // wrong column guess is one restore away rather than an afternoon.
-            if (isTauri) {
+            if (isTauri && !sampleRef.current) {
               try {
                 const current = await window.storage.get(STORAGE_KEY);
                 if (current?.value) await writeBackup(current.value, "before-statement-import");
@@ -1684,7 +1698,7 @@ export default function App() {
       )}
 
       {lockAsk && (
-        <Modal title={t("This period is locked")} onClose={() => setLockAsk(null)} width={460}>
+        <Modal title={t("This period is locked")} onClose={cancelLockAsk} width={460}>
           <p style={{ ...TYPE.caption, color: theme.text, lineHeight: 1.6, margin: `${SPACE.xs}px 0 ${SPACE.md}px` }}>
             {tn(Number(data.lockPastMonths) || 0,
               "{period} ended more than {n} month ago, so it's locked against changes. Unlock it to edit it; it locks again when you close Budget Ctrl.",
@@ -1692,7 +1706,7 @@ export default function App() {
               { period: cal.label(lockAsk.monthKey).range || cal.label(lockAsk.monthKey).primary })}
           </p>
           <div style={{ display: "flex", gap: SPACE.md, justifyContent: "flex-end" }}>
-            <button style={s.linkBtn} onClick={() => setLockAsk(null)}>{t("Cancel")}</button>
+            <button style={s.linkBtn} onClick={cancelLockAsk}>{t("Cancel")}</button>
             <button style={{ ...s.saveBtn, width: "auto", padding: "10px 24px" }}
               onClick={() => {
                 const next = new Set(unlocked).add(lockAsk.monthKey);

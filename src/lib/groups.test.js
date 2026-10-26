@@ -66,6 +66,14 @@ describe("setCategoryGroup", () => {
     expect(setCategoryGroup(data(), "Gifts", "bills").categories.find((c) => c.name === "Gifts").group).toBe("Bills");
   });
 
+  it("renames its own group when retyped with other capitals, for every category in it", () => {
+    const out = setCategoryGroup(data(), "Rent", "BILLS");
+    expect(out.categories.filter((c) => c.group).map((c) => [c.name, c.group])).toEqual([
+      ["Rent", "BILLS"], ["Phone", "BILLS"], ["Food", "Everyday"], ["Games", "Fun"],
+    ]);
+    expect(out.categoryGroups).toEqual(["Everyday", "BILLS"]);
+  });
+
   it("takes a category out of its group with an empty name", () => {
     const out = setCategoryGroup(data(), "Food", " ");
     expect("group" in out.categories.find((c) => c.name === "Food")).toBe(false);

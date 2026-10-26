@@ -317,8 +317,10 @@ function why(template, vars = {}) {
 //   credit   - money in, new
 //   markPaid - money out that settles an unpaid Upcoming payment
 //   skip     - already counted (duplicate, a recurring bill, the salary)
-// `include` is the proposed default; the user can override every row.
-export function analyzeImport(transactions, data) {
+// `include` is the proposed default; the user can override every row, except
+// one for a period that `isLocked` (Lock past periods): that one is `locked`,
+// and left out until the period is unlocked.
+export function analyzeImport(transactions, data, { isLocked } = {}) {
   const cal = calendarFor(data);
   const index = categoryIndex(data);
   // Your import rules have the last word on what a new row is called and
@@ -335,7 +337,7 @@ export function analyzeImport(transactions, data) {
   const claimed = new Set();
   const claim = (key) => { if (claimed.has(key)) return false; claimed.add(key); return true; };
 
-  return transactions.map((tx, i) => {
+  const rows = transactions.map((tx, i) => {
     const period = cal.keyFor(new Date(tx.date + "T00:00:00"));
     const m = (data.months || {})[period];
     // bankName keeps the statement's own wording after a rule renames the row.
@@ -384,6 +386,13 @@ export function analyzeImport(transactions, data) {
       return { ...base, action: "skip", include: false, ...why("Looks like your salary — already counted as income") };
     }
     return ruled({ ...base, action: "credit", include: true });
+  });
+  if (!isLocked) return rows;
+  return rows.map((r) => {
+    if (!r.include) return r;
+    const where = r.action === "markPaid" ? [r.period, r.target?.period] : [r.period];
+    if (!where.some((k) => k && isLocked(k))) return r;
+    return { ...r, include: false, locked: true, ...why("In a locked period: unlock it in History to import into it") };
   });
 }
 

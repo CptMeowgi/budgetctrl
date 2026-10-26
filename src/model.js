@@ -226,8 +226,17 @@ function placement(newCutoff, today) {
   return { runningKey, placeOf };
 }
 
-export function countRebucketMoves(data, newCutoff, today = new Date()) {
-  const { placeOf } = placement(newCutoff, today);
+// A locked period (Lock past periods) keeps its entries, and takes none in.
+const respectingLocks = (placeOf, isLocked) => (isLocked
+  ? (item, k, date) => {
+    if (isLocked(k)) return k;
+    const to = placeOf(item, k, date);
+    return to && isLocked(to) ? k : to;
+  }
+  : placeOf);
+
+export function countRebucketMoves(data, newCutoff, today = new Date(), { isLocked } = {}) {
+  const placeOf = respectingLocks(placement(newCutoff, today).placeOf, isLocked);
   let moves = 0;
   for (const [k, m] of Object.entries(data.months)) {
     for (const e of (m.expenses || [])) if (placeOf(e, k, e.date) !== k) moves++;
@@ -242,8 +251,10 @@ export function countRebucketMoves(data, newCutoff, today = new Date()) {
 // 10th on 14 Oct starts the period of 10 Oct at once). Entries dated in it
 // move there, and it starts as any period does: income carried over and the
 // bills and credits that fall in it.
-export function rebucketData(data, newCutoff, today = new Date()) {
-  const { runningKey, placeOf } = placement(newCutoff, today);
+export function rebucketData(data, newCutoff, today = new Date(), { isLocked } = {}) {
+  const placed = placement(newCutoff, today);
+  const runningKey = placed.runningKey;
+  const placeOf = respectingLocks(placed.placeOf, isLocked);
   const out = {};
   const ensure = (k) => {
     if (!out[k]) out[k] = emptyMonth();

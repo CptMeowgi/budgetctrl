@@ -81,4 +81,13 @@ describe("needsSetup", () => {
     expect(needsSetup({ ...fresh, recurringTemplate: [{ id: "t", name: "Rent", amount: 900, dayOfMonth: 1 }] })).toBe(false);
     expect(needsSetup({ ...fresh, accounts: [{ id: "a", name: "Bank" }] })).toBe(false);
   });
+
+  it("never asks a budget that was set up before the welcome screens remembered it, entries or not", () => {
+    expect(needsSetup({ ...fresh, cutoffDay: 25 })).toBe(false);
+    expect(needsSetup({ ...fresh, savingsGoal: { monthly: 500 } })).toBe(false);
+    expect(needsSetup({ ...fresh, importRules: [{ id: "r", match: "lidl", category: "Food" }] })).toBe(false);
+    expect(needsSetup({ ...fresh, categories: [...fresh.categories, { name: "Food", cap: 400 }] })).toBe(false);
+    expect(needsSetup({ ...fresh, categories: [...fresh.categories, { name: "Food" }, { name: "Fun" }] })).toBe(false);
+    expect(needsSetup({ ...fresh, paySchedule: [{ kind: "weeks", every: 2, from: "2026-10-09" }] })).toBe(false);
+  });
 });

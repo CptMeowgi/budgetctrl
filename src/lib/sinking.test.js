@@ -61,9 +61,34 @@ describe("sinkingFunds", () => {
     due.months["2027-03"].recurring = [{ id: "r", name: "Car insurance", amount: 1200, dayOfMonth: 10, every: 12, anchor: "2026-03", templateId: "ins" }];
     const before = sinkingFunds(due, new Date(2027, 2, 5, 12))[0];
     expect([before.dueNow, before.saved, before.thisPeriod, before.paidFromFund]).toEqual([true, 1100, 100, 0]);
+    // Once paid, the fund pays what was saved before; the period's own share
+    // is the rest of the bill, already in its spending, so nothing more is set aside.
     const after = sinkingFunds(due, new Date(2027, 2, 15, 12))[0];
-    expect(after.paidFromFund).toBe(1200);
-    expect(fundTotals(sinkingFunds(due, new Date(2027, 2, 15, 12)))).toEqual({ setAside: 100, paidFromFund: 1200 });
+    expect([after.paidFromFund, after.thisPeriod]).toEqual([1100, 0]);
+    expect(fundTotals(sinkingFunds(due, new Date(2027, 2, 15, 12)))).toEqual({ setAside: 0, paidFromFund: 1100 });
+  });
+
+  it("credits a fund only with money that was there, whatever other funds paid", () => {
+    // Every period spends all it has. Insurance was paid in March out of March's
+    // own money, before saving for it began in April: no fund paid it.
+    const spendAll = (o = {}) => month({ expenses: [{ id: "all", name: "Everything", amount: 3000, date: "2026-01-02", category: "Life" }], ...o });
+    const tax = { id: "tax", name: "Car tax", amount: 600, dayOfMonth: 5, every: 12, anchor: "2026-11", saveUp: { from: "2025-12" } };
+    const d = { cutoffDay: 1, savingsGoal: { monthly: 0 }, recurringTemplate: [tax, insurance("2026-04")], months: {} };
+    for (const k of ["2025-12", "2026-01", "2026-02", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08", "2026-09", "2026-10"]) d.months[k] = spendAll();
+    d.months["2026-03"] = month({ income: 2200, expenses: [{ id: "x", name: "Life", amount: 1000, date: "2026-03-02", category: "Life" }],
+      recurring: [{ id: "i", name: "Car insurance", amount: 1200, dayOfMonth: 10, every: 12, anchor: "2026-03", templateId: "ins" }] });
+    const taxFund = sinkingFunds(d, TODAY).find((f) => f.id === "tax");
+    expect(taxFund.saved).toBe(0);
+  });
+
+  it("follows a fund through its earlier cycles", () => {
+    // Saving since last October: the March bill was paid mostly from what was
+    // saved since then, and saving started again in April.
+    const d = budget(insurance("2025-10"));
+    for (const k of ["2025-10", "2025-11", "2025-12", "2026-01", "2026-02"]) d.months[k] = month();
+    d.months["2026-03"] = month({ recurring: [{ id: "old", name: "Car insurance", amount: 1200, dayOfMonth: 10, every: 12, anchor: "2026-03", templateId: "ins" }] });
+    const [f] = sinkingFunds(d, TODAY);
+    expect([f.saved, f.thisPeriod]).toEqual([600, 100]);
   });
 
   it("starts again after the bill is paid", () => {

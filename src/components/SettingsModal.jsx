@@ -247,9 +247,12 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
       <SettingRow label={t("Back up everything")} hint={t("Your whole budget in one file, to keep somewhere safe or move to another computer.")}>
         <button style={{ ...s.linkBtn, padding: 0 }} onClick={onExport}>{t("Export…")}</button>
       </SettingRow>
-      <SettingRow label={t("Restore from a backup file")} hint={t("Replaces what's here with the file's contents.")}>
-        <button style={{ ...s.linkBtn, padding: 0 }} onClick={onImport}>{t("Import…")}</button>
-      </SettingRow>
+      {/* In the sample these would bring in or wipe a budget that's never saved. */}
+      {!sample && (
+        <SettingRow label={t("Restore from a backup file")} hint={t("Replaces what's here with the file's contents.")}>
+          <button style={{ ...s.linkBtn, padding: 0 }} onClick={onImport}>{t("Import…")}</button>
+        </SettingRow>
+      )}
       <SettingRow label={t("Spreadsheet")} hint={t("Every entry as a CSV, for Excel or Google Sheets.")}>
         <button style={{ ...s.linkBtn, padding: 0 }} onClick={onExportCsv}>{t("Export CSV")}</button>
       </SettingRow>
@@ -288,9 +291,11 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
           </SettingRow>
         </>
       )}
-      <SettingRow label={t("Start again")} hint={t("Deletes your whole budget. It's backed up first, and Ctrl+Z brings it back.")}>
-        <button style={{ ...s.linkBtn, padding: 0, color: theme.danger }} onClick={onReset}>{t("Reset…")}</button>
-      </SettingRow>
+      {!sample && (
+        <SettingRow label={t("Start again")} hint={t("Deletes your whole budget. It's backed up first, and Ctrl+Z brings it back.")}>
+          <button style={{ ...s.linkBtn, padding: 0, color: theme.danger }} onClick={onReset}>{t("Reset…")}</button>
+        </SettingRow>
+      )}
       {isTauri && (
         <>
           <div style={divider} />

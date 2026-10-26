@@ -24,88 +24,89 @@ export function canSaveUp(tpl) {
   return !!tpl && !isWeekly(tpl) && tpl.dayOfMonth != null && (Number(tpl.every) || 1) > 1;
 }
 
-// The periods a bill is saved for over, ending with the one it's due in.
-function cycleOf(tpl, cal, curKey) {
-  const dueKey = nextPeriodOf(tpl, cal, curKey);
-  if (!occursIn(tpl, cal, dueKey)) return null;
-  // When it was last due: back at most a few cycles' worth of periods.
-  const steps = Math.ceil((Number(tpl.every) || 1) * 5) + 2;
-  let prev = null;
-  for (let k = dueKey, i = 0; i < steps; i++) {
-    const p = cal.prev(k);
-    if (!p || p === k) break;
-    k = p;
-    if (occursIn(tpl, cal, k)) { prev = k; break; }
-  }
-  const from = tpl.saveUp?.from || curKey;
-  let start = prev ? cal.next(prev) : from;
-  if (from > start) start = from;
-  if (start > curKey) start = curKey;
+// Every period a bill has been saved for in, from the one saving started in
+// to the one it's next due in, each with when its cycle ends and how many
+// periods that cycle has left. A cycle runs from the period after the bill
+// was last due to the one it's due in.
+function timeline(tpl, cal, curKey) {
+  const nextDue = nextPeriodOf(tpl, cal, curKey);
+  if (!occursIn(tpl, cal, nextDue)) return null;
+  let from = tpl.saveUp?.from || curKey;
+  if (from > curKey) from = curKey;
   const keys = [];
-  for (let k = start, i = 0; k <= dueKey && i < 400; k = cal.next(k), i++) keys.push(k);
-  return { dueKey, keys };
+  for (let k = from, i = 0; k <= nextDue && i < 2000; k = cal.next(k), i++) keys.push(k);
+  const due = new Set(keys.filter((k) => occursIn(tpl, cal, k)));
+  // Walking back from the end: each period's due period, and how far off it is.
+  const cycle = new Map();
+  let dueKey = nextDue;
+  let left = 0;
+  for (let i = keys.length - 1; i >= 0; i--) {
+    const k = keys[i];
+    if (due.has(k)) { dueKey = k; left = 0; }
+    left++;
+    cycle.set(k, { dueKey, left });
+  }
+  return { keys, due, cycle, nextDue };
 }
 
 // [{ id, name, category, amount, dueKey, dueDate, periodsLeft, saved,
 //    thisPeriod, savedAfter, dueNow, paidFromFund }], soonest due first.
 //   saved         set aside before this period
-//   thisPeriod    this period's share
-//   paidFromFund  in the period it's due, once paid: what the fund covers
+//   thisPeriod    this period's share; once the bill is paid in the period
+//                 it's due, nothing: the rest of the bill is in its spending
+//   paidFromFund  in the period it's due, once paid: what was saved before
 export function sinkingFunds(data, today = new Date()) {
   const tmpls = (data.recurringTemplate || []).filter((t) => t.saveUp && canSaveUp(t));
   if (!tmpls.length) return [];
   const cal = calendarFor(data);
   const curKey = cal.current(today);
-  const ids = new Set(tmpls.map((t) => t.id));
-  const funds = tmpls.map((tpl) => ({ tpl, cycle: cycleOf(tpl, cal, curKey) }))
-    .filter((f) => f.cycle)
-    .sort((a, b) => (a.cycle.dueKey < b.cycle.dueKey ? -1 : a.cycle.dueKey > b.cycle.dueKey ? 1 : 0));
+  const funds = tmpls.map((tpl) => ({ tpl, line: timeline(tpl, cal, curKey), saved: 0 })).filter((f) => f.line);
+  if (!funds.length) return [];
 
-  const share = (f, k, saved) => {
-    const left = f.cycle.keys.length - f.cycle.keys.indexOf(k);
-    return left > 0 ? cents(Math.max(0, f.tpl.amount - saved) / left) : 0;
-  };
-  // What a past period had left over to save: income less spending and the
-  // savings set-aside. A bill being saved for was paid from its own fund.
-  const leftOver = (k) => {
-    const m = data.months?.[k];
-    if (!m) return 0;
-    const funded = (m.recurring || []).filter((r) => ids.has(r.templateId) && cal.isDue(r, k, today))
-      .reduce((a, r) => a + (r.amount || 0), 0);
-    const spent = periodSpending(m, k, today, cal).total - funded;
-    return Math.max(0, periodIncome(m, k, today, cal).total - spent - perPeriodOf(data.savingsGoal?.monthly, cal, k));
-  };
+  // What a bill's own copies in a period came to, once due.
+  const paidIn = (f, k) => (data.months?.[k]?.recurring || [])
+    .filter((r) => r.templateId === f.tpl.id && cal.isDue(r, k, today))
+    .reduce((a, r) => a + (r.amount || 0), 0);
+  const share = (f, k) => cents(Math.max(0, f.tpl.amount - f.saved) / f.line.cycle.get(k).left);
 
-  // Past periods, oldest first; the bill due soonest takes its share first.
-  const saved = new Map(funds.map((f) => [f.tpl.id, 0]));
-  const past = [...new Set(funds.flatMap((f) => f.cycle.keys.filter((k) => k < curKey)))].sort();
+  // Past periods, oldest first. Each had what it took in, less what it
+  // spent and the savings set-aside, plus any bill a fund paid for it; the
+  // funds still saving then share that out, the one due soonest first.
+  const past = [...new Set(funds.flatMap((f) => f.line.keys.filter((k) => k < curKey)))].sort();
   for (const k of past) {
-    let left = leftOver(k);
-    for (const f of funds) {
-      if (!f.cycle.keys.includes(k)) continue;
-      const take = Math.min(share(f, k, saved.get(f.tpl.id)), left);
-      saved.set(f.tpl.id, cents(saved.get(f.tpl.id) + take));
+    const m = data.months?.[k];
+    const open = funds.filter((f) => f.line.cycle.has(k))
+      .sort((a, b) => (a.line.cycle.get(k).dueKey < b.line.cycle.get(k).dueKey ? -1 : 1));
+    // A bill due here is paid from what its fund had saved; its cycle ends.
+    let fromFunds = 0;
+    const ending = open.filter((f) => f.line.due.has(k));
+    for (const f of ending) fromFunds += Math.min(paidIn(f, k), f.saved);
+    let left = m ? Math.max(0, periodIncome(m, k, today, cal).total - periodSpending(m, k, today, cal).total
+      + fromFunds - perPeriodOf(data.savingsGoal?.monthly, cal, k)) : 0;
+    for (const f of open) {
+      if (f.line.due.has(k)) continue;
+      const take = Math.min(share(f, k), left);
+      f.saved = cents(f.saved + take);
       left = Math.max(0, left - take);
     }
+    for (const f of ending) f.saved = 0;
   }
 
-  return funds.map((f) => {
-    const before = saved.get(f.tpl.id);
-    const thisPeriod = f.cycle.keys.includes(curKey) ? share(f, curKey, before) : 0;
-    const dueNow = f.cycle.dueKey === curKey;
-    const paid = dueNow
-      ? (data.months?.[curKey]?.recurring || []).filter((r) => r.templateId === f.tpl.id && cal.isDue(r, curKey, today))
-        .reduce((a, r) => a + (r.amount || 0), 0)
-      : 0;
-    const due = cal.occurrences(f.tpl, f.cycle.dueKey)[0];
-    return {
-      id: f.tpl.id, name: f.tpl.name, category: f.tpl.category, amount: f.tpl.amount,
-      dueKey: f.cycle.dueKey, dueDate: due ? isoDay(due) : null,
-      periodsLeft: f.cycle.keys.length - f.cycle.keys.indexOf(curKey),
-      saved: before, thisPeriod, savedAfter: cents(before + thisPeriod),
-      dueNow, paidFromFund: cents(Math.min(paid, before + thisPeriod)),
-    };
-  });
+  return funds
+    .map((f) => {
+      const { dueKey, left } = f.line.cycle.get(curKey);
+      const dueNow = f.line.due.has(curKey);
+      const paid = dueNow ? paidIn(f, curKey) : 0;
+      const thisPeriod = paid > 0 ? 0 : share(f, curKey);
+      const due = cal.occurrences(f.tpl, dueKey)[0];
+      return {
+        id: f.tpl.id, name: f.tpl.name, category: f.tpl.category, amount: f.tpl.amount,
+        dueKey, dueDate: due ? isoDay(due) : null, periodsLeft: left,
+        saved: f.saved, thisPeriod, savedAfter: cents(f.saved + thisPeriod),
+        dueNow, paidFromFund: cents(Math.min(paid, f.saved)),
+      };
+    })
+    .sort((a, b) => (a.dueKey < b.dueKey ? -1 : a.dueKey > b.dueKey ? 1 : 0));
 }
 
 // This period, over all funds: what to set aside, and what they pay.

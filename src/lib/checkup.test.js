@@ -97,6 +97,21 @@ describe("checkUp", () => {
     expect(d.months["2026-09"].upcoming[0].paid).toBe(false);
   });
 
+  it("doesn't call a payment unpaid before its due date, wherever it's filed", () => {
+    const d = base();
+    d.months["2026-09"].upcoming = [{ id: "later", name: "Car service", amount: 900, dueDate: "2026-12-15", paid: false }];
+    expect(of(checkUp(d, TODAY), "unpaidPast")).toEqual([]);
+  });
+
+  it("trusts a statement that shows two identical payments, but not a payment entered twice", () => {
+    const d = base();
+    d.months["2026-10"].expenses = [
+      { ...ex("c1", "Coffee", 3.2, "2026-10-05"), imported: true }, { ...ex("c2", "Coffee", 3.2, "2026-10-05"), imported: true },
+      { ...ex("s1", "Shell", 50, "2026-10-06"), imported: true }, ex("s2", "Shell", 50, "2026-10-06"),
+    ];
+    expect(of(checkUp(d, TODAY), "duplicate").map((f) => f.entry.id)).toEqual(["s2"]);
+  });
+
   it("puts what matters most first", () => {
     const d = base();
     d.months["2026-10"].expenses = [ex("u", "Thing", 5, "2026-10-01", "Uncategorized"), ex("m", "Cinema", 30, "2026-10-05", "Movies")];

@@ -17,7 +17,9 @@ const FORMAT_NAME = { mt940: "MT940", ofx: "OFX", camt053: "CAMT" };
 // lib/importer.js where they are tested; this is the wizard over them:
 // pick a file, confirm what each column is (a CSV only: the other formats
 // say), review every row, import.
-export function StatementImport({ data, onClose, onImport }) {
+// `isLocked`: whether a period is locked (Lock past periods); rows for one
+// can't be imported until it's unlocked.
+export function StatementImport({ data, onClose, onImport, isLocked }) {
   const { theme, s } = useThemed();
   const [step, setStep] = useState("pick");
   const [file, setFile] = useState(null);       // CSV: { name, encoding, delimiter, rows, headerIndex }; else { name, encoding, format, statement }
@@ -89,12 +91,12 @@ export function StatementImport({ data, onClose, onImport }) {
   );
 
   const toReview = () => {
-    setRows(analyzeImport(preview.transactions, data));
+    setRows(analyzeImport(preview.transactions, data, { isLocked }));
     setStep("review");
   };
 
   const toggle = (id) => setRows((rs) => rs.map((r) => {
-    if (r.id !== id) return r;
+    if (r.id !== id || r.locked) return r;
     if (r.include) return { ...r, include: false };
     // Ticking a row the matcher skipped means "import it anyway".
     return r.action === "skip" ? { ...r, include: true, action: r.amount < 0 ? "expense" : "credit" } : { ...r, include: true };
@@ -118,7 +120,7 @@ export function StatementImport({ data, onClose, onImport }) {
     });
   });
   const setAll = (include) => setRows((rs) => rs.map((r) =>
-    include && r.action === "skip" ? r : { ...r, include: include && r.action !== "skip" }));
+    (include && r.action === "skip") || r.locked ? r : { ...r, include: include && r.action !== "skip" }));
 
   const kept = rows.filter((r) => r.include);
   const tally = {
@@ -251,7 +253,7 @@ export function StatementImport({ data, onClose, onImport }) {
               return (
                 <div key={r.id} style={{ display: "flex", alignItems: "center", gap: SPACE.sm, padding: "8px 0",
                                          borderBottom: `1px solid ${theme.border}`, opacity: r.include ? 1 : 0.55 }}>
-                  <input type="checkbox" checked={r.include} onChange={() => toggle(r.id)} style={{ accentColor: theme.accent, width: 16, height: 16 }} />
+                  <input type="checkbox" checked={r.include} disabled={r.locked} onChange={() => toggle(r.id)} style={{ accentColor: theme.accent, width: 16, height: 16 }} />
                   <span style={{ ...TYPE.caption, color: theme.textMuted, width: 86, flexShrink: 0 }}>{r.date}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ ...TYPE.caption, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.name}>{r.name}</div>

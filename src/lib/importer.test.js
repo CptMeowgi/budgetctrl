@@ -431,3 +431,24 @@ describe("remembered column layouts", () => {
     expect(rememberedLayout({ importLayouts: layouts }, header)).toBeNull();
   });
 });
+
+describe("statement import and locked periods", () => {
+  it("leaves rows for a locked period unticked, and won't mark a payment paid there", () => {
+    const data = {
+      cutoffDay: 1,
+      months: {
+        "2026-03": { income: 0, expenses: [], recurring: [], credits: [],
+          upcoming: [{ id: "u1", name: "Dentist", amount: 300, dueDate: "2026-03-20", paid: false }] },
+        "2026-10": { income: 0, expenses: [], recurring: [], upcoming: [], credits: [] },
+      },
+    };
+    const isLocked = (k) => k < "2026-07";
+    const rows = analyzeImport([
+      { date: "2026-03-07", name: "Shop", amount: -20 },
+      { date: "2026-03-21", name: "Dental clinic", amount: -300 },
+      { date: "2026-10-03", name: "Shop", amount: -20 },
+    ], data, { isLocked });
+    expect(rows.map((r) => [r.include, !!r.locked])).toEqual([[false, true], [false, true], [true, false]]);
+    expect(rows[0].reasonKey).toMatch(/locked/);
+  });
+});

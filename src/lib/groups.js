@@ -34,10 +34,19 @@ export function groupTotals(rows) {
 }
 
 // Put a spending category in a group, or take it out with an empty name. A
-// group already there is joined under its own spelling.
+// group already there is joined under its own spelling; a category's own
+// group retyped with other capitals is renamed, for all of its categories.
 export function setCategoryGroup(data, name, group) {
   const wanted = clean(group);
   const existing = groupNames(data).concat(data.categoryGroups || []).find((g) => g.toLowerCase() === wanted.toLowerCase());
+  const own = clean((data.categories || []).find((c) => c.name === name)?.group);
+  if (existing && existing !== wanted && own.toLowerCase() === wanted.toLowerCase()) {
+    return {
+      ...data,
+      categories: (data.categories || []).map((c) => (clean(c.group) === existing ? { ...c, group: wanted } : c)),
+      categoryGroups: (data.categoryGroups || []).map((g) => (g === existing ? wanted : g)),
+    };
+  }
   const final = existing || wanted;
   const categories = (data.categories || []).map((c) => {
     if (c.name !== name) return c;

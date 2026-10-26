@@ -297,8 +297,11 @@ export function Dashboard(props) {
     data, cur, curKey, today, cal, fc, remaining, remainingSub, totalUpcoming, totalActuallySpent, goals, goalsSaved, goalsTarget,
     dueBills, totalCredits, totalCreditsPending, savingsGoal, setAside, savingsShortfall, savingsTarget, leftToSpend, goalsNeed, effectiveIncome,
     totalStillScheduled, spentByCat, isReceived, onSetTab, onEdit, patchCur, save, onManageCategories, onSetBudget, onStartFresh,
-    funds = [], fundsTarget = 0,
+    funds = [], fundsTarget = 0, paidFromFund = 0,
   } = props;
+  // A bill paid from what was saved up for it didn't come out of this
+  // period's money, so the breakdown leaves it out of Spent.
+  const spentFromIncome = Math.max(0, totalActuallySpent - paidFromFund);
   const { theme, s } = useThemed();
   const topRef = useRef(null);
   const lowerRef = useRef(null);
@@ -407,7 +410,7 @@ export function Dashboard(props) {
               <>
                 <div style={{ ...s.breakdownBar, gap: 3, background: "transparent" }}>
                   {[
-                    { pct: (totalActuallySpent / effectiveIncome) * 100, color: theme.danger },
+                    { pct: (spentFromIncome / effectiveIncome) * 100, color: theme.danger },
                     { pct: (totalStillScheduled / effectiveIncome) * 100, color: theme.warning },
                     { pct: (savingsTarget / effectiveIncome) * 100, color: theme.accent },
                     { pct: (fundsTarget / effectiveIncome) * 100, color: FUND_COLOR },
@@ -418,7 +421,7 @@ export function Dashboard(props) {
                 </div>
                 <div style={{ display: "flex", gap: 18, marginTop: 12, flexWrap: "wrap" }}>
                   {[
-                    { color: theme.danger, label: tk("Spent"), val: totalActuallySpent },
+                    { color: theme.danger, label: tk("Spent"), val: spentFromIncome },
                     { color: theme.warning, label: tk("Upcoming"), val: totalStillScheduled },
                     { color: theme.accent, label: tk("Savings"), val: savingsTarget },
                     ...(funds.length ? [{ color: FUND_COLOR, label: tk("Saving for bills"), val: fundsTarget }] : []),
@@ -434,6 +437,11 @@ export function Dashboard(props) {
               </>
             ) : (
               <div style={s.emptySmall}>{t("Set income to see breakdown")}</div>
+            )}
+            {paidFromFund > 0 && (
+              <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginTop: 8 }}>
+                {t("{amount} of bills was paid from what you'd saved up, so it isn't in Spent here.", { amount: fmt(paidFromFund) })}
+              </div>
             )}
           </div>
         </div>
