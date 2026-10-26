@@ -930,4 +930,11 @@ export default {
   "Close out a period to start tracking savings.": "Cierra un periodo para empezar a seguir el ahorro.",
   "Come back next period to see trends.": "Vuelve el próximo periodo para ver tendencias.",
   "{amount} that period": "{amount} ese periodo",
+  "People": "Personas",
+  "+ Add person": "+ Añadir persona",
+  "Remove {name}": "Quitar a {name}",
+  "Whose account": "De quién es la cuenta",
+  "Joint": "Conjunta",
+  "Everyone": "De todos",
+  "Add the people you share this budget with. With two or more, every entry can say who paid.": "Añade a las personas con las que compartes este presupuesto. Con dos o más, cada entrada puede indicar quién pagó.",
 };

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { closeAccount, recordBalance, removeBalance, reopenAccount } from "./lib/accounts.js";
+import { closeAccount, recordBalance, removeBalance, reopenAccount, withOwner } from "./lib/accounts.js";
 import { capAt, startFresh, withCap, withRollover } from "./lib/envelopes.js";
 import { goalStatus, goalsMonthlyNeed, leftOverHistory } from "./lib/goals.js";
 import { convertToRecurring, dismissRegular, findRegularPayments } from "./lib/regular.js";
@@ -1385,7 +1385,7 @@ export default function App() {
           )}
 
           {tab === "accounts" && (
-            <AccountsView accounts={accounts} todayISO={todayISO}
+            <AccountsView accounts={accounts} data={data} todayISO={todayISO}
               onAdd={() => setModal({ type: "account" })}
               onEdit={(a) => setModal({ type: "account", editId: a.id })}
               onRecord={onRecordBalance} onRemoveBalance={onRemoveBalance} />
@@ -1413,10 +1413,10 @@ export default function App() {
         const editing = modal.editId ? accounts.find((a) => a.id === modal.editId) : null;
         const replace = (next) => saveAccounts(accounts.map((a) => (a.id === editing.id ? next : a)));
         return (
-          <AccountModal account={editing} todayISO={todayISO} onDismiss={() => setModal(null)}
+          <AccountModal account={editing} data={data} todayISO={todayISO} onDismiss={() => setModal(null)}
             onSave={(v) => {
-              if (editing) replace({ ...editing, name: v.name, kind: v.kind });
-              else saveAccounts([...accounts, recordBalance({ id: uid(), name: v.name, kind: v.kind, balances: [] }, { date: v.date, amount: v.amount })]);
+              if (editing) replace(withOwner({ ...editing, name: v.name, kind: v.kind }, v.owner));
+              else saveAccounts([...accounts, recordBalance(withOwner({ id: uid(), name: v.name, kind: v.kind, balances: [] }, v.owner), { date: v.date, amount: v.amount })]);
               setModal(null);
             }}
             onSetClosed={(close) => { replace(close ? closeAccount(editing, todayISO) : reopenAccount(editing)); setModal(null); }}
@@ -1769,6 +1769,7 @@ export default function App() {
           onChangeCurrency={(currency) => save({ ...data, currency })}
           onChangeLocale={(locale) => save({ ...data, locale })}
           onChangeLanguage={(language) => save({ ...data, language })}
+          onChangePeople={save}
           onManageCategories={() => { setSettingsOpen(false); setCategoriesOpen(true); }}
           onManageRules={() => { setSettingsOpen(false); setRulesOpen(true); }}
           lockCfg={lockCfg}

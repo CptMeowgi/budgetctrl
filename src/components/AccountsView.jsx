@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ACCOUNT_KINDS, daysBetweenISO, kindOf, latestBalance, netWorthAsOf, netWorthChange, netWorthSeries, previousBalance, sortedBalances, STALE_DAYS, staleAccounts } from "../lib/accounts.js";
 import { parseAmount } from "../lib/importer.js";
+import { isShared, JOINT, peopleOf, personById } from "../lib/people.js";
 import { currencyCode, fmt, fmtPlain } from "../money.js";
 import { FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
 import { NetWorthChart } from "./charts.jsx";
@@ -21,8 +22,12 @@ function updatedLabel(days, iso) {
 
 // Balances are typed in, not derived: the quickest path is the point, so
 // updating one is a single field on the row, Enter to save.
-export function AccountsView({ accounts, todayISO, onAdd, onEdit, onRecord, onRemoveBalance }) {
+export function AccountsView({ accounts, data, todayISO, onAdd, onEdit, onRecord, onRemoveBalance }) {
   const { theme, s } = useThemed();
+  // Whose account it is, said only once there's more than one person. A
+  // removed owner still shows, as their old entries do.
+  const shared = isShared(data);
+  const ownerOf = (a) => (!shared || !a.owner ? null : a.owner === JOINT ? t("Joint") : personById(data, a.owner)?.name ?? null);
   const [updating, setUpdating] = useState(null);
   const [draft, setDraft] = useState({ amount: "", date: todayISO });
   const [expanded, setExpanded] = useState(null);
@@ -72,13 +77,17 @@ export function AccountsView({ accounts, todayISO, onAdd, onEdit, onRecord, onRe
     const isStale = !a.closed && (age == null || age > STALE_DAYS);
     const isUpdating = updating === a.id;
     const history = sortedBalances(a).reverse();
+    const owner = ownerOf(a);
     return (
       <div key={a.id} style={{ borderBottom: `1px solid ${theme.border}` }}>
         <div style={{ display: "flex", alignItems: "center", gap: SPACE.md, padding: "14px 0" }}>
           <div style={{ width: 34, height: 34, borderRadius: "50%", background: theme.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>{kind.icon}</div>
           <button onClick={() => setExpanded(expanded === a.id ? null : a.id)} title={t("Show balance history")}
             style={{ all: "unset", cursor: "pointer", flex: 1, minWidth: 0 }}>
-            <div style={{ ...ellipsis, fontWeight: 600, color: a.closed ? theme.textMuted : theme.text }}>{a.name}</div>
+            <div style={{ ...ellipsis, fontWeight: 600, color: a.closed ? theme.textMuted : theme.text }}>
+              {a.name}
+              {owner && <span style={{ ...TYPE.finePrint, fontWeight: 400, color: theme.textFaint, marginLeft: SPACE.sm }}>{owner}</span>}
+            </div>
             <div style={{ ...TYPE.finePrint, color: isStale ? theme.warning : theme.textFaint, marginTop: 2, ...ellipsis }}>
               {t(kind.label)} · {a.closed ? t("closed") : last ? updatedLabel(age, last.date) : t("no balance yet")}
             </div>
@@ -189,11 +198,18 @@ export function AccountsView({ accounts, todayISO, onAdd, onEdit, onRecord, onRe
   );
 }
 
-export function AccountModal({ account, todayISO, onDismiss, onSave, onSetClosed, onDelete }) {
+export function AccountModal({ account, data, todayISO, onDismiss, onSave, onSetClosed, onDelete }) {
   const { theme, s } = useThemed();
   const editing = !!account;
   const [name, setName] = useState(account?.name || "");
   const [kind, setKind] = useState(account?.kind || "current");
+  // "" is Everyone: no owner, as every account was before there were people.
+  const [owner, setOwner] = useState(account?.owner || "");
+  const shared = isShared(data);
+  // Someone removed who still owns this account stays a choice, so opening it
+  // and saving doesn't quietly hand it to another.
+  const current = account?.owner ? personById(data, account.owner) : null;
+  const removedOwner = current?.removed ? current : null;
   const [balance, setBalance] = useState("");
   const [date, setDate] = useState(todayISO);
   const [armDelete, setArmDelete] = useState(false);
@@ -214,6 +230,17 @@ export function AccountModal({ account, todayISO, onDismiss, onSave, onSetClosed
             {ACCOUNT_KINDS.map((k) => <option key={k.id} value={k.id}>{k.icon} {t(k.label)}</option>)}
           </select>
         </div>
+        {shared && (
+          <div style={{ gridColumn: "1 / -1" }}>
+            <label style={label}>{t("Whose account")}</label>
+            <select value={owner} onChange={(e) => setOwner(e.target.value)} style={s.input}>
+              {peopleOf(data).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {removedOwner && <option value={removedOwner.id}>{removedOwner.name}</option>}
+              <option value={JOINT}>{t("Joint")}</option>
+              <option value="">{t("Everyone")}</option>
+            </select>
+          </div>
+        )}
         {!editing && (
           <>
             <div>
@@ -231,7 +258,7 @@ export function AccountModal({ account, todayISO, onDismiss, onSave, onSetClosed
         <div style={{ ...TYPE.finePrint, color: theme.textFaint, marginBottom: SPACE.sm }}>{t("Enter what you owe as a positive number. It's taken off your net worth.")}</div>
       )}
       <button style={{ ...s.saveBtn, opacity: valid ? 1 : 0.5, cursor: valid ? "pointer" : "not-allowed" }} disabled={!valid}
-        onClick={() => onSave({ name: name.trim(), kind, amount, date })}>
+        onClick={() => onSave({ name: name.trim(), kind, amount, date, owner: shared ? owner : undefined })}>
         {valid ? t("Save") : editing ? t("Fill in a name") : t("Fill in a name and balance")}
       </button>
       {editing && (

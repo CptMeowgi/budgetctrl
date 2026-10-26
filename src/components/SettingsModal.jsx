@@ -8,13 +8,14 @@ import { FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
 import { SettingRow, Switch } from "./controls.jsx";
 import { Modal } from "./Modal.jsx";
 import { LicensesModal } from "./LicensesModal.jsx";
+import { PeopleManager } from "./PeopleManager.jsx";
 import { ago, backupLabel, ordinal } from "../text.js";
 import { fmtDate, LANGUAGES, t, tk, tn } from "../i18n.js";
 import { calendarFor, readSchedule } from "../lib/calendar.js";
 import { PAY_KINDS, payKindChosen } from "../lib/paySchedule.js";
 
 export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onChangeLocale, onRestore, onManageCategories, updater, onChangeUpdates, onInstallUpdate,
-  onChangeCutoff, onChangePay, onWhatsNew, onCheckup, onChangeLockPast, sample, today, onExport, onExportCsv, onImport, onImportStatement, onReset, onManageRules, lockCfg, onPinAction, onChangeLock, onChangeLanguage }) {
+  onChangeCutoff, onChangePay, onWhatsNew, onCheckup, onChangeLockPast, sample, today, onExport, onExportCsv, onImport, onImportStatement, onReset, onManageRules, lockCfg, onPinAction, onChangeLock, onChangeLanguage, onChangePeople }) {
   const { theme, s } = useThemed();
   const [openedAt] = useState(() => Date.now());
   const rem = data.reminders || { enabled: true, leadDays: 3 };
@@ -140,6 +141,10 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
       <SettingRow label={t("Categories")} hint={t("Rename, merge, recolour or remove spending categories and income sources.")}>
         <button style={{ ...s.linkBtn, padding: 0 }} onClick={onManageCategories}>{t("Manage…")}</button>
       </SettingRow>
+
+      <div style={divider} />
+      <div style={group}>{t("People")}</div>
+      <PeopleManager data={data} onChange={onChangePeople} />
 
       <div style={divider} />
       <div style={group}>{t("Keyboard")}</div>

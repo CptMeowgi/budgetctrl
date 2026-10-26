@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   kindOf, isLiability, balanceAsOf, latestBalance, previousBalance, recordBalance, removeBalance,
-  closeAccount, reopenAccount, netWorthAsOf, netWorthSeries, netWorthChange, staleAccounts, addDays, daysBetweenISO,
+  closeAccount, reopenAccount, withOwner, netWorthAsOf, netWorthSeries, netWorthChange, staleAccounts, addDays, daysBetweenISO,
 } from "./accounts.js";
 
 const current = { id: "a", name: "Main", kind: "current", balances: [
@@ -93,6 +93,27 @@ describe("closing an account", () => {
     expect(netWorthAsOf([closed], "2026-10-04").net).toBe(20000);
     expect(netWorthAsOf([closed], "2026-10-05").net).toBe(0);
     expect(reopenAccount(closed).closed).toBeUndefined();
+  });
+});
+
+describe("whose account it is", () => {
+  it("sets the owner, and takes it off again for everyone", () => {
+    const owned = withOwner(savings, "a");
+    expect(owned.owner).toBe("a");
+    expect(withOwner(owned, "joint").owner).toBe("joint");
+    expect("owner" in withOwner(owned, "")).toBe(false);
+    expect(owned.balances).toBe(savings.balances);
+  });
+
+  it("leaves the account alone when the form had no such field", () => {
+    const owned = { ...savings, owner: "a" };
+    expect(withOwner(owned, undefined)).toBe(owned);
+  });
+
+  it("does not change the account it was given", () => {
+    const owned = { ...savings, owner: "a" };
+    withOwner(owned, "");
+    expect(owned.owner).toBe("a");
   });
 });
 

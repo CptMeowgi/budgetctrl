@@ -73,6 +73,17 @@ export function reopenAccount(account) {
   return out;
 }
 
+// Whose account it is: a person's id, or "joint". Empty means everyone's, as
+// every account was before, so the field goes rather than stay empty. With
+// `undefined` (the form had no such field) the account is left as it is.
+export function withOwner(account, owner) {
+  if (owner === undefined) return account;
+  const out = { ...account };
+  if (owner) out.owner = owner;
+  else delete out.owner;
+  return out;
+}
+
 export function netWorthAsOf(accounts, iso) {
   let assets = 0;
   let debts = 0;

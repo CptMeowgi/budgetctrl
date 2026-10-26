@@ -930,4 +930,11 @@ export default {
   "Close out a period to start tracking savings.": "一个周期结束后即可开始追踪储蓄。",
   "Come back next period to see trends.": "下个周期再来看趋势。",
   "{amount} that period": "该周期 {amount}",
+  "People": "成员",
+  "+ Add person": "+ 添加成员",
+  "Remove {name}": "移除 {name}",
+  "Whose account": "账户归属",
+  "Joint": "共同",
+  "Everyone": "所有人",
+  "Add the people you share this budget with. With two or more, every entry can say who paid.": "添加和你共用这份预算的人。有两人或更多时，每笔记录都可以注明是谁付的款。",
 };
