@@ -5,7 +5,7 @@ import {
 import { periodSpending } from "./totals.js";
 import { JOINT } from "./people.js";
 
-const D =(y, m, d) => new Date(y, m - 1, d);
+const D = (y, m, d) => new Date(y, m - 1, d);
 const TODAY = D(2026, 10, 9);
 const CUR = "2026-10";
 
@@ -238,8 +238,29 @@ describe("buildReport, who paid", () => {
   });
 
   it("reads a payer who matches nobody as not set, so every row has a name", () => {
-    const odd = { ...sharedData, months: { "2026-09": month(8000, [pay("Mystery", 40, "Food", "ghost"), pay("Cash", 5, "Food")]) } };
-    expect(buildReport(odd, ["2026-09"], TODAY, {}).byPerson).toEqual([{ payer: "", total: 45, average: 45 }]);
+    const odd = { ...sharedData, months: { "2026-09": month(8000, [pay("Mystery", 40, "Food", "ghost"), pay("Cash", 5, "Food"), pay("Shop", 10, "Food", "a")]) } };
+    expect(buildReport(odd, ["2026-09"], TODAY, {}).byPerson).toEqual([
+      { payer: "", total: 45, average: 45 }, { payer: "a", total: 10, average: 10 },
+    ]);
+  });
+
+  it("says nothing when no one is marked as having paid anything", () => {
+    // A budget that has just become shared: every old entry has no payer.
+    const justShared = { ...sharedData, months: { "2026-08": month(8000, [pay("Cash", 40, "Food")]), "2026-09": month(8000, [pay("Shop", 10, "Food")]) } };
+    expect(buildReport(justShared, ["2026-08", "2026-09"], TODAY, {}).byPerson).toEqual([]);
+  });
+
+  it("keeps not set among the rows once anyone is named in the range", () => {
+    // Only the earlier period has a named payer; the later one has none.
+    const mixed = { ...sharedData, months: { "2026-08": month(8000, [pay("Shop", 10, "Food", "a")]), "2026-09": month(8000, [pay("Cash", 40, "Food")]) } };
+    expect(buildReport(mixed, ["2026-08", "2026-09"], TODAY, {}).byPerson).toEqual([
+      { payer: "", total: 40, average: 20 }, { payer: "a", total: 10, average: 5 },
+    ]);
+  });
+
+  it("says nothing when what is named is all in a hidden category", () => {
+    const hid = { ...sharedData, months: { "2026-09": month(8000, [pay("Present", 500, "Gifts", "t"), pay("Cash", 5, "Food")]) } };
+    expect(buildReport(hid, ["2026-09"], TODAY, {}).byPerson).toEqual([]);
   });
 
   it("averages over completed periods, leaving the running one out", () => {

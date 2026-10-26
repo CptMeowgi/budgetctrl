@@ -943,4 +943,5 @@ export default {
   "Not set": "Sin indicar",
   "Who paid": "Quién pagó",
   "{name} paid {amount}": "{name} pagó {amount}",
+  "Not set: {amount}": "Sin indicar: {amount}",
 };

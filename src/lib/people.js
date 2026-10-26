@@ -129,3 +129,28 @@ export function spendingByPerson(month, periodKey, today, calendar, { leaveOut }
   }
   return byPerson;
 }
+
+// spendingByPerson's amounts as rows, in the order a screen shows them: current
+// people in their order, then people removed who still paid something, then
+// JOINT, then "" (not set). An id that matches nobody, not even someone
+// removed, has no name to show, so its money counts as not set. Anyone with
+// nothing is left out. `byPayer` is a Map of payer to amount.
+export function payerRows(data, byPayer) {
+  const everyone = data?.people || [];
+  const known = new Set([JOINT, ...everyone.map((p) => p.id)]);
+  // "" is not known either, so this is what had no payer plus the strays.
+  let notSet = 0;
+  for (const [payer, amount] of byPayer) if (!known.has(payer)) notSet += amount;
+  return [
+    ...peopleOf(data).map((p) => ({ payer: p.id, amount: byPayer.get(p.id) || 0 })),
+    ...everyone.filter((p) => p.removed).map((p) => ({ payer: p.id, amount: byPayer.get(p.id) || 0 })),
+    { payer: JOINT, amount: byPayer.get(JOINT) || 0 },
+    { payer: "", amount: notSet },
+  ].filter((row) => row.amount !== 0);
+}
+
+// Whether rows from payerRows say who paid anything. Only "not set" says
+// nothing, so a screen has no reason to show it alone.
+export function anyoneNamed(rows) {
+  return rows.some((row) => row.payer !== "");
+}

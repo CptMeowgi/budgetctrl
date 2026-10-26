@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   JOINT, PERSON_COLORS, LAST_PAYER_KEY,
   peopleOf, isShared, addPerson, renamePerson, removePerson, personById,
-  waysToPay, cleanPayer, payerParts, spendingByPerson, readLastPayer, rememberPayer,
+  waysToPay, cleanPayer, payerParts, spendingByPerson, payerRows, anyoneNamed, readLastPayer, rememberPayer,
 } from "./people.js";
 
 // Paid on the 1st; today is 20 Oct 2026.
@@ -209,6 +209,59 @@ describe("spendingByPerson", () => {
   it("is empty for a period with no spending", () => {
     expect(spendingByPerson(emptyMonth(), "2026-10", TODAY, 1).size).toBe(0);
     expect(spendingByPerson(undefined, "2026-10", TODAY, 1).size).toBe(0);
+  });
+});
+
+describe("payerRows", () => {
+  const zed = { id: "z", name: "Zed", color: PERSON_COLORS[2], removed: true };
+  // Zed comes between Anna and Tom in the list, but removed people come after
+  // everyone current.
+  const people = { people: [anna, zed, tom] };
+  const rows = (entries) => payerRows(people, new Map(entries));
+
+  it("puts current people first in their order, then removed people, then Joint, then not set", () => {
+    const scrambled = [["", 1], [JOINT, 5], ["z", 4], ["t", 2], ["a", 3]];
+    expect(rows(scrambled)).toEqual([
+      { payer: "a", amount: 3 }, { payer: "t", amount: 2 }, { payer: "z", amount: 4 },
+      { payer: JOINT, amount: 5 }, { payer: "", amount: 1 },
+    ]);
+  });
+
+  it("has a removed person only when they have spending", () => {
+    expect(rows([["a", 3], ["t", 2]]).map((r) => r.payer)).toEqual(["a", "t"]);
+    expect(rows([["a", 3], ["z", 4]]).map((r) => r.payer)).toEqual(["a", "z"]);
+  });
+
+  it("reads an id that matches nobody as not set, adding it to what has no payer", () => {
+    expect(rows([["ghost", 40], ["", 5], ["a", 1]])).toEqual([{ payer: "a", amount: 1 }, { payer: "", amount: 45 }]);
+    expect(rows([["ghost", 40]])).toEqual([{ payer: "", amount: 40 }]);
+  });
+
+  it("drops anyone with nothing", () => {
+    expect(rows([["a", 0], ["t", 7], [JOINT, 0], ["", 0]])).toEqual([{ payer: "t", amount: 7 }]);
+  });
+
+  it("is empty when nothing was spent", () => {
+    expect(rows([])).toEqual([]);
+  });
+
+  it("works on what spendingByPerson gives", () => {
+    const d = base();
+    expect(payerRows(d, spendingByPerson(month, "2026-10", TODAY, 1))).toEqual([
+      { payer: "a", amount: 50 }, { payer: "t", amount: 30 }, { payer: JOINT, amount: 900 }, { payer: "", amount: 20 },
+    ]);
+  });
+});
+
+describe("anyoneNamed", () => {
+  it("is true when a row says who paid, Joint included", () => {
+    expect(anyoneNamed([{ payer: "a", amount: 1 }, { payer: "", amount: 2 }])).toBe(true);
+    expect(anyoneNamed([{ payer: JOINT, amount: 1 }])).toBe(true);
+  });
+
+  it("is false when there is nothing, or only what nobody was marked for", () => {
+    expect(anyoneNamed([])).toBe(false);
+    expect(anyoneNamed([{ payer: "", amount: 5 }])).toBe(false);
   });
 });
 

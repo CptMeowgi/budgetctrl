@@ -5,7 +5,7 @@ import { percentChange } from "../lib/reports.js";
 import { categoryAverage } from "../lib/totals.js";
 import { isRecurringItem } from "../lib/occurrences.js";
 import { envelope } from "../lib/envelopes.js";
-import { isShared, JOINT, peopleOf, spendingByPerson } from "../lib/people.js";
+import { anyoneNamed, isShared, JOINT, payerRows, personById, spendingByPerson } from "../lib/people.js";
 import { findCategory, CREDIT_UNCATEGORIZED, UNCATEGORIZED } from "../model.js";
 import { fmt } from "../money.js";
 import { catName, due, shortDate } from "../text.js";
@@ -132,23 +132,20 @@ function MoneyLeftCard({ data, curKey, today, cal, fc, remaining, sub, stillToPa
   );
 }
 
-// What each payer spent this period, for the line under Total Spent: current
-// people in their order, then anyone removed who still paid something, then
-// Joint, then what nobody was marked for. Nothing for a one-person budget, and
-// no payer with nothing. It walks the entries Total Spent counts, so the
-// amounts add up to it.
+// What each payer spent this period, as the pieces of the line under Total
+// Spent. The order and what is left out come from payerRows, which walks the
+// entries Total Spent counts, so the amounts add up to it. Nothing for a
+// one-person budget, nor when no one is marked as having paid anything.
 function paidLine(data, cur, curKey, today, cal) {
   if (!isShared(data)) return [];
-  const byPerson = spendingByPerson(cur, curKey, today, cal);
-  const known = new Set([JOINT, ...(data.people || []).map((p) => p.id)]);
-  // Money from an id that matches nobody reads as not set.
-  const notSet = [...byPerson].reduce((a, [id, v]) => (known.has(id) ? a : a + v), 0);
-  return [
-    ...peopleOf(data).map((p) => ({ id: p.id, name: p.name, amount: byPerson.get(p.id) || 0 })),
-    ...(data.people || []).filter((p) => p.removed).map((p) => ({ id: p.id, name: p.name, amount: byPerson.get(p.id) || 0 })),
-    { id: JOINT, name: t("Joint"), amount: byPerson.get(JOINT) || 0 },
-    { id: "", name: t("Not set"), amount: notSet },
-  ].filter((p) => p.amount !== 0);
+  const rows = payerRows(data, spendingByPerson(cur, curKey, today, cal));
+  if (!anyoneNamed(rows)) return [];
+  return rows.map(({ payer, amount }) => ({
+    id: payer,
+    text: payer === ""
+      ? t("Not set: {amount}", { amount: fmt(amount) })
+      : t("{name} paid {amount}", { name: payer === JOINT ? t("Joint") : personById(data, payer).name, amount: fmt(amount) }),
+  }));
 }
 
 // This period's spending: the running total day by day, how it compares with
@@ -192,7 +189,7 @@ function SpendingCard({ data, cur, curKey, today, cal, spent, effectiveIncome, s
         <div style={{ ...money, fontSize: 12, lineHeight: 1.5, color: theme.textFaint, marginTop: 6 }}>
           {paid.map((p, i) => (
             <span key={p.id}>
-              <span style={{ whiteSpace: "nowrap" }}>{t("{name} paid {amount}", { name: p.name, amount: fmt(p.amount) })}{i < paid.length - 1 ? " ·" : ""}</span>{" "}
+              <span style={{ whiteSpace: "nowrap" }}>{p.text}{i < paid.length - 1 ? " ·" : ""}</span>{" "}
             </span>
           ))}
         </div>

@@ -943,4 +943,5 @@ export default {
   "Not set": "未设置",
   "Who paid": "谁付的款",
   "{name} paid {amount}": "{name}付了{amount}",
+  "Not set: {amount}": "未设置：{amount}",
 };

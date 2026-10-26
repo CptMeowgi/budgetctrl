@@ -5,7 +5,7 @@
 
 import { periodSpending, periodIncome, UNCATEGORIZED_NAME } from "./totals.js";
 import { splitParts } from "./splits.js";
-import { isShared, JOINT, personById, spendingByPerson } from "./people.js";
+import { anyoneNamed, isShared, payerRows, spendingByPerson } from "./people.js";
 import { asCalendar, calendarFor } from "./calendar.js";
 import { dayRangeLabel, monthLabel } from "./periods.js";
 import { csvDialect, csvEscape, guardText, formatAmount } from "./csv.js";
@@ -155,19 +155,20 @@ export function buildReport(data, keys, today, { runningKey } = {}) {
   const payers = new Map();
   if (isShared(data)) {
     keys.forEach((key, i) => {
-      for (const [who, v] of spendingByPerson(data.months[key], key, today, cal, { leaveOut: hidden })) {
-        // An id that matches nobody (not even someone removed) has no name to
-        // show, so it reads as not set.
-        const payer = who === JOINT || personById(data, who) ? who : "";
+      const byPayer = spendingByPerson(data.months[key], key, today, cal, { leaveOut: hidden });
+      for (const { payer, amount } of payerRows(data, byPayer)) {
         if (!payers.has(payer)) payers.set(payer, new Array(keys.length).fill(0));
-        payers.get(payer)[i] += v;
+        payers.get(payer)[i] += amount;
       }
     });
   }
-  const byPerson = [...payers.entries()]
+  const payerTotals = [...payers.entries()]
     .map(([payer, perPeriod]) => ({ payer, total: sum(perPeriod, (v) => v), average: averageOf(perPeriod) }))
     .filter((p) => p.total !== 0)
     .sort((a, b) => b.total - a.total);
+  // Nobody marked as paying anything (a budget that has only just become
+  // shared): "not set" on its own says nothing.
+  const byPerson = anyoneNamed(payerTotals) ? payerTotals : [];
 
   const sources = new Map();
   const base = sum(periods, (p) => p.income.base);

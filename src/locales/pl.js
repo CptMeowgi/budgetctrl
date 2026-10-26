@@ -943,4 +943,5 @@ export default {
   "Not set": "Nie wybrano",
   "Who paid": "Kto zapłacił",
   "{name} paid {amount}": "{name}: zapłacono {amount}",
+  "Not set: {amount}": "Nie ustawiono: {amount}",
 };
