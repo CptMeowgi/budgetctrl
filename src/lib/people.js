@@ -38,11 +38,16 @@ export function personById(data, id) {
 export function addPerson(data, name, newId) {
   const clean = String(name ?? "").trim();
   if (!clean) return data;
-  const active = peopleOf(data);
-  const taken = new Set(active.map((p) => p.color));
-  // With every colour in use, start the list over rather than run out.
-  const color = PERSON_COLORS.find((c) => !taken.has(c)) || PERSON_COLORS[active.length % PERSON_COLORS.length];
-  return { ...data, people: [...(data?.people || []), { id: newId(), name: clean, color }] };
+  const everyone = data?.people || [];
+  // A removed person's old entries still show their colour, so it isn't handed
+  // to someone new while another is free. Only when all six are taken is the
+  // colour of someone who left reused, and only then does the list start over.
+  const used = new Set(everyone.map((p) => p.color));
+  const current = new Set(peopleOf(data).map((p) => p.color));
+  const color = PERSON_COLORS.find((c) => !used.has(c))
+    || PERSON_COLORS.find((c) => !current.has(c))
+    || PERSON_COLORS[everyone.length % PERSON_COLORS.length];
+  return { ...data, people: [...everyone, { id: newId(), name: clean, color }] };
 }
 
 export function renamePerson(data, id, name) {
@@ -55,19 +60,25 @@ export function removePerson(data, id) {
   return { ...data, people: (data?.people || []).map((p) => (p.id === id ? { ...p, removed: true } : p)) };
 }
 
+// An account is the payer's if it's theirs or nobody's in particular. With no
+// payer, every account is.
+const belongsTo = (account, paidBy) => !paidBy || !account.owner || account.owner === paidBy;
+
 // The accounts someone can pay from: their own, the shared (no owner) ones,
 // and none that are closed. With nobody picked, every open account.
 export function waysToPay(data, paidBy) {
-  return (data?.accounts || []).filter((a) => !a.closed && (!paidBy || !a.owner || a.owner === paidBy));
+  return (data?.accounts || []).filter((a) => !a.closed && belongsTo(a, paidBy));
 }
 
 // Tidy a payer as chosen in a form into what is stored: empty values go, and
-// so does anything that no longer fits. A removed person stays, so editing
-// an old entry doesn't wipe who paid it.
+// so does anything that no longer fits. A removed person stays, and so does a
+// closed account that was theirs, so editing an old entry doesn't wipe who
+// paid it or with what. Closed accounts are only left out of what's offered.
 export function cleanPayer({ paidBy, paidWith } = {}, data) {
   const out = {};
   if (paidBy && (paidBy === JOINT || personById(data, paidBy))) out.paidBy = paidBy;
-  if (paidWith && waysToPay(data, out.paidBy).some((a) => a.id === paidWith)) out.paidWith = paidWith;
+  const account = paidWith ? (data?.accounts || []).find((a) => a.id === paidWith) : null;
+  if (account && belongsTo(account, out.paidBy)) out.paidWith = paidWith;
   return out;
 }
 

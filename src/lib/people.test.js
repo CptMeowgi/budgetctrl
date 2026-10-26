@@ -62,19 +62,31 @@ describe("people", () => {
     expect(addPerson(d, "  ", () => "x")).toBe(d);
   });
 
-  it("gives a new person the first colour not in use, including a freed one", () => {
-    const d = addPerson(base(), "Zoe", () => "z");
-    expect(d.people[2].color).toBe(PERSON_COLORS[2]);
-    // Anna's colour is free once she is removed.
-    const freed = addPerson(removePerson(base(), "a"), "Zoe", () => "z");
-    expect(personById(freed, "z").color).toBe(PERSON_COLORS[0]);
+  it("gives a new person the first colour not in use", () => {
+    expect(addPerson(base(), "Zoe", () => "z").people[2].color).toBe(PERSON_COLORS[2]);
   });
 
-  it("starts the colours over when all are in use", () => {
+  it("does not give a new person the colour of someone who was removed", () => {
+    // Anna holds the first colour but is removed; Tom has no colour of his own.
+    const d = { people: [{ id: "a", name: "Anna", color: PERSON_COLORS[0], removed: true }, { id: "t", name: "Tom" }] };
+    expect(personById(addPerson(d, "Cara", () => "c"), "c").color).toBe(PERSON_COLORS[1]);
+  });
+
+  it("reuses a removed person's colour only once all six are taken", () => {
     let d = {};
-    for (let i = 0; i <= PERSON_COLORS.length; i++) d = addPerson(d, `P${i}`, () => `p${i}`);
-    expect(d.people).toHaveLength(PERSON_COLORS.length + 1);
+    for (let i = 0; i < PERSON_COLORS.length; i++) d = addPerson(d, `P${i}`, () => `p${i}`);
+    expect(d.people.map((p) => p.color)).toEqual(PERSON_COLORS);
+    // The fourth leaves: theirs is the one colour no current person has.
+    expect(personById(addPerson(removePerson(d, "p3"), "New", () => "n"), "n").color).toBe(PERSON_COLORS[3]);
+  });
+
+  it("starts the colours over when every one is in use by current people", () => {
+    let d = {};
+    for (let i = 0; i < PERSON_COLORS.length + 2; i++) d = addPerson(d, `P${i}`, () => `p${i}`);
+    expect(d.people).toHaveLength(PERSON_COLORS.length + 2);
+    // Seventh: PERSON_COLORS[6 % 6]; eighth: PERSON_COLORS[7 % 6].
     expect(d.people[PERSON_COLORS.length].color).toBe(PERSON_COLORS[0]);
+    expect(d.people[PERSON_COLORS.length + 1].color).toBe(PERSON_COLORS[1]);
   });
 
   it("renames a person, trimmed, and ignores an empty name", () => {
@@ -136,10 +148,19 @@ describe("cleanPayer", () => {
     expect(cleanPayer({ paidWith: "gone" }, base())).toEqual({});
   });
 
-  it("drops an account that has been closed", () => {
+  it("keeps a closed account on an old entry, as it keeps a removed person", () => {
     const d = base();
     d.accounts[0] = { ...d.accounts[0], closed: true };
-    expect(cleanPayer({ paidBy: "a", paidWith: "visa" }, d)).toEqual({ paidBy: "a" });
+    expect(cleanPayer({ paidBy: "a", paidWith: "visa" }, d)).toEqual({ paidBy: "a", paidWith: "visa" });
+    // It isn't offered for a new entry, though.
+    expect(waysToPay(d, "a").map((x) => x.id)).toEqual(["cash"]);
+  });
+
+  it("drops an account that is gone, or is someone else's even when closed", () => {
+    const d = base();
+    d.accounts[1] = { ...d.accounts[1], closed: true };
+    expect(cleanPayer({ paidBy: "a", paidWith: "deleted" }, d)).toEqual({ paidBy: "a" });
+    expect(cleanPayer({ paidBy: "a", paidWith: "debit" }, d)).toEqual({ paidBy: "a" });
   });
 
   it("keeps nothing it wasn't given", () => {
