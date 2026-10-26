@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { csvDialect, csvEscape, budgetToRows, rowsToCsv, budgetToCsv, CSV_COLUMNS } from "./csv.js";
+import { csvDialect, csvEscape, budgetToRows, rowsToCsv, budgetToCsv, CSV_COLUMNS, CSV_PAYER_COLUMNS } from "./csv.js";
 
 const resolve = (day, period) => `${period}-${String(day).padStart(2, "0")}`;
 
@@ -125,5 +125,86 @@ describe("budgetToCsv", () => {
     expect(lines[0]).toBe(CSV_COLUMNS.join(";"));
     const groceries = lines.find((l) => l.includes("Groceries"));
     expect(groceries).toBe("2026-10;2026-10-05;Expense;Groceries;Food;-123,40;PLN;;weekly shop");
+  });
+});
+
+// Who paid, for a budget shared by two or more people.
+describe("who paid, in the export", () => {
+  const people = [{ id: "a", name: "Ann", color: "#6366f1" }, { id: "b", name: "Ben", color: "#10b981" }];
+  const accounts = [{ id: "visa", name: "Visa", owner: "a" }, { id: "joint", name: "Joint account" }];
+  const opts = { resolveRecurringDate: resolve, locale: "en-US", bom: false };
+  const shared = () => {
+    const d = fixture();
+    d.people = people;
+    d.accounts = accounts;
+    const m = d.months["2026-10"];
+    m.expenses[0] = { ...m.expenses[0], paidBy: "a", paidWith: "visa" };
+    m.recurring[0] = { ...m.recurring[0], paidBy: "joint", paidWith: "joint" };
+    m.upcoming[0] = { ...m.upcoming[0], paidBy: "b" };
+    m.credits[1] = { ...m.credits[1], paidBy: "b" };
+    return d;
+  };
+  const lineOf = (csv, name) => csv.split("\r\n").find((l) => l.includes(name));
+
+  it("adds Paid by and Paid with after Note, only for a shared budget", () => {
+    expect(budgetToCsv(shared(), opts).split("\r\n")[0]).toBe(`${CSV_COLUMNS.join(",")},Paid by,Paid with`);
+    expect(budgetToCsv(shared(), opts).split("\r\n")[0]).toMatch(/Note,Paid by,Paid with$/);
+    expect(CSV_PAYER_COLUMNS).toEqual(["Paid by", "Paid with"]);
+  });
+
+  it("writes the person's name, Joint, the account's name, and nothing where unknown", () => {
+    const csv = budgetToCsv(shared(), opts);
+    expect(lineOf(csv, "Groceries")).toBe("2026-10,2026-10-05,Expense,Groceries,Food,-123.40,PLN,,weekly shop,Ann,Visa");
+    expect(lineOf(csv, "Rent")).toBe("2026-10,2026-10-01,Recurring,Rent,Home,-2000.00,PLN,Pays itself,,Joint,Joint account");
+    expect(lineOf(csv, "Dentist")).toBe("2026-10,2026-10-20,Upcoming,Dentist,Health,-300.00,PLN,Pending,,Ben,");
+    expect(lineOf(csv, "Refund")).toBe("2026-10,2026-10-12,Credit,Refund,Refund,49.99,PLN,,,Ben,");
+    expect(lineOf(csv, "Salary")).toBe("2026-10,2026-10-10,Recurring credit,Salary,Salary,8000.00,PLN,,,,");
+  });
+
+  it("keeps the name of someone removed, and leaves a gone person or account empty", () => {
+    const d = shared();
+    d.people = [people[0], { ...people[1], removed: true }, { id: "c", name: "Cy", color: "#f59e0b" }];
+    d.months["2026-10"].expenses[0] = { ...d.months["2026-10"].expenses[0], paidBy: "ghost", paidWith: "gone" };
+    const csv = budgetToCsv(d, opts);
+    expect(lineOf(csv, "Dentist")).toMatch(/,Ben,$/);
+    expect(lineOf(csv, "Groceries")).toMatch(/weekly shop,,$/);
+  });
+
+  it("puts the payer on every part of a split receipt", () => {
+    const d = shared();
+    d.months["2026-10"].expenses[0] = { ...d.months["2026-10"].expenses[0], paidBy: "a",
+      splits: [{ category: "Food", amount: 100 }, { category: "Home", amount: 23.4 }] };
+    const rows = budgetToRows(d, { resolveRecurringDate: resolve }).filter((r) => r.name === "Groceries");
+    expect(rows.map((r) => [r.category, r.paidBy])).toEqual([["Food", "Ann"], ["Home", "Ann"]]);
+  });
+
+  it("guards a name that looks like a formula, like every other text cell", () => {
+    const d = shared();
+    d.people = [{ id: "a", name: "=SUM(A1)", color: "#6366f1" }, people[1]];
+    expect(lineOf(budgetToCsv(d, opts), "Groceries")).toContain(",'=SUM(A1),Visa");
+  });
+
+  it("writes the two columns from rowsToCsv only when asked", () => {
+    const row = { period: "p", date: "d", type: "Expense", name: "X", category: "C", amount: -1, currency: "PLN", status: "", note: "n", paidBy: "Ann", paidWith: "Visa" };
+    expect(rowsToCsv([row], { bom: false }).split("\r\n")[1]).toBe("p,d,Expense,X,C,-1.00,PLN,,n");
+    expect(rowsToCsv([row], { bom: false, payer: true }).split("\r\n")[1]).toBe("p,d,Expense,X,C,-1.00,PLN,,n,Ann,Visa");
+  });
+
+  it("leaves a one-person export exactly as it was, even with payers left over from a shared time", () => {
+    // What the export wrote before payers existed.
+    const BEFORE = "Period,Date,Type,Name,Category,Amount,Currency,Status,Note\r\n"
+      + "2026-09,2026-09-28,Expense,Old,Food,-10.00,PLN,,\r\n"
+      + "2026-10,2026-10-01,Recurring,Rent,Home,-2000.00,PLN,Pays itself,\r\n"
+      + "2026-10,2026-10-03,Upcoming,Vet,Health,-80.00,PLN,Paid,\r\n"
+      + "2026-10,2026-10-05,Expense,Groceries,Food,-123.40,PLN,,weekly shop\r\n"
+      + "2026-10,2026-10-10,Recurring credit,Salary,Salary,8000.00,PLN,,\r\n"
+      + "2026-10,2026-10-12,Credit,Refund,Refund,49.99,PLN,,\r\n"
+      + "2026-10,2026-10-20,Upcoming,Dentist,Health,-300.00,PLN,Pending,\r\n";
+    expect(budgetToCsv(fixture(), opts)).toBe(BEFORE);
+    const oneLeft = shared();
+    oneLeft.people = [people[0], { ...people[1], removed: true }];
+    expect(budgetToCsv(oneLeft, opts)).toBe(BEFORE);
+    const justOne = { ...shared(), people: [people[0]] };
+    expect(budgetToCsv(justOne, opts)).toBe(BEFORE);
   });
 });

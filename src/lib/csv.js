@@ -11,8 +11,20 @@
 
 import { isSplit, splitParts } from "./splits.js";
 import { isRecurringItem } from "./occurrences.js";
+import { isShared, JOINT, payerParts } from "./people.js";
 
 export const CSV_COLUMNS = ["Period", "Date", "Type", "Name", "Category", "Amount", "Currency", "Status", "Note"];
+// Added after Note, only for a budget shared by two or more people, so a
+// one-person export stays exactly as it was.
+export const CSV_PAYER_COLUMNS = ["Paid by", "Paid with"];
+
+// Who paid and with which account, as the two cells of a row. Like the other
+// fixed words in this file ("Pays itself"), Joint is English. Empty when the
+// entry doesn't say, or the person or account is gone.
+function payerCells(data, entry) {
+  const { who, how } = payerParts(data, entry);
+  return { paidBy: who === JOINT ? "Joint" : who ?? "", paidWith: how ?? "" };
+}
 
 // The decimal mark the locale uses, and the column separator that goes with it.
 export function csvDialect(locale) {
@@ -57,9 +69,10 @@ export function budgetToRows(data, { resolveRecurringDate, resolveItemDate, curr
   for (const [period, m] of Object.entries(data.months || {})) {
     for (const e of m.expenses || []) {
       // A split receipt is one row per part, so a pivot by category adds up.
+      const payer = payerCells(data, e);
       for (const p of splitParts(e)) {
         rows.push({ period, date: e.date || "", type: isSplit(e) ? "Expense (split)" : "Expense", name: e.name,
-                    category: p.category, amount: -(p.amount || 0), status: "", note: e.note });
+                    category: p.category, amount: -(p.amount || 0), status: "", note: e.note, ...payer });
       }
     }
     // A recurring copy's date, as the app's calendar gives it when it's passed
@@ -71,35 +84,39 @@ export function budgetToRows(data, { resolveRecurringDate, resolveItemDate, curr
     for (const r of m.recurring || []) {
       rows.push({ period, date: dateOf(r),
                   type: "Recurring", name: r.name, category: r.category, amount: -(r.amount || 0),
-                  status: r.autoPay ? "Pays itself" : "", note: r.note });
+                  status: r.autoPay ? "Pays itself" : "", note: r.note, ...payerCells(data, r) });
     }
     for (const u of m.upcoming || []) {
       rows.push({ period, date: u.dueDate || "", type: "Upcoming", name: u.name, category: u.category,
                   amount: -(u.amount || 0), status: u.paid ? "Paid" : u.autoPay ? "Pays itself" : "Pending",
-                  note: u.note });
+                  note: u.note, ...payerCells(data, u) });
     }
     for (const c of m.credits || []) {
       const recurring = isRecurringItem(c);
       rows.push({ period, date: recurring ? dateOf(c) : (c.date || ""),
                   type: recurring ? "Recurring credit" : "Credit", name: c.name, category: c.category || c.source,
-                  amount: c.amount || 0, status: "", note: c.note });
+                  amount: c.amount || 0, status: "", note: c.note, ...payerCells(data, c) });
     }
   }
   rows.sort((a, b) => (a.date || "").localeCompare(b.date || "") || a.period.localeCompare(b.period));
   return rows.map((r) => ({ ...r, currency: cur }));
 }
 
-export function rowsToCsv(rows, { delimiter = ",", decimal = ".", bom = true } = {}) {
+// `payer`: add the Paid by and Paid with columns. Off, the file is the same as
+// it was before payers existed.
+export function rowsToCsv(rows, { delimiter = ",", decimal = ".", bom = true, payer = false } = {}) {
   const line = (cells) => cells.map((c) => csvEscape(c, delimiter)).join(delimiter);
   const body = rows.map((r) => line([
     r.period, r.date, r.type, guardText(r.name), guardText(r.category),
     formatAmount(r.amount, decimal), r.currency, r.status, guardText(r.note),
+    // A person's name is free text too.
+    ...(payer ? [guardText(r.paidBy), guardText(r.paidWith)] : []),
   ]));
   // CRLF is what the CSV spec and Excel both expect.
-  return (bom ? "\uFEFF" : "") + [line(CSV_COLUMNS), ...body].join("\r\n") + "\r\n";
+  return (bom ? "\uFEFF" : "") + [line(payer ? [...CSV_COLUMNS, ...CSV_PAYER_COLUMNS] : CSV_COLUMNS), ...body].join("\r\n") + "\r\n";
 }
 
 export function budgetToCsv(data, { resolveRecurringDate, resolveItemDate, locale, currency, bom = true } = {}) {
   const dialect = csvDialect(locale);
-  return rowsToCsv(budgetToRows(data, { resolveRecurringDate, resolveItemDate, currency }), { ...dialect, bom });
+  return rowsToCsv(budgetToRows(data, { resolveRecurringDate, resolveItemDate, currency }), { ...dialect, bom, payer: isShared(data) });
 }

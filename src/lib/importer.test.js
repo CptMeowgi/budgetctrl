@@ -372,6 +372,69 @@ describe("applyImport", () => {
     expect(nov.recurring.map((r) => r.name)).toEqual(["Rent"]);
     expect(nov.expenses.map((e) => e.name)).toEqual(["Concert"]);
   });
+
+  describe("who paid", () => {
+    const TODAY = new Date(2026, 9, 20, 12);
+    const people = [{ id: "a", name: "Ann", color: "#6366f1" }, { id: "b", name: "Ben", color: "#10b981" }];
+    const accounts = [{ id: "visa", name: "Visa", owner: "a" }, { id: "benCard", name: "Ben's card", owner: "b" }];
+    const shared = () => ({
+      people, accounts,
+      months: { "2026-10": { income: 0, expenses: [], recurring: [], credits: [],
+        upcoming: [{ id: "u1", name: "Dentist", amount: 300, dueDate: "2026-10-20", paid: false, paidBy: "b", paidWith: "benCard" }] } },
+    });
+    const expenseRow = { action: "expense", include: true, period: "2026-10", date: "2026-10-03", name: "Shop", amount: -45.99, category: "Food" };
+    const creditRow = { action: "credit", include: true, period: "2026-10", date: "2026-10-05", name: "Refund", amount: 20 };
+    const run = (data, rows, payer) => {
+      let n = 0;
+      return applyImport(data, rows, () => `id${++n}`, TODAY, payer).data;
+    };
+
+    it("marks everything imported as paid by the chosen person and card", () => {
+      const d = run(shared(), [expenseRow, creditRow], { paidBy: "a", paidWith: "visa" });
+      expect(d.months["2026-10"].expenses.at(-1)).toMatchObject({ paidBy: "a", paidWith: "visa" });
+      expect(d.months["2026-10"].credits.at(-1)).toMatchObject({ paidBy: "a", paidWith: "visa" });
+    });
+
+    it("can say joint, with no card", () => {
+      const d = run(shared(), [expenseRow], { paidBy: "joint" });
+      const added = d.months["2026-10"].expenses[0];
+      expect(added.paidBy).toBe("joint");
+      expect(added).not.toHaveProperty("paidWith");
+    });
+
+    it("drops what no longer fits: an unknown person, or someone else's card", () => {
+      const d = run(shared(), [expenseRow, creditRow], { paidBy: "ghost", paidWith: "benCard" });
+      expect(d.months["2026-10"].expenses[0]).not.toHaveProperty("paidBy");
+      expect(d.months["2026-10"].expenses[0]).toHaveProperty("paidWith", "benCard");
+      const e = run(shared(), [expenseRow], { paidBy: "a", paidWith: "benCard" }).months["2026-10"].expenses[0];
+      expect(e).toHaveProperty("paidBy", "a");
+      expect(e).not.toHaveProperty("paidWith");
+    });
+
+    it("adds nothing when no payer is given", () => {
+      for (const payer of [undefined, {}]) {
+        const d = run(shared(), [expenseRow, creditRow], payer);
+        for (const e of [d.months["2026-10"].expenses[0], d.months["2026-10"].credits[0]]) {
+          expect(e).not.toHaveProperty("paidBy");
+          expect(e).not.toHaveProperty("paidWith");
+        }
+      }
+    });
+
+    it("leaves the payer of an upcoming payment alone when marking it paid", () => {
+      const markPaid = { action: "markPaid", include: true, target: { period: "2026-10", id: "u1" } };
+      const d = run(shared(), [markPaid], { paidBy: "a", paidWith: "visa" });
+      expect(d.months["2026-10"].upcoming[0]).toMatchObject({ paid: true, paidBy: "b", paidWith: "benCard" });
+    });
+
+    it("gives the same result as before for a payer-less call", () => {
+      const rows = [expenseRow];
+      const before = run({ months: {} }, rows);
+      expect(before.months["2026-10"].expenses).toEqual([
+        { id: "id1", name: "Shop", amount: 45.99, date: "2026-10-03", category: "Food", note: undefined, imported: true },
+      ]);
+    });
+  });
 });
 
 describe("remembered column layouts", () => {

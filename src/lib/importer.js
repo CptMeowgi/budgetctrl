@@ -17,6 +17,7 @@ import { parseAmount } from "./amounts.js";
 import { daysBetween, isoDay } from "./periods.js";
 import { calendarFor } from "./calendar.js";
 import { isRecurringItem } from "./occurrences.js";
+import { cleanPayer } from "./people.js";
 import { applyRule, orderedRules } from "./rules.js";
 import { isSplit } from "./splits.js";
 import { startPeriod } from "../model.js";
@@ -402,7 +403,13 @@ export function analyzeImport(transactions, data, { isLocked } = {}) {
 // as a record of what happened; one after it starts as it would have when
 // its day came - income carried over and its bills - since that day won't
 // start it again.
-export function applyImport(data, rows, newId, today = new Date()) {
+//
+// `payer` ({ paidBy, paidWith }) is one choice for the whole statement: every
+// expense and credit added carries it (for a credit, who brought the money
+// in), tidied by cleanPayer so nothing stale is stored. A payment marked paid
+// keeps whoever it already had.
+export function applyImport(data, rows, newId, today = new Date(), payer = {}) {
+  const who = cleanPayer(payer, data);
   const months = { ...(data.months || {}) };
   const cal = calendarFor(data);
   const curKey = cal.current(today);
@@ -419,12 +426,12 @@ export function applyImport(data, rows, newId, today = new Date()) {
     if (r.action === "expense") {
       const m = ensure(r.period);
       m.expenses = [...(m.expenses || []), { id: newId(), name: r.name, amount: Math.abs(r.amount), date: r.date,
-                                             category: r.category || "Uncategorized", note: r.note, imported: true }];
+                                             category: r.category || "Uncategorized", note: r.note, imported: true, ...who }];
       counts.expenses++;
     } else if (r.action === "credit") {
       const m = ensure(r.period);
       m.credits = [...(m.credits || []), { id: newId(), name: r.name, amount: Math.abs(r.amount), date: r.date,
-                                           category: r.category || "Other", note: r.note, imported: true }];
+                                           category: r.category || "Other", note: r.note, imported: true, ...who }];
       counts.credits++;
     } else if (r.action === "markPaid" && r.target) {
       const m = ensure(r.target.period);

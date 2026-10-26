@@ -9,6 +9,9 @@ import { orderedRules, suggestMatch, upsertRule } from "../lib/rules.js";
 import { detectFormat, parseStatement } from "../lib/statementFormats.js";
 import { t, tk, tn } from "../i18n.js";
 import { catName } from "../text.js";
+import { startingPayer } from "../forms.js";
+import { cleanPayer, isShared, rememberPayer } from "../lib/people.js";
+import { PaidByPicker } from "./PaidByPicker.jsx";
 
 const ACTION_LABEL = { expense: tk("Expense"), credit: tk("Credit"), markPaid: tk("Marks paid"), skip: tk("Skip") };
 const FORMAT_NAME = { mt940: "MT940", ofx: "OFX", camt053: "CAMT" };
@@ -30,6 +33,10 @@ export function StatementImport({ data, onClose, onImport, isLocked }) {
   const [remembered, setRemembered] = useState(false);
   const [rows, setRows] = useState([]);
   const [error, setError] = useState("");
+  // Who paid for the whole statement, in a shared budget: one choice for every
+  // row, starting where a new entry would.
+  const shared = isShared(data);
+  const [payer, setPayer] = useState(() => startingPayer(data));
 
   const onFile = async (e) => {
     const f = e.target.files?.[0];
@@ -144,7 +151,11 @@ export function StatementImport({ data, onClose, onImport, isLocked }) {
     // The columns as confirmed, for the next statement with this header.
     const importLayouts = csv ? rememberLayout(data.importLayouts, header, { mapping, splitAmounts, invert }) : data.importLayouts;
     const ordered = rules.length ? { importRules: rules, importRulesOrdered: true } : {};
-    const { data: next, counts } = applyImport({ ...data, ...ordered, ...(importLayouts ? { importLayouts } : {}) }, rows, newId);
+    // With fewer than two people nobody is asked, and nothing is added.
+    const paid = shared ? cleanPayer(payer, data) : {};
+    const { data: next, counts } = applyImport({ ...data, ...ordered, ...(importLayouts ? { importLayouts } : {}) }, rows, newId, new Date(), paid);
+    // An import adds entries, so the next entry starts from this choice too.
+    if (shared && (counts.expenses || counts.credits)) rememberPayer(paid);
     onImport(next, { ...counts, rules: added });
   };
 
@@ -203,6 +214,11 @@ export function StatementImport({ data, onClose, onImport, isLocked }) {
       )}
       {step === "map" && file && (
         <div>
+          {shared && (
+            <div style={{ marginTop: SPACE.md }}>
+              <PaidByPicker data={data} value={payer} onChange={setPayer} />
+            </div>
+          )}
           <div style={{ ...s.cardTitle, marginTop: SPACE.md }}>{t("Preview")}</div>
           {preview && preview.transactions.length ? (
             <div style={{ marginTop: SPACE.xs }}>
