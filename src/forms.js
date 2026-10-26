@@ -1,5 +1,5 @@
 import { t } from "./i18n.js";
-import { cleanPayer, isShared, readLastPayer, rememberPayer } from "./lib/people.js";
+import { cleanPayer, isShared, personById, readLastPayer, rememberPayer } from "./lib/people.js";
 
 // Optional free text on any entry. Blank is stored as absent, not "".
 export function cleanNote(s) {
@@ -13,11 +13,20 @@ export const NOTE_FIELD = (editing) => ({ key: "note", label: t("Note"), type: "
 // field and its saves leave `paidBy`/`paidWith` alone, so values from an
 // earlier shared time survive.
 //
-// A new entry starts from the last payer chosen on this computer; an edited
-// one from its own. Both go through cleanPayer, so a stale id is dropped but a
-// removed person or a closed account of the payer's stays.
+// An edited entry starts from its own payer. It goes through cleanPayer, so a
+// stale id is dropped but a removed person or a closed account of the payer's
+// stays: saving an old entry doesn't wipe who paid it.
+//
+// A new entry starts from the last payer chosen on this computer, but never on
+// someone since removed or an account since closed: those are for old entries,
+// and nothing new should be spent against them without the user choosing so.
 export function startingPayer(data, entry) {
-  return cleanPayer(entry ? { paidBy: entry.paidBy, paidWith: entry.paidWith } : readLastPayer(), data);
+  if (entry) return cleanPayer({ paidBy: entry.paidBy, paidWith: entry.paidWith }, data);
+  const last = readLastPayer();
+  if (personById(data, last.paidBy)?.removed) delete last.paidBy;
+  const out = cleanPayer(last, data);
+  if ((data?.accounts || []).find((a) => a.id === out.paidWith)?.closed) delete out.paidWith;
+  return out;
 }
 
 // The form field, for FormModal's `fields`; `incoming` is for money coming in.
