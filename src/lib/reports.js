@@ -5,6 +5,7 @@
 
 import { periodSpending, periodIncome, UNCATEGORIZED_NAME } from "./totals.js";
 import { splitParts } from "./splits.js";
+import { isShared, JOINT, personById, spendingByPerson } from "./people.js";
 import { asCalendar, calendarFor } from "./calendar.js";
 import { dayRangeLabel, monthLabel } from "./periods.js";
 import { csvDialect, csvEscape, guardText, formatAmount } from "./csv.js";
@@ -148,6 +149,26 @@ export function buildReport(data, keys, today, { runningKey } = {}) {
     .map((r) => ({ ...r, average: averageOf(r.perPeriod) }))
     .sort((a, b) => b.total - a.total);
 
+  // Who paid: a payer is a person id, JOINT, or "" for what nobody was marked
+  // for. Left out the same categories, averaged the same periods. Only a
+  // budget with two or more people has anything to say here.
+  const payers = new Map();
+  if (isShared(data)) {
+    keys.forEach((key, i) => {
+      for (const [who, v] of spendingByPerson(data.months[key], key, today, cal, { leaveOut: hidden })) {
+        // An id that matches nobody (not even someone removed) has no name to
+        // show, so it reads as not set.
+        const payer = who === JOINT || personById(data, who) ? who : "";
+        if (!payers.has(payer)) payers.set(payer, new Array(keys.length).fill(0));
+        payers.get(payer)[i] += v;
+      }
+    });
+  }
+  const byPerson = [...payers.entries()]
+    .map(([payer, perPeriod]) => ({ payer, total: sum(perPeriod, (v) => v), average: averageOf(perPeriod) }))
+    .filter((p) => p.total !== 0)
+    .sort((a, b) => b.total - a.total);
+
   const sources = new Map();
   const base = sum(periods, (p) => p.income.base);
   if (base) sources.set(BASE_INCOME_NAME, base);
@@ -186,7 +207,7 @@ export function buildReport(data, keys, today, { runningKey } = {}) {
     .sort((a, b) => b.total - a.total)
     .slice(0, 8);
 
-  return {
+  const report = {
     keys,
     income,
     spent,
@@ -203,6 +224,11 @@ export function buildReport(data, keys, today, { runningKey } = {}) {
     payees,
     leftOut: [...leftOut.entries()].filter(([, total]) => total > 0).map(([name, total]) => ({ name, total })),
   };
+  // Always there to read, but with nobody to name it stays out of the report's
+  // own fields, so a budget without people gets exactly the report it always did
+  // (the calendar adoption snapshot pins that).
+  Object.defineProperty(report, "byPerson", { value: byPerson, enumerable: byPerson.length > 0 });
+  return report;
 }
 
 // Per-period averages, so a range with fewer tracked periods compares fairly.

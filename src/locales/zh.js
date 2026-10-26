@@ -941,4 +941,6 @@ export default {
   "Paid with": "付款账户",
   "Brought in by": "入账人",
   "Not set": "未设置",
+  "Who paid": "谁付的款",
+  "{name} paid {amount}": "{name}付了{amount}",
 };

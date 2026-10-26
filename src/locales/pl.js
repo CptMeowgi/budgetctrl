@@ -941,4 +941,6 @@ export default {
   "Paid with": "Czym zapłacono",
   "Brought in by": "Kto wpłacił",
   "Not set": "Nie wybrano",
+  "Who paid": "Kto zapłacił",
+  "{name} paid {amount}": "{name}: zapłacono {amount}",
 };

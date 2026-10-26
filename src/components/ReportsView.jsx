@@ -1,5 +1,6 @@
 import { dayRangeLabel, isoDay, monthKey, monthLabel } from "../lib/periods.js";
 import { calendarFor } from "../lib/calendar.js";
+import { JOINT, personById } from "../lib/people.js";
 import { BASE_INCOME_NAME, buildReport, categoryChanges, comparisonFor, percentChange, rangeKeys, rangeOptions, reportToCsv } from "../lib/reports.js";
 import { downloadText, fileDate } from "../exportFiles.js";
 import { categoryBreakdown, CREDIT_UNCATEGORIZED, findCategory } from "../model.js";
@@ -132,6 +133,35 @@ function CategoryTrends({ report, categories, curKey, cal, onOpenPeriod, groupOr
           ))}
         </tfoot>
       </table>
+    </div>
+  );
+}
+
+// Who paid for the range: each payer's total and average per period. It adds
+// up to the report's Spent figure, hidden categories left out the same way.
+function WhoPaid({ data, report }) {
+  const { theme, s } = useThemed();
+  // Joint and what nobody was marked for have no colour of their own.
+  const nameOf = (payer) => (payer === JOINT ? t("Joint") : personById(data, payer)?.name ?? t("Not set"));
+  const colorOf = (payer) => personById(data, payer)?.color ?? theme.textFaint;
+  const col = { width: 84, flex: "none", textAlign: "right", whiteSpace: "nowrap", fontFamily: FONT, fontVariantNumeric: "tabular-nums" };
+  const head = { ...TYPE.finePrint, textTransform: "uppercase", letterSpacing: "0.6px", color: theme.textFaint, fontWeight: 600 };
+  return (
+    <div style={{ ...s.card, marginTop: 16 }}>
+      <div style={s.cardTitle}>{t("Who paid")}</div>
+      <div style={{ ...s.tableRow, minHeight: 0, gap: SPACE.md, paddingTop: SPACE.xs, paddingBottom: SPACE.xs }}>
+        <div style={{ flex: 1 }} />
+        <div style={{ ...col, ...head }}>{t("Total")}</div>
+        <div style={{ ...col, ...head }} title={report.averagedOver < report.keys.length ? t("Completed periods only") : undefined}>{t("Avg")}</div>
+      </div>
+      {report.byPerson.map((p) => (
+        <div key={p.payer} style={{ ...s.tableRow, gap: SPACE.md }}>
+          <i style={{ width: 10, height: 10, borderRadius: "50%", background: colorOf(p.payer), flex: "none" }} />
+          <div style={{ flex: 1, minWidth: 0, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={nameOf(p.payer)}>{nameOf(p.payer)}</div>
+          <div style={{ ...col, fontWeight: 700 }}>{fmt(p.total)}</div>
+          <div style={{ ...col, color: theme.textMuted }}>{fmt(p.average)}</div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -272,6 +302,8 @@ export function ReportsView({ data, today, curKey, range, onRange, onOpenPeriod 
               ? <div style={s.emptySmall}>{t("Nothing spent in this range.")}</div>
               : <CategoryTrends report={report} categories={data.categories || []} groupOrder={data.categoryGroups} curKey={curKey} cal={cal} onOpenPeriod={onOpenPeriod} />}
           </div>
+
+          {report.byPerson.length > 0 && <WhoPaid data={data} report={report} />}
 
           <div style={grid}>
             <div style={s.card}>

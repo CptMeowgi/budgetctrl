@@ -3,8 +3,9 @@ import {
   spanLabel, rangeOptions, rangeKeys, comparisonFor, buildReport, categoryChanges, payeeKey, reportToCsv, percentChange, BASE_INCOME_NAME,
 } from "./reports.js";
 import { periodSpending } from "./totals.js";
+import { JOINT } from "./people.js";
 
-const D = (y, m, d) => new Date(y, m - 1, d);
+const D =(y, m, d) => new Date(y, m - 1, d);
 const TODAY = D(2026, 10, 9);
 const CUR = "2026-10";
 
@@ -192,6 +193,79 @@ describe("buildReport", () => {
     expect(empty.spent).toBe(0);
     expect(empty.savingsRate).toBe(null);
     expect(empty.categories).toEqual([]);
+    expect(empty.byPerson).toEqual([]);
+  });
+});
+
+describe("buildReport, who paid", () => {
+  const anna = { id: "a", name: "Anna", color: "#6366f1" };
+  const tom = { id: "t", name: "Tom", color: "#10b981" };
+  const pay = (name, amount, category, paidBy) => ({ name, amount, category, ...(paidBy ? { paidBy } : {}) });
+  // Tom's only payment is in a category hidden from reports.
+  const sharedData = {
+    cutoffDay: 1,
+    people: [anna, tom],
+    categories: [{ name: "Food" }, { name: "Gifts", hideFromReports: true }],
+    months: {
+      "2026-08": month(8000, [pay("Shop", 100, "Food", "a"), pay("Present", 500, "Gifts", "t"), pay("Fuel", 50, "Food", JOINT)]),
+      "2026-09": month(8000, [pay("Shop", 200, "Food", "a"), pay("Dinner", 150, "Food", JOINT)]),
+    },
+  };
+  const oneOnly = { ...sharedData, people: [anna] };
+
+  it("adds up spending by person over the range, leaving out hidden categories", () => {
+    const r = buildReport(sharedData, ["2026-08", "2026-09"], TODAY, {});
+    expect(r.byPerson).toEqual([{ payer: "a", total: 300, average: 150 }, { payer: JOINT, total: 200, average: 100 }]);
+    expect(buildReport(oneOnly, ["2026-08"], TODAY, {}).byPerson).toEqual([]);
+  });
+
+  it("leaves a budget without people with the report it always had", () => {
+    expect(Object.keys(buildReport(oneOnly, ["2026-08"], TODAY, {}))).not.toContain("byPerson");
+    expect(Object.keys(buildReport(sharedData, ["2026-08"], TODAY, {}))).toContain("byPerson");
+  });
+
+  it("adds up to the report's spent figure", () => {
+    const r = buildReport(sharedData, ["2026-08", "2026-09"], TODAY, {});
+    expect(r.byPerson.reduce((a, p) => a + p.total, 0)).toBe(r.spent);
+  });
+
+  it("counts what is left out once the category is shown again", () => {
+    const shown = { ...sharedData, categories: [{ name: "Food" }, { name: "Gifts" }] };
+    const r = buildReport(shown, ["2026-08", "2026-09"], TODAY, {});
+    expect(r.byPerson.map((p) => [p.payer, p.total])).toEqual([["t", 500], ["a", 300], [JOINT, 200]]);
+  });
+
+  it("puts what nobody paid under an empty payer", () => {
+    const loose = { ...sharedData, months: { "2026-09": month(8000, [pay("Cash", 40, "Food"), pay("Shop", 10, "Food", "a")]) } };
+    expect(buildReport(loose, ["2026-09"], TODAY, {}).byPerson).toEqual([
+      { payer: "", total: 40, average: 40 }, { payer: "a", total: 10, average: 10 },
+    ]);
+  });
+
+  it("reads a payer who matches nobody as not set, so every row has a name", () => {
+    const odd = { ...sharedData, months: { "2026-09": month(8000, [pay("Mystery", 40, "Food", "ghost"), pay("Cash", 5, "Food")]) } };
+    expect(buildReport(odd, ["2026-09"], TODAY, {}).byPerson).toEqual([{ payer: "", total: 45, average: 45 }]);
+  });
+
+  it("averages over completed periods, leaving the running one out", () => {
+    const r = buildReport(sharedData, ["2026-08", "2026-09"], TODAY, { runningKey: "2026-09" });
+    expect(r.byPerson).toEqual([{ payer: "a", total: 300, average: 100 }, { payer: JOINT, total: 200, average: 50 }]);
+  });
+
+  it("still averages when the running period is all there is", () => {
+    const r = buildReport(sharedData, ["2026-09"], TODAY, { runningKey: "2026-09" });
+    expect(r.byPerson).toEqual([{ payer: "a", total: 200, average: 200 }, { payer: JOINT, total: 150, average: 150 }]);
+  });
+
+  it("has nothing once only one person is left, removed ones not counting", () => {
+    const left = { ...sharedData, people: [anna, { ...tom, removed: true }] };
+    expect(buildReport(left, ["2026-08", "2026-09"], TODAY, {}).byPerson).toEqual([]);
+  });
+
+  it("still names a removed person's old spending while two people remain", () => {
+    const three = { ...sharedData, people: [anna, tom, { id: "z", name: "Zed", color: "#f59e0b", removed: true }] };
+    three.months = { ...three.months, "2026-09": month(8000, [pay("Old", 70, "Food", "z")]) };
+    expect(buildReport(three, ["2026-09"], TODAY, {}).byPerson).toEqual([{ payer: "z", total: 70, average: 70 }]);
   });
 });
 

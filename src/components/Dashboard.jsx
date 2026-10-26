@@ -5,6 +5,7 @@ import { percentChange } from "../lib/reports.js";
 import { categoryAverage } from "../lib/totals.js";
 import { isRecurringItem } from "../lib/occurrences.js";
 import { envelope } from "../lib/envelopes.js";
+import { isShared, JOINT, peopleOf, spendingByPerson } from "../lib/people.js";
 import { findCategory, CREDIT_UNCATEGORIZED, UNCATEGORIZED } from "../model.js";
 import { fmt } from "../money.js";
 import { catName, due, shortDate } from "../text.js";
@@ -131,10 +132,30 @@ function MoneyLeftCard({ data, curKey, today, cal, fc, remaining, sub, stillToPa
   );
 }
 
+// What each payer spent this period, for the line under Total Spent: current
+// people in their order, then anyone removed who still paid something, then
+// Joint, then what nobody was marked for. Nothing for a one-person budget, and
+// no payer with nothing. It walks the entries Total Spent counts, so the
+// amounts add up to it.
+function paidLine(data, cur, curKey, today, cal) {
+  if (!isShared(data)) return [];
+  const byPerson = spendingByPerson(cur, curKey, today, cal);
+  const known = new Set([JOINT, ...(data.people || []).map((p) => p.id)]);
+  // Money from an id that matches nobody reads as not set.
+  const notSet = [...byPerson].reduce((a, [id, v]) => (known.has(id) ? a : a + v), 0);
+  return [
+    ...peopleOf(data).map((p) => ({ id: p.id, name: p.name, amount: byPerson.get(p.id) || 0 })),
+    ...(data.people || []).filter((p) => p.removed).map((p) => ({ id: p.id, name: p.name, amount: byPerson.get(p.id) || 0 })),
+    { id: JOINT, name: t("Joint"), amount: byPerson.get(JOINT) || 0 },
+    { id: "", name: t("Not set"), amount: notSet },
+  ].filter((p) => p.amount !== 0);
+}
+
 // This period's spending: the running total day by day, how it compares with
 // the same day last period, and the three biggest categories.
-function SpendingCard({ data, curKey, today, cal, spent, effectiveIncome, spentByCat, onReports }) {
+function SpendingCard({ data, cur, curKey, today, cal, spent, effectiveIncome, spentByCat, onReports }) {
   const { theme, s } = useThemed();
+  const paid = paidLine(data, cur, curKey, today, cal);
   const daily = spendingByDay(data, curKey, today);
   const prevKey = cal.prev(curKey);
   const prev = data.months?.[prevKey] ? spendingByDay(data, prevKey, today) : [];
@@ -166,6 +187,16 @@ function SpendingCard({ data, curKey, today, cal, spent, effectiveIncome, spentB
           </Chip>
         )}
       </div>
+      {paid.length > 0 && (
+        // Each piece stays whole when the card is narrow, wrapping between them.
+        <div style={{ ...money, fontSize: 12, lineHeight: 1.5, color: theme.textFaint, marginTop: 6 }}>
+          {paid.map((p, i) => (
+            <span key={p.id}>
+              <span style={{ whiteSpace: "nowrap" }}>{t("{name} paid {amount}", { name: p.name, amount: fmt(p.amount) })}{i < paid.length - 1 ? " ·" : ""}</span>{" "}
+            </span>
+          ))}
+        </div>
+      )}
 
       <div style={{ position: "relative", marginTop: 14, padding: "26px 0 18px", border: `1px solid ${theme.border}`, borderRadius: 18, background: theme.mode === "dark" ? "rgba(0,0,0,.13)" : theme.bg, overflow: "hidden" }}>
         <div style={{ position: "absolute", zIndex: 1, inset: "9px 12px auto", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11, color: theme.textFaint }}>
@@ -348,7 +379,7 @@ export function Dashboard(props) {
       <section className="dash-top" ref={topRef}>
         <MoneyLeftCard data={data} curKey={curKey} today={today} cal={cal} fc={fc} remaining={remaining} sub={remainingSub}
           stillToPay={totalUpcoming} goalsLine={goalsLine} needsIncome={needsIncome} onAddIncome={addIncome} />
-        <SpendingCard data={data} curKey={curKey} today={today} cal={cal} spent={totalActuallySpent}
+        <SpendingCard data={data} cur={cur} curKey={curKey} today={today} cal={cal} spent={totalActuallySpent}
           effectiveIncome={effectiveIncome} spentByCat={spentByCat} onReports={() => onSetTab("reports")} />
       </section>
 
