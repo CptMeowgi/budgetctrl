@@ -12,7 +12,7 @@
 
 import { calendarFor } from "./calendar.js";
 import { isWeekly, nextPeriodOf, occursIn } from "./occurrences.js";
-import { perPeriodOf } from "./paySchedule.js";
+import { perPeriodOf } from "./setAside.js";
 import { isoDay } from "./periods.js";
 import { periodIncome, periodSpending } from "./totals.js";
 
@@ -56,42 +56,9 @@ function timeline(tpl, cal, curKey) {
 //                 it's due, nothing: the rest of the bill is in its spending
 //   paidFromFund  in the period it's due, once paid: what was saved before
 export function sinkingFunds(data, today = new Date()) {
-  const tmpls = (data.recurringTemplate || []).filter((t) => t.saveUp && canSaveUp(t));
-  if (!tmpls.length) return [];
-  const cal = calendarFor(data);
-  const curKey = cal.current(today);
-  const funds = tmpls.map((tpl) => ({ tpl, line: timeline(tpl, cal, curKey), saved: 0 })).filter((f) => f.line);
-  if (!funds.length) return [];
-
-  // What a bill's own copies in a period came to, once due.
-  const paidIn = (f, k) => (data.months?.[k]?.recurring || [])
-    .filter((r) => r.templateId === f.tpl.id && cal.isDue(r, k, today))
-    .reduce((a, r) => a + (r.amount || 0), 0);
-  const share = (f, k) => cents(Math.max(0, f.tpl.amount - f.saved) / f.line.cycle.get(k).left);
-
-  // Past periods, oldest first. Each had what it took in, less what it
-  // spent and the savings set-aside, plus any bill a fund paid for it; the
-  // funds still saving then share that out, the one due soonest first.
-  const past = [...new Set(funds.flatMap((f) => f.line.keys.filter((k) => k < curKey)))].sort();
-  for (const k of past) {
-    const m = data.months?.[k];
-    const open = funds.filter((f) => f.line.cycle.has(k))
-      .sort((a, b) => (a.line.cycle.get(k).dueKey < b.line.cycle.get(k).dueKey ? -1 : 1));
-    // A bill due here is paid from what its fund had saved; its cycle ends.
-    let fromFunds = 0;
-    const ending = open.filter((f) => f.line.due.has(k));
-    for (const f of ending) fromFunds += Math.min(paidIn(f, k), f.saved);
-    let left = m ? Math.max(0, periodIncome(m, k, today, cal).total - periodSpending(m, k, today, cal).total
-      + fromFunds - perPeriodOf(data.savingsGoal?.monthly, cal, k)) : 0;
-    for (const f of open) {
-      if (f.line.due.has(k)) continue;
-      const take = Math.min(share(f, k), left);
-      f.saved = cents(f.saved + take);
-      left = Math.max(0, left - take);
-    }
-    for (const f of ending) f.saved = 0;
-  }
-
+  const run = saveUp(data, today);
+  if (!run) return [];
+  const { funds, cal, curKey, paidIn, share } = run;
   return funds
     .map((f) => {
       const { dueKey, left } = f.line.cycle.get(curKey);
@@ -107,6 +74,58 @@ export function sinkingFunds(data, today = new Date()) {
       };
     })
     .sort((a, b) => (a.dueKey < b.dueKey ? -1 : a.dueKey > b.dueKey ? 1 : 0));
+}
+
+// Each finished period's part in saving up for bills: what it put aside
+// (`saved`) and what bills it paid from what was saved before (`paid`).
+// Only periods with either are listed.
+export function fundHistory(data, today = new Date()) {
+  return saveUp(data, today)?.history || new Map();
+}
+
+// Works through the finished periods, oldest first, saving up for each bill.
+function saveUp(data, today) {
+  const tmpls = (data.recurringTemplate || []).filter((t) => t.saveUp && canSaveUp(t));
+  if (!tmpls.length) return null;
+  const cal = calendarFor(data);
+  const curKey = cal.current(today);
+  const funds = tmpls.map((tpl) => ({ tpl, line: timeline(tpl, cal, curKey), saved: 0 })).filter((f) => f.line);
+  if (!funds.length) return null;
+
+  // What a bill's own copies in a period came to, once due.
+  const paidIn = (f, k) => (data.months?.[k]?.recurring || [])
+    .filter((r) => r.templateId === f.tpl.id && cal.isDue(r, k, today))
+    .reduce((a, r) => a + (r.amount || 0), 0);
+  const share = (f, k) => cents(Math.max(0, f.tpl.amount - f.saved) / f.line.cycle.get(k).left);
+
+  // Past periods, oldest first. Each had what it took in, less what it
+  // spent and the savings set-aside, plus any bill a fund paid for it; the
+  // funds still saving then share that out, the one due soonest first.
+  const past = [...new Set(funds.flatMap((f) => f.line.keys.filter((k) => k < curKey)))].sort();
+  const history = new Map();
+  for (const k of past) {
+    const m = data.months?.[k];
+    const open = funds.filter((f) => f.line.cycle.has(k))
+      .sort((a, b) => (a.line.cycle.get(k).dueKey < b.line.cycle.get(k).dueKey ? -1 : 1));
+    // A bill due here is paid from what its fund had saved; its cycle ends.
+    let fromFunds = 0;
+    const ending = open.filter((f) => f.line.due.has(k));
+    for (const f of ending) fromFunds += Math.min(paidIn(f, k), f.saved);
+    let left = m ? Math.max(0, periodIncome(m, k, today, cal).total - periodSpending(m, k, today, cal).total
+      + fromFunds - perPeriodOf(data.savingsGoal?.monthly, cal, k)) : 0;
+    let took = 0;
+    for (const f of open) {
+      if (f.line.due.has(k)) continue;
+      const take = Math.min(share(f, k), left);
+      f.saved = cents(f.saved + take);
+      took += take;
+      left = Math.max(0, left - take);
+    }
+    for (const f of ending) f.saved = 0;
+    if (took || fromFunds) history.set(k, { saved: cents(took), paid: cents(fromFunds) });
+  }
+
+  return { funds, cal, curKey, paidIn, share, history };
 }
 
 // This period, over all funds: what to set aside, and what they pay.

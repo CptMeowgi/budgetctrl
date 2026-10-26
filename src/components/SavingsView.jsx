@@ -55,6 +55,14 @@ function sourceLine(goal, data, todayIso) {
   return t("Tracks {name} · balance from {when}", { name: acc.name, when });
 }
 
+// A period's part in saving up for bills, for its "for bills" figure.
+function billsNote({ saved, paid }) {
+  return [
+    saved ? t("{amount} put aside for bills", { amount: fmt(saved) }) : null,
+    paid ? t("{amount} of bills paid from what was saved", { amount: fmt(paid) }) : null,
+  ].filter(Boolean).join(" · ");
+}
+
 function GoalCard({ goal, status, data, todayIso, paycheck, onEdit }) {
   const { theme, s } = useThemed();
   const plan = planLine(goal, status, paycheck);
@@ -95,6 +103,10 @@ export function SavingsView({ data, history, today, cal, onAddGoal, onEditGoal, 
   const todayIso = isoDay(today);
   const monthly = cal.calendarMonths;
   const paycheck = cal.kindOf(cal.current(today)) === "weeks";
+  // Shown only once some finished period has saved up for a bill.
+  const forBills = history.series.some((r) => r.bills);
+  // The period gives up a little room for it, so amounts fit in a small window.
+  const periodFlex = forBills ? 1.5 : 2;
 
   return (
     <>
@@ -116,9 +128,10 @@ export function SavingsView({ data, history, today, cal, onAddGoal, onEditGoal, 
       <div style={{ ...s.card, marginTop: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <div style={s.cardTitle}>{monthly ? t("Left over each month") : t("Left over each period")}</div>
-          <InfoHint text={monthly
+          <InfoHint text={(monthly
             ? t("Income less spending for every finished month, and the running total. A goal set to count what your budget leaves over uses this.")
-            : t("Income less spending for every finished period, and the running total. A goal set to count what your budget leaves over uses this.")} />
+            : t("Income less spending for every finished period, and the running total. A goal set to count what your budget leaves over uses this."))
+            + (forBills ? ` ${t("Money saved up for bills isn't counted: it's kept to pay them.")}` : "")} />
         </div>
         <SavingsChart series={history.series} monthly={monthly} />
       </div>
@@ -131,13 +144,15 @@ export function SavingsView({ data, history, today, cal, onAddGoal, onEditGoal, 
           <>
             <div style={{ ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint, marginTop: SPACE.xs }}>{monthly ? t("Income is editable here. For expenses, open the month.") : t("Income is editable here. For expenses, open the period.")}</div>
             <TableHeader columns={[
-              { label: t("PERIOD"), flex: 2 }, { label: t("INCOME"), flex: 1, align: "right" },
-              { label: t("SPENT"), flex: 1, align: "right" }, { label: t("LEFT OVER"), flex: 1, align: "right" },
+              { label: t("PERIOD"), flex: periodFlex }, { label: t("INCOME"), flex: 1, align: "right" },
+              { label: t("SPENT"), flex: 1, align: "right" },
+              ...(forBills ? [{ label: t("FOR BILLS"), flex: 1, align: "right" }] : []),
+              { label: t("LEFT OVER"), flex: 1, align: "right" },
               { label: t("RUNNING TOTAL"), flex: 1, align: "right" }, { label: "", flex: 0.8, align: "right" },
             ]} />
             {history.series.slice(1).map((row) => (
               <div key={row.key} style={s.tableRow}>
-                <div style={{ flex: 2, fontWeight: 600, display: "flex", alignItems: "center", gap: SPACE.xs }}>
+                <div style={{ flex: periodFlex, fontWeight: 600, display: "flex", alignItems: "center", gap: SPACE.xs }}>
                   {cal.label(row.key).primary}
                   {row.editedAt && (
                     <span
@@ -151,6 +166,11 @@ export function SavingsView({ data, history, today, cal, onAddGoal, onEditGoal, 
                     onChange={(v) => onChangeIncome(row.key, v)} />
                 </div>
                 <div style={{ flex: 1, textAlign: "right", ...money, color: theme.textMuted }}>{fmt(row.spent)}</div>
+                {forBills && (
+                  <div style={{ flex: 1, textAlign: "right", ...money, color: theme.textMuted }} title={row.bills ? billsNote(row.bills) : undefined}>
+                    {row.bills ? `${row.forBills > 0 ? "−" : row.forBills < 0 ? "+" : ""}${fmt(Math.abs(row.forBills))}` : ""}
+                  </div>
+                )}
                 <div style={{ flex: 1, textAlign: "right", ...money, fontWeight: 700, color: row.delta >= 0 ? theme.success : theme.danger }}>
                   {row.delta >= 0 ? "+" : ""}{fmt(row.delta)}
                 </div>

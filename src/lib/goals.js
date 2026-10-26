@@ -12,6 +12,7 @@
 import { periodSpending, periodIncome } from "./totals.js";
 import { isoDay, monthKey } from "./periods.js";
 import { calendarFor } from "./calendar.js";
+import { fundHistory } from "./sinking.js";
 import { addMonths, monthsBetween } from "./schedule.js";
 import { balanceAsOf, isLiability, addDays, daysBetweenISO, sortedBalances } from "./accounts.js";
 
@@ -19,23 +20,30 @@ export const GOAL_SOURCES = ["account", "budget"];
 
 // What each closed period left over - income less spending - and the running
 // total. The period still in progress is left out: it has not finished
-// leaving anything over.
+// leaving anything over. Money saved up for bills isn't left over: a period
+// that put some aside counts that much less, and one that paid a bill from
+// it counts what was paid back in. `bills` has both; `forBills` is the
+// difference.
 export function leftOverHistory(data, today) {
   const cal = calendarFor(data);
   const cur = cal.current(today);
   const keys = Object.keys(data.months || {}).filter((k) => k < cur).sort();
+  const funds = fundHistory(data, today);
   let total = 0;
   const series = [{ key: "start", label: "Start", balance: 0, delta: 0, income: 0, spent: 0 }];
   for (const k of keys) {
     const m = data.months[k];
     const income = periodIncome(m, k, today, cal).total;
     const spent = periodSpending(m, k, today, cal).total;
-    const delta = income - spent;
+    const fund = funds.get(k);
+    const forBills = fund ? Math.round((fund.saved - fund.paid) * 100) / 100 : 0;
+    const delta = income - spent - forBills;
     total += delta;
     // A week-based period also says what it left over per month; a month's
     // `delta` already is that.
     const perMonth = cal.periodsPerMonth(k);
     series.push({ key: k, label: cal.shortLabel(k), balance: total, delta, income, spent, editedAt: m.editedAt || null,
+                  ...(fund ? { forBills, bills: fund } : {}),
                   ...(perMonth !== 1 ? { perMonth: delta * perMonth } : {}) });
   }
   return { total, series, monthsCounted: keys.length };

@@ -12,6 +12,10 @@ import { capAt, withCap } from "./envelopes.js";
 import { isRecurringItem, missingCopies } from "./occurrences.js";
 import { isoDay, parseDay } from "./periods.js";
 import { emptyMonth, startPeriod, uid } from "../model.js";
+import { perPeriodOf } from "./setAside.js";
+
+// Kept here too for the screens that import them from this module.
+export { perMonthOf, perPeriodOf } from "./setAside.js";
 
 // The choices, as the Settings and welcome screens offer them.
 export const PAY_KINDS = [
@@ -48,19 +52,6 @@ export function firstPaydayFor(data, cutoffDay, today) {
 export function defaultFirstPayday(data, today) {
   const cal = calendarFor(withoutPending(data, today));
   return isoDay(addDays(cal.range(cal.current(today)).end, 1));
-}
-
-// The set-aside is kept per month and shown per period: a fortnight sets
-// aside 12/26 of the monthly figure. Monthly periods use it as it is.
-export function perPeriodOf(monthly, cal, key) {
-  const ppm = cal.periodsPerMonth(key);
-  const m = Number(monthly) || 0;
-  return ppm === 1 ? m : Math.round(m / ppm);
-}
-export function perMonthOf(perPeriod, cal, key) {
-  const ppm = cal.periodsPerMonth(key);
-  const v = Number(perPeriod) || 0;
-  return ppm === 1 ? v : Math.round(v * ppm * 100) / 100;
 }
 
 // The budget as if a switch still to come had never been made: the schedule

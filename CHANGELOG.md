@@ -8,6 +8,9 @@
   The Dashboard shows how far along each one is and when it's due. If you
   start late, or a month has nothing left over, the share goes up a little
   to catch up. When the bill is paid, it comes out of what was saved.
+  A savings goal that counts what your budget leaves over doesn't count
+  this money, so it doesn't jump up while you save or drop when the bill
+  is paid. The Savings tab shows it in its own column.
 - New to Budget Ctrl? The welcome screen can open a sample budget, made
   up so you can look around before entering anything of your own. Nothing
   you do in it is saved, it sends no reminders, and **Start my own budget**

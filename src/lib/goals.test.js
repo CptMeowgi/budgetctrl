@@ -29,6 +29,45 @@ describe("leftOverHistory", () => {
   });
 });
 
+describe("leftOverHistory with money saved up for a bill", () => {
+  // Car insurance, 1,200 a year, due 10 March: saving began in April 2026,
+  // 100 a month. Each month takes in 3,000 and spends 2,000.
+  const insurance = { id: "ins", name: "Car insurance", amount: 1200, dayOfMonth: 10, every: 12, anchor: "2026-03", saveUp: { from: "2026-04" } };
+  const bill = { id: "r", name: "Car insurance", amount: 1200, dayOfMonth: 10, every: 12, anchor: "2026-03", templateId: "ins" };
+  const saving = () => {
+    const months = {};
+    for (const k of ["2026-04", "2026-05", "2026-06", "2026-07", "2026-08", "2026-09", "2026-10", "2026-11", "2026-12",
+      "2027-01", "2027-02", "2027-03", "2027-04"]) months[k] = month(3000, 2000);
+    months["2027-03"] = { ...months["2027-03"], recurring: [bill] };
+    return { cutoffDay: 1, savingsGoal: { monthly: 0 }, recurringTemplate: [insurance], months };
+  };
+  const goal = { id: "g", name: "Holiday", target: 20000, source: "budget", startAmount: 0 };
+
+  it("doesn't count what was put aside for the bill as left over", () => {
+    const h = leftOverHistory(saving(), D(2026, 10, 20));
+    expect(h.series.slice(1).map((r) => [r.delta, r.forBills])).toEqual(Array(6).fill([900, 100]));
+    expect(h.total).toBe(5400);
+    expect(goalSaved(goal, saving(), D(2026, 10, 20))).toBe(5400);
+  });
+
+  it("doesn't drop when the bill is paid from what was saved", () => {
+    const h = leftOverHistory(saving(), D(2027, 4, 15));
+    const march = h.series.find((r) => r.key === "2027-03");
+    // March spent 3,200, of which 1,100 came from what was saved for the bill.
+    expect([march.income, march.spent, march.forBills, march.delta]).toEqual([3000, 3200, -1100, 900]);
+    expect(h.series.slice(1).every((r) => r.delta === 900)).toBe(true);
+    expect(h.total).toBe(10800);
+    expect(budgetPace(h)).toBe(900);
+  });
+
+  it("is as before for a budget not saving up for anything", () => {
+    const plain = { ...saving(), recurringTemplate: [{ ...insurance, saveUp: undefined }] };
+    const h = leftOverHistory(plain, D(2026, 10, 20));
+    expect(h.series.slice(1).map((r) => r.delta)).toEqual(Array(6).fill(1000));
+    expect(h.series.slice(1).every((r) => !("forBills" in r))).toBe(true);
+  });
+});
+
 describe("pace", () => {
   it("averages an account's change per month", () => {
     // +3000 over 92 days is about 992 a month.
