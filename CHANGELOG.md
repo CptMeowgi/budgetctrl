@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.0
 
 - Save up for yearly or quarterly bills a little each period. Tick Save up for it on the bill.
 - Savings goals don't count money saved up for bills.
