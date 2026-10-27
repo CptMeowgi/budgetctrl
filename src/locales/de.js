@@ -944,4 +944,7 @@ export default {
   "Who paid": "Wer bezahlt hat",
   "{name} paid {amount}": "{name} hat {amount} bezahlt",
   "Not set: {amount}": "Nicht festgelegt: {amount}",
+  "Joint: {amount}": "Gemeinsam: {amount}",
+  "Joint accounts are offered when paying jointly. Accounts for everyone are offered to anyone.": "Gemeinsame Konten erscheinen bei gemeinsamen Zahlungen. Konten für alle stehen jedem zur Auswahl.",
+  "Paid by {who}": "Bezahlt von {who}",
 };

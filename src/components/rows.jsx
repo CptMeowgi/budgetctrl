@@ -6,10 +6,10 @@ import { DeleteArmContext } from "../contexts.js";
 import { fmt } from "../money.js";
 import { FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
 import { CategoryPill, SELECT_CELL } from "./controls.jsx";
-import { isShared, JOINT, payerParts } from "../lib/people.js";
+import { isShared } from "../lib/people.js";
 import { isSplit } from "../lib/splits.js";
 import { t, tn } from "../i18n.js";
-import { shortDate } from "../text.js";
+import { payerText, shortDate } from "../text.js";
 
 // The trailing edit/delete cell on every entry row. Previously eight
 // near-identical copies. onDelete stays a callback because the action really
@@ -60,8 +60,7 @@ export function EntryName({ name, note, strike, schedule, children }) {
 export function PayerLabel({ data, entry }) {
   const { theme } = useThemed();
   if (!isShared(data)) return null;
-  const { who, how } = payerParts(data, entry);
-  const text = [who === JOINT ? t("Joint") : who, how].filter(Boolean).join(", ");
+  const text = payerText(data, entry);
   if (!text) return null;
   return <span style={{ ...TYPE.microLegal, color: theme.textFaint, marginLeft: 6 }}>{text}</span>;
 }

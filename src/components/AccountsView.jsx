@@ -239,6 +239,9 @@ export function AccountModal({ account, data, todayISO, onDismiss, onSave, onSet
               <option value={JOINT}>{t("Joint")}</option>
               <option value="">{t("Everyone")}</option>
             </select>
+            <div style={{ ...TYPE.finePrint, color: theme.textFaint, marginTop: SPACE.xs }}>
+              {t("Joint accounts are offered when paying jointly. Accounts for everyone are offered to anyone.")}
+            </div>
           </div>
         )}
         {!editing && (

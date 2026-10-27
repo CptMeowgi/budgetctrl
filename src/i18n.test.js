@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { t, tn, setLanguage, interpolate, fmtDate, LANGUAGES, PLURAL_FORMS, systemLanguage } from "./i18n.js";
-import { ago, backupLabel, catName, due, ordinal, shortDate, storedCatName } from "./text.js";
+import { ago, backupLabel, catName, due, ordinal, payerText, shortDate, storedCatName } from "./text.js";
 import de from "./locales/de.js";
 import es from "./locales/es.js";
 import pl from "./locales/pl.js";
@@ -133,6 +133,16 @@ describe("due and ordinal", () => {
     expect(shortDate("")).toBe("");
     setLanguage("de");
     expect(shortDate(`${year}-10-11`)).toBe("11. Okt.");
+  });
+
+  it("say who paid an entry and with what, in the reader's language", () => {
+    const data = { people: [{ id: "a", name: "Anna" }], accounts: [{ id: "visa", name: "Visa" }] };
+    expect(payerText(data, { paidBy: "a", paidWith: "visa" })).toBe("Anna, Visa");
+    expect(payerText(data, { paidBy: "joint" })).toBe("Joint");
+    expect(payerText(data, { paidWith: "visa" })).toBe("Visa");
+    expect(payerText(data, {})).toBe("");
+    setLanguage("de");
+    expect(payerText(data, { paidBy: "joint", paidWith: "visa" })).toBe("Gemeinsam, Visa");
   });
 
   it("name backups so a person can tell them apart", () => {

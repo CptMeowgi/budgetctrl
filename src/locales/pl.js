@@ -943,5 +943,8 @@ export default {
   "Not set": "Nie wybrano",
   "Who paid": "Kto zapłacił",
   "{name} paid {amount}": "{name}: zapłacono {amount}",
-  "Not set: {amount}": "Nie ustawiono: {amount}",
+  "Not set: {amount}": "Nie wybrano: {amount}",
+  "Joint: {amount}": "Wspólnie: {amount}",
+  "Joint accounts are offered when paying jointly. Accounts for everyone are offered to anyone.": "Konta wspólne pojawiają się przy płatnościach wspólnych. Konta dla wszystkich są dostępne dla każdego.",
+  "Paid by {who}": "Płatnik: {who}",
 };

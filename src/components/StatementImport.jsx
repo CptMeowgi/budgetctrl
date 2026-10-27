@@ -8,7 +8,7 @@ import { Modal } from "./Modal.jsx";
 import { orderedRules, suggestMatch, upsertRule } from "../lib/rules.js";
 import { detectFormat, parseStatement } from "../lib/statementFormats.js";
 import { t, tk, tn } from "../i18n.js";
-import { catName } from "../text.js";
+import { catName, payerText } from "../text.js";
 import { startingPayer } from "../forms.js";
 import { cleanPayer, isShared, rememberPayer } from "../lib/people.js";
 import { PaidByPicker } from "./PaidByPicker.jsx";
@@ -160,6 +160,8 @@ export function StatementImport({ data, onClose, onImport, isLocked }) {
   };
 
   const hint = { ...TYPE.finePrint, lineHeight: 1.5, color: theme.textFaint };
+  // Said before the Import button, in the words a row will show once added.
+  const who = shared ? payerText(data, cleanPayer(payer, data)) : "";
 
   return (
     <Modal title={t("Import bank statement")} onClose={onClose} width={step === "review" ? 820 : 560}>
@@ -299,6 +301,7 @@ export function StatementImport({ data, onClose, onImport, isLocked }) {
               );
             })}
           </div>
+          {who && <div style={{ ...hint, textAlign: "right", marginTop: SPACE.sm }}>{t("Paid by {who}", { who })}</div>}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: SPACE.md }}>
             <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => setStep("map")}>{csv ? t("← Columns") : t("← Back")}</button>
             <button style={{ ...s.addBtn, opacity: kept.length ? 1 : 0.5 }} disabled={!kept.length} onClick={doImport}>

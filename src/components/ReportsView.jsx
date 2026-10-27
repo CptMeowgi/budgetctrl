@@ -144,6 +144,7 @@ function WhoPaid({ data, report }) {
   // Joint and what nobody was marked for have no colour of their own.
   const nameOf = (payer) => (payer === JOINT ? t("Joint") : personById(data, payer)?.name ?? t("Not set"));
   const colorOf = (payer) => personById(data, payer)?.color ?? theme.textFaint;
+  // Amounts are shown whole, as in the category table above, so a long figure fits this width.
   const col = { width: 84, flex: "none", textAlign: "right", whiteSpace: "nowrap", fontFamily: FONT, fontVariantNumeric: "tabular-nums" };
   const head = { ...TYPE.finePrint, textTransform: "uppercase", letterSpacing: "0.6px", color: theme.textFaint, fontWeight: 600 };
   return (
@@ -158,8 +159,8 @@ function WhoPaid({ data, report }) {
         <div key={p.payer} style={{ ...s.tableRow, gap: SPACE.md }}>
           <i style={{ width: 10, height: 10, borderRadius: "50%", background: colorOf(p.payer), flex: "none" }} />
           <div style={{ flex: 1, minWidth: 0, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={nameOf(p.payer)}>{nameOf(p.payer)}</div>
-          <div style={{ ...col, fontWeight: 700 }}>{fmt(p.total)}</div>
-          <div style={{ ...col, color: theme.textMuted }}>{fmt(p.average)}</div>
+          <div style={{ ...col, fontWeight: 700 }}>{fmtWhole(p.total)}</div>
+          <div style={{ ...col, color: theme.textMuted }}>{fmtWhole(p.average)}</div>
         </div>
       ))}
     </div>

@@ -1,6 +1,6 @@
 import { useId } from "react";
 import { t } from "../i18n.js";
-import { cleanPayer, JOINT, peopleOf, personById, waysToPay } from "../lib/people.js";
+import { cleanPayer, JOINT, payerForAccount, peopleOf, personById, waysToPay } from "../lib/people.js";
 import { useThemed } from "../theme.js";
 
 // Who paid for an entry and with which account, as two selects side by side.
@@ -25,13 +25,21 @@ export function PaidByPicker({ data, value, onChange, incoming }) {
     ? (data?.accounts || []).find((a) => a.id === paidWith)
     : null;
 
+  // With nothing to choose from (no open account at all) and nothing chosen
+  // before, "Paid with" would only say Not set, so it isn't shown: a couple
+  // who don't use the Accounts tab see just "Paid by".
+  const showWith = waysToPay(data).length > 0 || !!paidWith;
+
   // Another person's account can't stay on the entry.
   const choosePerson = (next) => onChange({ paidBy: next || undefined, paidWith: cleanPayer({ paidBy: next, paidWith }, data).paidWith });
-  const chooseAccount = (next) => onChange({ paidBy: paidBy || undefined, paidWith: next || undefined });
+  // An account with an owner says who paid, so it fills in "Paid by" when that
+  // was left on Not set: otherwise the entry would read "Anna's Visa" yet
+  // count under Not set.
+  const chooseAccount = (next) => onChange({ paidBy: paidBy || payerForAccount(data, next) || undefined, paidWith: next || undefined });
 
   const label = { fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 6, display: "block", fontWeight: 600 };
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+    <div style={{ display: "grid", gridTemplateColumns: showWith ? "1fr 1fr" : "1fr", gap: 16 }}>
       <div>
         <label htmlFor={`${id}-by`} style={label}>{incoming ? t("Brought in by") : t("Paid by")}</label>
         <select id={`${id}-by`} value={paidBy} onChange={(e) => choosePerson(e.target.value)} style={s.input}>
@@ -41,14 +49,16 @@ export function PaidByPicker({ data, value, onChange, incoming }) {
           <option value={JOINT}>{t("Joint")}</option>
         </select>
       </div>
-      <div>
-        <label htmlFor={`${id}-with`} style={label}>{t("Paid with")}</label>
-        <select id={`${id}-with`} value={paidWith} onChange={(e) => chooseAccount(e.target.value)} style={s.input}>
-          <option value="">{t("Not set")}</option>
-          {ways.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-          {closedChoice && <option value={closedChoice.id}>{closedChoice.name}</option>}
-        </select>
-      </div>
+      {showWith && (
+        <div>
+          <label htmlFor={`${id}-with`} style={label}>{t("Paid with")}</label>
+          <select id={`${id}-with`} value={paidWith} onChange={(e) => chooseAccount(e.target.value)} style={s.input}>
+            <option value="">{t("Not set")}</option>
+            {ways.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            {closedChoice && <option value={closedChoice.id}>{closedChoice.name}</option>}
+          </select>
+        </div>
+      )}
     </div>
   );
 }

@@ -944,4 +944,7 @@ export default {
   "Who paid": "谁付的款",
   "{name} paid {amount}": "{name}付了{amount}",
   "Not set: {amount}": "未设置：{amount}",
+  "Joint: {amount}": "共同：{amount}",
+  "Joint accounts are offered when paying jointly. Accounts for everyone are offered to anyone.": "共同账户用于共同付款。所有人的账户任何人都可以选择。",
+  "Paid by {who}": "付款人：{who}",
 };

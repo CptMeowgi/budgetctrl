@@ -142,9 +142,10 @@ function paidLine(data, cur, curKey, today, cal) {
   if (!anyoneNamed(rows)) return [];
   return rows.map(({ payer, amount }) => ({
     id: payer,
-    text: payer === ""
-      ? t("Not set: {amount}", { amount: fmt(amount) })
-      : t("{name} paid {amount}", { name: payer === JOINT ? t("Joint") : personById(data, payer).name, amount: fmt(amount) }),
+    // Joint and Not set have their own wording: "{name} paid" reads badly with them.
+    text: payer === "" ? t("Not set: {amount}", { amount: fmt(amount) })
+      : payer === JOINT ? t("Joint: {amount}", { amount: fmt(amount) })
+      : t("{name} paid {amount}", { name: personById(data, payer).name, amount: fmt(amount) }),
   }));
 }
 

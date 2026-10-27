@@ -2,6 +2,14 @@
 import { fmtDate, getLanguage, t, tk, tn } from "./i18n.js";
 import { DEFAULT_CREDIT_CATEGORIES, STARTER_CATEGORIES } from "./lib/setup.js";
 import { parseBackupName } from "./lib/backups.js";
+import { JOINT, payerParts } from "./lib/people.js";
+
+// Who paid an entry and with what, in words: "Anna, Visa", "Joint", "Anna" or
+// "Visa". Empty when it isn't set.
+export function payerText(data, entry) {
+  const { who, how } = payerParts(data, entry);
+  return [who === JOINT ? t("Joint") : who, how].filter(Boolean).join(", ");
+}
 
 // "just now", "5 minutes ago", "3 hours ago", "2 days ago".
 export function ago(then, now) {
