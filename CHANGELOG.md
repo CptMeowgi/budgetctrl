@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Add the people you share a budget with (Settings → People).
+- Every entry can say who paid and with which card or account.
+- See each person's spending on the Dashboard and in Reports.
+
 ## 0.8.0
 
 - Save up for yearly or quarterly bills a little each period. Tick Save up for it on the bill.
