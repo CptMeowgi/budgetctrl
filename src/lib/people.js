@@ -39,6 +39,15 @@ export function addPerson(data, name, newId) {
   const clean = String(name ?? "").trim();
   if (!clean) return data;
   const everyone = data?.people || [];
+  // Someone removed and then added again is the same person: their old entries
+  // and cards are theirs again, with their colour, instead of a second one of
+  // the same name. Only removed people count, so two current people may share
+  // a name.
+  const returning = everyone.find((p) => p.removed && String(p.name ?? "").trim().toLowerCase() === clean.toLowerCase());
+  if (returning) {
+    const { removed: _removed, ...back } = returning;
+    return { ...data, people: everyone.map((p) => (p === returning ? { ...back, name: clean } : p)) };
+  }
   // A removed person's old entries still show their colour, so it isn't handed
   // to someone new while another is free. Only when all six are taken is the
   // colour of someone who left reused, and only then does the list start over.
@@ -68,6 +77,14 @@ const belongsTo = (account, paidBy) => !paidBy || !account.owner || account.owne
 // and none that are closed. With nobody picked, every open account.
 export function waysToPay(data, paidBy) {
   return (data?.accounts || []).filter((a) => !a.closed && belongsTo(a, paidBy));
+}
+
+// Who to mark as having paid when only an account is chosen: its owner, a
+// person or JOINT. Nobody for an account that has none, or whose owner is no
+// longer in the budget at all. A removed owner still counts, as in cleanPayer.
+export function payerForAccount(data, accountId) {
+  const owner = accountId ? (data?.accounts || []).find((a) => a.id === accountId)?.owner : null;
+  return owner && (owner === JOINT || personById(data, owner)) ? owner : undefined;
 }
 
 // Tidy a payer as chosen in a form into what is stored: empty values go, and

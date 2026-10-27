@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   JOINT, PERSON_COLORS, LAST_PAYER_KEY,
   peopleOf, isShared, addPerson, renamePerson, removePerson, personById,
-  waysToPay, cleanPayer, payerParts, spendingByPerson, payerRows, anyoneNamed, readLastPayer, rememberPayer,
+  waysToPay, cleanPayer, payerForAccount, payerParts, spendingByPerson, payerRows, anyoneNamed, readLastPayer, rememberPayer,
 } from "./people.js";
 
 // Paid on the 1st; today is 20 Oct 2026.
@@ -89,6 +89,39 @@ describe("people", () => {
     expect(d.people[PERSON_COLORS.length + 1].color).toBe(PERSON_COLORS[1]);
   });
 
+  it("brings back a removed person added again, with the same id and colour", () => {
+    // Tom left with a card of his and an old entry; adding "tom" again is him, not a second Tom.
+    const entry = { id: "e9", name: "Fuel", amount: 40, date: "2026-10-06", category: "Transport", paidBy: "t" };
+    const gone = removePerson({ ...base(), months: { "2026-10": emptyMonth({ expenses: [entry] }) } }, "t");
+    const newId = vi.fn(() => "t2");
+    const d = addPerson(gone, " tom ", newId);
+    expect(newId).not.toHaveBeenCalled();
+    expect(d.people).toHaveLength(2);
+    expect(personById(d, "t")).toEqual({ id: "t", name: "tom", color: tom.color });
+    expect(peopleOf(d).map((p) => p.id)).toEqual(["a", "t"]);
+    expect(waysToPay(d, "t").map((x) => x.id)).toEqual(["debit", "cash"]);
+    const byPayer = spendingByPerson(d.months["2026-10"], "2026-10", TODAY, 1);
+    expect(payerRows(d, byPayer)).toEqual([{ payer: "t", amount: 40 }]);
+    expect(isShared(d)).toBe(true);
+  });
+
+  it("brings back a removed person under the spelling just typed", () => {
+    const d = addPerson(removePerson(base(), "t"), "TOM", () => "x");
+    expect(personById(d, "t").name).toBe("TOM");
+    expect(personById(d, "t").removed).toBeUndefined();
+    expect("removed" in personById(d, "t")).toBe(false);
+  });
+
+  it("still adds someone new when the name matches a current person", () => {
+    const d = addPerson(base(), "tom", () => "t2");
+    expect(peopleOf(d).map((p) => p.id)).toEqual(["a", "t", "t2"]);
+  });
+
+  it("adds someone new when the name matches nobody removed", () => {
+    const d = addPerson(removePerson(base(), "t"), "Tomas", () => "t2");
+    expect(d.people.map((p) => [p.id, !!p.removed])).toEqual([["a", false], ["t", true], ["t2", false]]);
+  });
+
   it("renames a person, trimmed, and ignores an empty name", () => {
     const d = renamePerson(base(), "a", "  Ania ");
     expect(personById(d, "a").name).toBe("Ania");
@@ -166,6 +199,34 @@ describe("cleanPayer", () => {
   it("keeps nothing it wasn't given", () => {
     expect(cleanPayer({}, base())).toEqual({});
     expect(cleanPayer({ paidBy: undefined, paidWith: undefined }, base())).toEqual({});
+  });
+});
+
+describe("payerForAccount", () => {
+  it("is the owner of an account that has one", () => {
+    expect(payerForAccount(base(), "visa")).toBe("a");
+    expect(payerForAccount(base(), "debit")).toBe("t");
+  });
+
+  it("is Joint for a joint account", () => {
+    expect(payerForAccount(base(), "joint")).toBe(JOINT);
+  });
+
+  it("is nothing for an account nobody owns, or one that is gone", () => {
+    expect(payerForAccount(base(), "cash")).toBeUndefined();
+    expect(payerForAccount(base(), "ghost")).toBeUndefined();
+    expect(payerForAccount(base(), "")).toBeUndefined();
+    expect(payerForAccount(base(), undefined)).toBeUndefined();
+    expect(payerForAccount({}, "visa")).toBeUndefined();
+  });
+
+  it("is nothing when the owner is no longer anyone in the budget", () => {
+    const d = { ...base(), accounts: [{ id: "x", name: "X", owner: "ghost" }] };
+    expect(payerForAccount(d, "x")).toBeUndefined();
+  });
+
+  it("is a removed owner, as cleanPayer keeps one", () => {
+    expect(payerForAccount(removePerson(base(), "a"), "visa")).toBe("a");
   });
 });
 

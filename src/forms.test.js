@@ -120,10 +120,15 @@ describe("startingPayer, a new entry", () => {
   it("never starts on someone who has been removed", () => {
     memory({ paidBy: "t", paidWith: "savings" });
     const data = budget({ people: [{ id: "a", name: "Anna" }, { id: "t", name: "Tom", removed: true }, { id: "s", name: "Sam" }] });
-    const out = startingPayer(data, null);
-    expect(out.paidBy).toBeUndefined();
-    // An account that is still open and nobody's in particular is fine to keep.
-    expect(out.paidWith).toBe("savings");
+    // The account chosen with them goes too: the choice was theirs as a pair.
+    expect(startingPayer(data, null)).toEqual({});
+  });
+
+  it("drops the removed person's account with them, even an open one", () => {
+    // Tom's debit card is still open, but a new entry shouldn't start on it.
+    memory({ paidBy: "t", paidWith: "debit" });
+    const data = budget({ people: [{ id: "a", name: "Anna" }, { id: "t", name: "Tom", removed: true }, { id: "s", name: "Sam" }] });
+    expect(startingPayer(data, null)).toEqual({});
   });
 
   it("never starts on a closed account", () => {

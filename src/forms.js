@@ -20,10 +20,15 @@ export const NOTE_FIELD = (editing) => ({ key: "note", label: t("Note"), type: "
 // A new entry starts from the last payer chosen on this computer, but never on
 // someone since removed or an account since closed: those are for old entries,
 // and nothing new should be spent against them without the user choosing so.
+// The account chosen with a removed person goes with them: with no payer left
+// it would be offered as anyone's.
 export function startingPayer(data, entry) {
   if (entry) return cleanPayer({ paidBy: entry.paidBy, paidWith: entry.paidWith }, data);
   const last = readLastPayer();
-  if (personById(data, last.paidBy)?.removed) delete last.paidBy;
+  if (personById(data, last.paidBy)?.removed) {
+    delete last.paidBy;
+    delete last.paidWith;
+  }
   const out = cleanPayer(last, data);
   if ((data?.accounts || []).find((a) => a.id === out.paidWith)?.closed) delete out.paidWith;
   return out;
