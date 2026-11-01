@@ -522,6 +522,73 @@ describe("setting an own file aside, and bringing it back", () => {
     expect(disk.files.get("own-a.json")).toBe(PLAIN);
   });
 
+  describe("when the good mirror can't be written back over the damaged file", () => {
+    const cut = PLAIN.slice(0, 25);
+    const blockOwnWrites = () => {
+      disk.state.beforeWrite = (path) => { if (path === "own-a.json") throw new Error("os error 32: in use by another process"); };
+    };
+    const removed = () => filesIn("").filter((f) => f.includes("-removed-"));
+
+    beforeEach(() => {
+      disk.put("own-a.json", cut);
+      ls.setItem(OWN_A_KEY, PLAIN);
+      blockOwnWrites();
+    });
+
+    it("still sets aside the good budget, not the damaged text, and clears the file and the mirror", async () => {
+      expect(await storage.setAsideOwnFile("a")).toBe("own-a-removed-20261027-1432.json");
+      expect(disk.files.get("own-a-removed-20261027-1432.json")).toBe(PLAIN);
+      expect(disk.files.get("own-a-unreadable-20261027-1432.json")).toBe(cut);
+      expect(disk.files.has("own-a.json")).toBe(false);
+      expect(ls.getItem(OWN_A_KEY)).toBeNull();
+      disk.state.beforeWrite = null;
+      expect(await storage.restoreSetAsideOwnFile("a")).toBe(true);
+      expect(disk.files.get("own-a.json")).toBe(PLAIN);
+    });
+
+    it("leaves the mirror, with the good budget kept in the set-aside copy, when the file can't be removed", async () => {
+      disk.state.failRemove.add("own-a.json");
+      await expect(storage.setAsideOwnFile("a")).rejects.toThrow("locked");
+      expect(disk.files.get("own-a-removed-20261027-1432.json")).toBe(PLAIN);
+      expect(ls.getItem(OWN_A_KEY)).toBe(PLAIN);
+      expect(disk.files.get("own-a.json")).toBe(cut);
+    });
+
+    it("finishes when tried again, and the newest set-aside copy is the good one", async () => {
+      disk.state.failRemove.add("own-a.json");
+      await expect(storage.setAsideOwnFile("a")).rejects.toThrow();
+      disk.state.failRemove.clear();
+      disk.state.beforeWrite = null;
+      await storage.setAsideOwnFile("a");
+      expect(disk.files.has("own-a.json")).toBe(false);
+      expect(ls.getItem(OWN_A_KEY)).toBeNull();
+      expect(removed()).toEqual(["own-a-removed-20261027-1432.json", "own-a-removed-20261027-1433.json"]);
+      expect(await storage.restoreSetAsideOwnFile("a")).toBe(true);
+      expect(disk.files.get("own-a.json")).toBe(PLAIN);
+    });
+  });
+
+  it("sets aside a budget that only the mirror holds even when it can't be written back first", async () => {
+    ls.setItem(OWN_A_KEY, PLAIN);
+    disk.state.beforeWrite = (path) => { if (path === "own-a.json") throw new Error("os error 32: in use by another process"); };
+    expect(await storage.setAsideOwnFile("a")).toBe("own-a-removed-20261027-1432.json");
+    expect(disk.files.get("own-a-removed-20261027-1432.json")).toBe(PLAIN);
+    expect(ls.getItem(OWN_A_KEY)).toBeNull();
+    expect(disk.files.has("own-a.json")).toBe(false);
+  });
+
+  it("clears the mirror after the file, not before, when the file holds something else", async () => {
+    disk.put("own-a.json", PLAIN.slice(0, 25));
+    ls.setItem(OWN_A_KEY, PLAIN);
+    disk.state.beforeWrite = (path) => { if (path === "own-a.json") throw new Error("os error 32: in use by another process"); };
+    const removeItem = ls.removeItem;
+    ls.removeItem = (k) => { disk.calls.push(["mirror-remove", k]); removeItem(k); };
+    disk.calls.length = 0;
+    await storage.setAsideOwnFile("a");
+    const order = disk.calls.filter(([op]) => op === "remove" || op === "mirror-remove").map(([op, path]) => `${op} ${path}`);
+    expect(order).toEqual(["remove own-a.json", `mirror-remove ${OWN_A_KEY}`]);
+  });
+
   it("touches nothing when a damaged file can't be kept, so a good mirror is not cleared", async () => {
     const cut = PLAIN.slice(0, 25);
     disk.put("own-a.json", cut);
