@@ -1,5 +1,6 @@
 import { isTauri } from "./platform.js";
 import { backupName, isBudgetText, serial } from "./lib/backups.js";
+import { STORAGE_KEY } from "./model.js";
 /* ---- Storage -------------------------------------------------------------
    Everything lives in one JSON document. In the browser that is localStorage;
    in the desktop app it is a real file under the OS app-data directory.
@@ -109,15 +110,17 @@ export class BudgetUnreadableError extends Error {
 // The app-data directory does not exist on a clean machine and writeTextFile
 // will not create a missing parent, so the very first save would fail. Creating
 // the backups folder recursively makes both it and its parent.
-async function ensureStoreDir() {
+async function ensureDir(path) {
   const { fs, base } = await fsApi();
   try {
-    await fs.mkdir(BACKUP_DIR, { baseDir: base, recursive: true });
+    await fs.mkdir(path, { baseDir: base, recursive: true });
   } catch (err) {
     // "already exists" is fine; anything else is a real fault worth seeing.
     if (!/exist/i.test(String(err))) noteStorageFault("mkdir", err);
   }
 }
+
+const ensureStoreDir = () => ensureDir(BACKUP_DIR);
 
 async function writeStoreFile(text) {
   const { fs, base } = await fsApi();
@@ -173,13 +176,14 @@ export async function readBackup(name) {
   return await fs.readTextFile(`${BACKUP_DIR}/${name}`, { baseDir: base });
 }
 
+const dayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
 // One backup per calendar day, plus an explicit one before anything
 // destructive. Writing one on every keystroke would be noise. It is taken
 // before the day's first change is written, so it holds the budget as the
 // last session left it - not the state after that first change.
 async function maybeDailyBackup() {
-  const d = new Date();
-  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const today = dayKey(new Date());
   let last = null;
   try { last = localStorage.getItem(LAST_BACKUP_KEY); } catch { /* unavailable */ }
   if (last === today) return;
@@ -244,3 +248,361 @@ if (!window.storage) {
     },
   };
 }
+
+/* ---- Own budget files -----------------------------------------------------
+   A person's own budget is a file of its own, own-<personId>.json, beside the
+   budget file. It is kept as carefully as the budget file: the unreadable-file
+   protection, a daily backup, a localStorage mirror, and saves that go one at
+   a time. Its backups sit in a folder per person (backups/own-<personId>/), so
+   pruning the budget file's backups never counts or removes them. Only these
+   functions, and budgetStore.js through them, read or write those files.
+
+   The app's file permissions have no rename, so every "move" here is a write,
+   checked by reading it back, and then a remove. A crash between the two
+   leaves the data in both places rather than in neither. */
+
+// Lowercase only: own-A.json and own-a.json are one file on Windows and two on
+// Linux, so a second spelling of an id could share someone else's file.
+const PERSON_ID = /^[a-z0-9]{1,40}$/;
+const OWN_FILE = /^own-([a-z0-9]{1,40})\.json$/;
+// A backup is named by backupName() and handed back by a listing, so anything
+// with a slash or a ".." in it is not one of ours.
+const BACKUP_FILE = /^[\w.-]+\.json$/;
+
+export function validPersonId(id) {
+  return typeof id === "string" && PERSON_ID.test(id);
+}
+
+export function ownFileName(pid) {
+  if (!validPersonId(pid)) throw new Error("That is not an id an own budget file can be named after");
+  return `own-${pid}.json`;
+}
+
+const ownDir = (pid) => `${BACKUP_DIR}/own-${pid}`;
+
+const stamp = (at) => {
+  const two = (n) => String(n).padStart(2, "0");
+  return `${at.getFullYear()}${two(at.getMonth() + 1)}${two(at.getDate())}-${two(at.getHours())}${two(at.getMinutes())}`;
+};
+// own-a-removed-20261027-1432.json: the minute it was set aside, so they sort
+// in the order they were made.
+const ownCopyName = (pid, why, at) => `own-${pid}-${why}-${stamp(at)}.json`;
+
+// localStorage holds each own file's mirror in the app, and the file itself in
+// the browser: own-a.json is the key budget-app-data:own-a.
+const keyOf = (file) => `${STORAGE_KEY}:${file.replace(/\.json$/, "")}`;
+const mirrorGet = (file) => { try { return localStorage.getItem(keyOf(file)); } catch { return null; } };
+const mirrorSet = (file, text) => { try { localStorage.setItem(keyOf(file), text); } catch { /* quota */ } };
+const mirrorRemove = (file) => { try { localStorage.removeItem(keyOf(file)); } catch { /* unavailable */ } };
+
+// Read back rather than trust the call, as writeStoreFile does.
+async function writeVerified(path, text) {
+  const { fs, base } = await fsApi();
+  await fs.writeTextFile(path, text, { baseDir: base });
+  let back = null;
+  try { back = await fs.readTextFile(path, { baseDir: base }); } catch { /* reported below */ }
+  if (back !== text) throw new Error(`${path} does not hold what was written to it`);
+}
+
+async function removeIfThere(path) {
+  const { fs, base } = await fsApi();
+  if (await fs.exists(path, { baseDir: base })) await fs.remove(path, { baseDir: base });
+}
+
+// The files beside the budget file: real files in the app, localStorage keys
+// in the browser.
+const appFiles = isTauri
+  ? {
+      async list() {
+        const { fs, base } = await fsApi();
+        return (await fs.readDir("", { baseDir: base })).filter((e) => e.isFile).map((e) => e.name);
+      },
+      async exists(file) {
+        const { fs, base } = await fsApi();
+        return fs.exists(file, { baseDir: base });
+      },
+      async read(file) {
+        const { fs, base } = await fsApi();
+        return fs.readTextFile(file, { baseDir: base });
+      },
+      async write(file, text) {
+        await ensureStoreDir();
+        await writeVerified(file, text);
+      },
+      async remove(file) {
+        const { fs, base } = await fsApi();
+        await fs.remove(file, { baseDir: base });
+      },
+    }
+  : {
+      async list() {
+        const prefix = `${STORAGE_KEY}:`;
+        const keys = Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i));
+        return keys.filter((k) => k && k.startsWith(prefix)).map((k) => `${k.slice(prefix.length)}.json`);
+      },
+      async exists(file) { return localStorage.getItem(keyOf(file)) !== null; },
+      async read(file) { return localStorage.getItem(keyOf(file)); },
+      async write(file, text) { localStorage.setItem(keyOf(file), text); },
+      async remove(file) { localStorage.removeItem(keyOf(file)); },
+    };
+
+// Every job on one person's files runs after the one before it, whether it
+// reads, saves or moves them, so a read always sees the saves asked for first.
+const ownQueues = new Map();
+function inOrder(pid, job) {
+  ownFileName(pid);
+  if (!ownQueues.has(pid)) ownQueues.set(pid, serial((fn) => fn()));
+  return ownQueues.get(pid)(job);
+}
+
+// As readStoreFile: { status: "missing" }, { status: "ok", text } or
+// { status: "unreadable", text }.
+async function readOwnState(file) {
+  if (!(await appFiles.exists(file))) return { status: "missing" };
+  const text = await appFiles.read(file);
+  return isBudgetText(text) ? { status: "ok", text } : { status: "unreadable", text: text || "" };
+}
+
+// Also says where the damaged copy was kept: { status: "unreadable", text,
+// keptAs }, with keptAs null if it couldn't be.
+async function readOwnNow(pid) {
+  const file = ownFileName(pid);
+  let state;
+  try {
+    state = await readOwnState(file);
+  } catch (err) {
+    // The file may be fine and just out of reach. Saying "missing" would let a
+    // fresh budget be started over it, so it is unreadable, with no text.
+    noteStorageFault("read", err);
+    const kept = mirrorGet(file);
+    return isBudgetText(kept) ? { status: "ok", text: kept } : { status: "unreadable", text: "", keptAs: null };
+  }
+  if (state.status === "ok") return state;
+  let keptAs = null;
+  if (state.status === "unreadable") {
+    keptAs = ownCopyName(pid, "unreadable", new Date());
+    try {
+      await appFiles.write(keptAs, state.text);
+    } catch (err) {
+      noteStorageFault("set aside", err);
+      keptAs = null;
+    }
+  }
+  // The file is missing or damaged: adopt the copy localStorage mirrors and
+  // write it back. (In the browser the mirror is the file, so it never
+  // qualifies here.)
+  const mirror = mirrorGet(file);
+  if (isBudgetText(mirror)) {
+    try { await appFiles.write(file, mirror); } catch { /* retried next save */ }
+    return { status: "ok", text: mirror };
+  }
+  return state.status === "unreadable" ? { ...state, keptAs } : state;
+}
+
+export async function readOwnFile(pid) {
+  return inOrder(pid, () => readOwnNow(pid));
+}
+
+async function ownBackupNames(pid) {
+  const { fs, base } = await fsApi();
+  if (!(await fs.exists(ownDir(pid), { baseDir: base }))) return [];
+  const names = new Set();
+  for (const e of await fs.readDir(ownDir(pid), { baseDir: base })) {
+    if (!e.isFile) continue;
+    if (e.name.endsWith(".json")) names.add(e.name);
+    // replaceOwnBackup can be stopped with only the new copy left, still named .new.
+    else if (e.name.endsWith(".json.new")) names.add(e.name.slice(0, -".new".length));
+  }
+  return [...names].sort().reverse();
+}
+
+async function pruneOwnBackups(pid) {
+  try {
+    for (const name of (await ownBackupNames(pid)).slice(KEEP_BACKUPS)) {
+      for (const path of [`${ownDir(pid)}/${name}`, `${ownDir(pid)}/${name}.new`]) {
+        try { await removeIfThere(path); } catch { /* best effort */ }
+      }
+    }
+  } catch { /* pruning is housekeeping, never fatal */ }
+}
+
+// As maybeDailyBackup, on this person's own day, so the budget file's backup
+// being done today never stands in for theirs.
+async function maybeDailyOwnBackup(pid) {
+  const today = dayKey(new Date());
+  const marker = `${LAST_BACKUP_KEY}:own-${pid}`;
+  let last = null;
+  try { last = localStorage.getItem(marker); } catch { /* unavailable */ }
+  if (last === today) return;
+  try {
+    const current = await readOwnState(ownFileName(pid));
+    if (current.status === "ok") {
+      await ensureDir(ownDir(pid));
+      await writeVerified(`${ownDir(pid)}/${backupName(new Date(), "daily")}`, current.text);
+      await pruneOwnBackups(pid);
+    }
+    try { localStorage.setItem(marker, today); } catch { /* unavailable */ }
+  } catch { /* a failed backup must never block a save */ }
+}
+
+// Unlike the budget file's save, a failed write is thrown after it is noted:
+// moving an entry between files must not take it out of the first until the
+// second really has it. The mirror still gets the text.
+export async function writeOwnFile(pid, text) {
+  return inOrder(pid, async () => {
+    const file = ownFileName(pid);
+    if (!isTauri) return appFiles.write(file, text);
+    try {
+      await maybeDailyOwnBackup(pid);
+      await appFiles.write(file, text);
+      mirrorSet(file, text);
+    } catch (err) {
+      noteStorageFault("write", err);
+      mirrorSet(file, text);
+      throw err;
+    }
+  });
+}
+
+// Takes a person's file out of use without destroying it. Resolves to the
+// copy's name, or null when there was no file.
+export async function setAsideOwnFile(pid) {
+  return inOrder(pid, async () => {
+    const file = ownFileName(pid);
+    if (!(await appFiles.exists(file))) return null;
+    const text = await appFiles.read(file);
+    const keptAs = ownCopyName(pid, "removed", new Date());
+    await appFiles.write(keptAs, text);
+    await appFiles.remove(file);
+    // Left behind, the mirror would bring the budget back as soon as anything
+    // read the file and found it missing.
+    mirrorRemove(file);
+    return keptAs;
+  });
+}
+
+// Brings the newest set-aside copy back as the person's file. False when there
+// is none, or when a file is already there: that is newer than any copy.
+export async function restoreSetAsideOwnFile(pid) {
+  return inOrder(pid, async () => {
+    const file = ownFileName(pid);
+    if (await appFiles.exists(file)) return false;
+    const aside = new RegExp(`^own-${pid}-removed-\\d{8}-\\d{4}\\.json$`);
+    const newest = (await appFiles.list()).filter((f) => aside.test(f)).sort().pop();
+    if (!newest) return false;
+    const text = await appFiles.read(newest);
+    await appFiles.write(file, text);
+    mirrorSet(file, text);
+    await appFiles.remove(newest);
+    return true;
+  });
+}
+
+// The person ids that have an own-<id>.json. Set-aside and unreadable copies,
+// conflict copies and anything else are not own files.
+export async function listOwnFiles() {
+  try {
+    const ids = new Set();
+    for (const f of await appFiles.list()) {
+      const m = OWN_FILE.exec(f);
+      if (m) ids.add(m[1]);
+    }
+    return [...ids].sort();
+  } catch {
+    return [];
+  }
+}
+
+function ownBackupPath(pid, name) {
+  ownFileName(pid);
+  if (typeof name !== "string" || !BACKUP_FILE.test(name) || name.includes("..")) throw new Error("That is not the name of a backup");
+  return `${ownDir(pid)}/${name}`;
+}
+
+// There are no backups outside the app, as with the budget file's.
+export async function listOwnBackups(pid) {
+  return inOrder(pid, async () => {
+    if (!isTauri) return [];
+    try { return await ownBackupNames(pid); } catch { return []; }
+  });
+}
+
+export async function readOwnBackup(pid, name) {
+  return inOrder(pid, async () => {
+    const path = ownBackupPath(pid, name);
+    if (!isTauri) throw new Error("There are no backups outside the app");
+    const { fs, base } = await fsApi();
+    // The backup itself, unless a stop in the middle of replacing it left it
+    // cut short and the .new copy whole (or left only the .new copy).
+    let damaged = null;
+    for (const candidate of [path, `${path}.new`]) {
+      if (!(await fs.exists(candidate, { baseDir: base }))) continue;
+      const text = await fs.readTextFile(candidate, { baseDir: base });
+      if (isBudgetText(text)) return text;
+      damaged ??= text;
+    }
+    if (damaged !== null) return damaged;
+    throw new Error("There is no such backup");
+  });
+}
+
+// Writes name.new, removes name, writes name, removes name.new. Stopped at any
+// point, the whole new text is somewhere: listing and reading know to look for
+// the .new copy.
+export async function replaceOwnBackup(pid, name, text) {
+  return inOrder(pid, async () => {
+    const path = ownBackupPath(pid, name);
+    if (!isTauri) return;
+    await writeVerified(`${path}.new`, text);
+    await removeIfThere(path);
+    await writeVerified(path, text);
+    await removeIfThere(`${path}.new`);
+  });
+}
+
+// For keepAsMine: the budget file's backups hold what is now the person's, so
+// they go into their folder, each copied and checked before it is removed. One
+// that can't be moved stays where it was (an existing backup of theirs is never
+// replaced), and the rest still go; the call then says some were left.
+export async function moveHouseholdBackupsTo(pid) {
+  return inOrder(pid, async () => {
+    if (!isTauri) return;
+    const { fs, base } = await fsApi();
+    if (!(await fs.exists(BACKUP_DIR, { baseDir: base }))) return;
+    const names = (await fs.readDir(BACKUP_DIR, { baseDir: base }))
+      .filter((e) => e.isFile && e.name.endsWith(".json"))
+      .map((e) => e.name);
+    if (!names.length) return;
+    await ensureDir(ownDir(pid));
+    let left = 0;
+    for (const name of names) {
+      try {
+        const to = `${ownDir(pid)}/${name}`;
+        if (await fs.exists(to, { baseDir: base })) throw new Error(`${to} is already there`);
+        await writeVerified(to, await fs.readTextFile(`${BACKUP_DIR}/${name}`, { baseDir: base }));
+        await fs.remove(`${BACKUP_DIR}/${name}`, { baseDir: base });
+      } catch (err) {
+        left += 1;
+        noteStorageFault("move backup", err);
+      }
+    }
+    if (left) throw new Error(`${left} of the budget's backups could not be moved`);
+  });
+}
+
+// What budgetStore.js is given to reach the disk. Private due dates are kept
+// on this computer by a later task; until then the store's calls do nothing.
+export const ownIo = {
+  readOwnFile,
+  writeOwnFile,
+  setAsideOwnFile,
+  restoreSetAsideOwnFile,
+  listOwnBackups,
+  readOwnBackup,
+  replaceOwnBackup,
+  moveHouseholdBackupsTo,
+  listOwnFiles,
+  writeHousehold: (text) => window.storage.set(STORAGE_KEY, text),
+  rememberPrivateDue: () => {},
+  forgetPrivateDue: () => {},
+};
