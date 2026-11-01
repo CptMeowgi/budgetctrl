@@ -508,6 +508,12 @@ export async function writeOwnFile(pid, text) {
 export async function setAsideOwnFile(pid) {
   return inOrder(pid, async () => {
     const file = ownFileName(pid);
+    // Read it as readOwnFile does first: a damaged file is copied to
+    // -unreadable- and a good mirror is adopted. Otherwise a damaged file with a
+    // good mirror would be set aside as the damaged text and the mirror, the
+    // only whole copy, cleared. If the damage can't be kept, nothing is touched.
+    const now = await readOwnNow(pid);
+    if (now.status === "unreadable" && now.keptAs === null) throw new Error("The damaged file could not be kept, so it was left where it is");
     const onDisk = await appFiles.exists(file);
     // With the file gone, the mirror may be all that is left of the budget.
     const text = onDisk ? await appFiles.read(file) : mirrorGet(file);

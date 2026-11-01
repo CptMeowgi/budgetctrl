@@ -498,12 +498,48 @@ describe("setting an own file aside, and bringing it back", () => {
     expect(disk.files.get("own-a.json")).toBe(PLAIN);
   });
 
-  it("sets aside a damaged file as it is", async () => {
+  it("sets aside a damaged file as it is, and keeps its -unreadable- copy too", async () => {
     const cut = PLAIN.slice(0, 25);
     disk.put("own-a.json", cut);
     await storage.setAsideOwnFile("a");
     expect(disk.files.get("own-a-removed-20261027-1432.json")).toBe(cut);
+    expect(disk.files.get("own-a-unreadable-20261027-1432.json")).toBe(cut);
     expect(disk.files.has("own-a.json")).toBe(false);
+  });
+
+  it("sets aside the good mirror, not the damaged file, and keeps the damaged text as -unreadable-", async () => {
+    // What removePerson meets: it never reads the file first.
+    const cut = PLAIN.slice(0, 25);
+    disk.put("own-a.json", cut);
+    ls.setItem(OWN_A_KEY, PLAIN);
+    expect(await storage.setAsideOwnFile("a")).toBe("own-a-removed-20261027-1432.json");
+    expect(disk.files.get("own-a-removed-20261027-1432.json")).toBe(PLAIN);
+    expect(disk.files.get("own-a-unreadable-20261027-1432.json")).toBe(cut);
+    expect(disk.files.has("own-a.json")).toBe(false);
+    expect(ls.getItem(OWN_A_KEY)).toBeNull();
+    // And the person gets the whole budget back, not the damaged one.
+    expect(await storage.restoreSetAsideOwnFile("a")).toBe(true);
+    expect(disk.files.get("own-a.json")).toBe(PLAIN);
+  });
+
+  it("touches nothing when a damaged file can't be kept, so a good mirror is not cleared", async () => {
+    const cut = PLAIN.slice(0, 25);
+    disk.put("own-a.json", cut);
+    ls.setItem(OWN_A_KEY, PLAIN);
+    disk.state.mangle = (path, text) => (path.includes("-unreadable-") ? "" : text);
+    await expect(storage.setAsideOwnFile("a")).rejects.toThrow("could not be kept");
+    expect(disk.files.get("own-a.json")).toBe(cut);
+    expect(ls.getItem(OWN_A_KEY)).toBe(PLAIN);
+    expect(filesIn("").filter((f) => f.includes("-removed-"))).toEqual([]);
+  });
+
+  it("touches nothing when the file can't be read at all", async () => {
+    disk.put("own-a.json", PLAIN);
+    disk.state.failRead.add("own-a.json");
+    await expect(storage.setAsideOwnFile("a")).rejects.toThrow();
+    expect(disk.files.get("own-a.json")).toBe(PLAIN);
+    expect(ls.map.size).toBe(0);
+    expect(filesIn("").filter((f) => f.includes("-removed-"))).toEqual([]);
   });
 
   it("does nothing, and says so, when there is no file", async () => {
