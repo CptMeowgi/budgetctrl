@@ -115,8 +115,10 @@ function memoryDisk() {
       files.delete(newest);
       return true;
     },
+    // As storage.js, a listing that fails gives no names rather than rejecting.
     async listOwnBackups(pid) {
       ownFile(pid);
+      if (failing.has("listOwnBackups")) return [];
       return [...folder(pid).keys()].sort().reverse();
     },
     async readOwnBackup(pid, name) {
@@ -469,9 +471,9 @@ describe("routing by the stamp", () => {
   it("throws for a doc with no stamp", async () => {
     const { store, mine } = await annaWithMine();
     const { budgetOf: _stamp, ...bare } = mine;
-    await expect(store.save(bare)).rejects.toThrow();
-    await expect(store.save(null)).rejects.toThrow();
-    await expect(store.saveBoth(bare, store.household())).rejects.toThrow();
+    await expect(store.save(bare)).rejects.toThrow("must say whose it is");
+    await expect(store.save(null)).rejects.toThrow("must say whose it is");
+    await expect(store.saveBoth(bare, store.household())).rejects.toThrow("must say whose it is");
   });
 
   it("refuses another person's doc once the profile has switched", async () => {
@@ -491,18 +493,19 @@ describe("routing by the stamp", () => {
     expect(disk.files.has("own-t.json")).toBe(false);
   });
 
-  it("never opens a profile for a person whose id could pass for the household", async () => {
+  it("never opens a profile for a person whose id could pass for the household, or name another file", async () => {
     const disk = memoryDisk();
-    const store = await open(household([anna, { id: HOUSEHOLD, name: "Mallory", color: "#ec4899" }]), disk);
-    await expect(store.openProfile(HOUSEHOLD)).rejects.toThrow();
-    await expect(store.openProfile("../x")).rejects.toThrow();
+    const store = await open(household([anna, { id: HOUSEHOLD, name: "Mallory", color: "#ec4899" }, { id: "../x", name: "Eve", color: "#0ea5e9" }]), disk);
+    await expect(store.openProfile(HOUSEHOLD)).rejects.toThrow("can't have a profile");
+    await expect(store.openProfile("../x")).rejects.toThrow("can't have a profile");
+    expect(disk.log.filter(([op]) => op === "readOwnFile")).toEqual([]);
     expect(store.session()).toBeNull();
   });
 
   it("refuses to open someone who isn't a current person", async () => {
     const store = await open(household([anna, { ...tom, removed: true }]), memoryDisk());
-    await expect(store.openProfile("t")).rejects.toThrow();
-    await expect(store.openProfile("q")).rejects.toThrow();
+    await expect(store.openProfile("t")).rejects.toThrow("isn't in the household");
+    await expect(store.openProfile("q")).rejects.toThrow("isn't in the household");
   });
 });
 
@@ -557,7 +560,7 @@ describe("saving while Mine locks or the profile closes", () => {
 
   it("asks for an open profile before it opens Mine", async () => {
     const store = await open(household(), memoryDisk());
-    await expect(store.openMine()).rejects.toThrow();
+    await expect(store.openMine()).rejects.toThrow("No profile is open");
   });
 });
 
@@ -582,7 +585,7 @@ describe("saveBoth", () => {
     const to = withExpense(mine, "2026-10", { ...lidl, id: "moved", paidBy: undefined, paidWith: undefined });
     const from = withoutExpense(hh, "2026-10", lidl.id);
     disk.failing.add("writeHousehold");
-    await expect(store.saveBoth(to, from)).rejects.toThrow();
+    await expect(store.saveBoth(to, from)).rejects.toThrow("writeHousehold failed");
     // The target has it, and the source still has it.
     expect(disk.ownBudget("a").months["2026-10"].expenses.map((e) => e.name)).toContain("Lidl");
     expect(disk.household().months["2026-10"].expenses.map((e) => e.name)).toContain("Lidl");
@@ -595,7 +598,7 @@ describe("saveBoth", () => {
     const to = withExpense(hh, "2026-10", { ...canary, id: "moved", paidBy: "a" });
     const from = withoutExpense(mine, "2026-10", canary.id);
     disk.failing.add("writeOwnFile");
-    await expect(store.saveBoth(to, from)).rejects.toThrow();
+    await expect(store.saveBoth(to, from)).rejects.toThrow("writeOwnFile failed");
     expect(disk.household().months["2026-10"].expenses.map((e) => e.name)).toContain("CANARY-7Q");
     expect(disk.ownBudget("a").months["2026-10"].expenses.map((e) => e.name)).toContain("CANARY-7Q");
   });
@@ -723,7 +726,7 @@ describe("a sealed Mine", () => {
     const { store } = await sealedAnna();
     await store.lockMine();
     expect(store.session()).toBe("a");
-    await expect(store.openMine()).rejects.toThrow();
+    await expect(store.openMine()).rejects.toThrow("Mine is locked");
     expect(await store.unlockMine("wrong horse")).toBe(false);
     expect(store.mineOpen()).toBe(false);
     expect(await store.unlockMine("correct horse")).toBe(true);
@@ -741,9 +744,9 @@ describe("a sealed Mine", () => {
 
   it("asks for a password only once, and only one long enough", async () => {
     const { store } = await sealedAnna();
-    await expect(store.setPassword("another one", makeRecoveryCode())).rejects.toThrow();
+    await expect(store.setPassword("another one", makeRecoveryCode())).rejects.toThrow("has a password already");
     const plain = await annaWithMine();
-    await expect(plain.store.setPassword("short", makeRecoveryCode())).rejects.toThrow();
+    await expect(plain.store.setPassword("short", makeRecoveryCode())).rejects.toThrow("too short");
     expect(await plain.store.ownStatus("a")).toBe("plain");
   });
 
@@ -783,7 +786,7 @@ describe("changing the password", () => {
     const { disk, store } = await sealedAnna();
     const [name] = await disk.io.listOwnBackups("a");
     const backup = JSON.parse(disk.folder("a").get(name));
-    await expect(store.changePassword("correct horse", "battery staple", { newKey: true })).rejects.toThrow();
+    await expect(store.changePassword("correct horse", "battery staple", { newKey: true })).rejects.toThrow("needs a new recovery code");
     const code = makeRecoveryCode();
     expect(await store.changePassword("correct horse", "battery staple", { newKey: true, code })).toBe(true);
 
@@ -903,14 +906,14 @@ describe("restoring Mine", () => {
     disk.folder("a").set("budget-ctrl-2026-10-01-0900-daily.json", plainOwn(annasMine()));
     const store = await open(household([{ ...anna, hasOwn: true }, tom]), disk);
     await store.openProfile("a");
-    await expect(store.restoreMine("budget-ctrl-2026-10-01-0900-daily.json")).rejects.toThrow();
+    await expect(store.restoreMine("budget-ctrl-2026-10-01-0900-daily.json")).rejects.toThrow("couldn't be kept");
     expect(disk.ownText("a")).toBe("{trunc");
 
     const sealed = await sealedAnna();
     await sealed.store.lockMine();
     const [name] = await sealed.disk.io.listOwnBackups("a");
     const before = sealed.disk.ownText("a");
-    await expect(sealed.store.restoreMine(name, "correct horse")).rejects.toThrow();
+    await expect(sealed.store.restoreMine(name, "correct horse")).rejects.toThrow("file opens");
     expect(sealed.disk.ownText("a")).toBe(before);
   });
 });
@@ -992,14 +995,14 @@ describe("a sealed file whose key unwraps but whose data won't open", () => {
     expect(err.reason).toBe("damaged");
     expect(err.keptAs).toBeNull();
     const [name] = await disk.io.listOwnBackups("a");
-    await expect(store.restoreMine(name, "correct horse")).rejects.toThrow();
-    await expect(store.startMineAgain()).rejects.toThrow();
+    await expect(store.restoreMine(name, "correct horse")).rejects.toThrow("couldn't be kept");
+    await expect(store.startMineAgain()).rejects.toThrow("couldn't be kept");
     expect(disk.ownText("a")).toBe(broken);
 
     const other = await brokenAnna();
     await caught(other.store.openProfile("a", "correct horse"));
     const changed = await breakSeal(other.disk);
-    await expect(other.store.startMineAgain()).rejects.toThrow();
+    await expect(other.store.startMineAgain()).rejects.toThrow("file opens");
     expect(other.disk.ownText("a")).toBe(changed);
   });
 });
@@ -1039,7 +1042,7 @@ describe("starting Mine again", () => {
     const err = await caught(store.openMine());
     expect(err.reason).toBe("damaged");
     expect(err.keptAs).toBeNull();
-    await expect(store.startMineAgain()).rejects.toThrow();
+    await expect(store.startMineAgain()).rejects.toThrow("couldn't be kept");
     expect(disk.ownText("a")).toBe("{locked");
     expect(disk.writes()).toEqual([]);
     expect(store.own()).toBeNull();
@@ -1047,7 +1050,7 @@ describe("starting Mine again", () => {
 
   it("refuses when Mine's file opens after all", async () => {
     const { disk, store } = await annaWithMine();
-    await expect(store.startMineAgain()).rejects.toThrow();
+    await expect(store.startMineAgain()).rejects.toThrow("file opens");
     expect(JSON.stringify(disk.ownBudget("a"))).toContain("CANARY-7Q");
   });
 });
@@ -1115,7 +1118,7 @@ describe("removing a person", () => {
     disk.files.set("own-t.json", plainOwn(annasMine()));
     disk.failing.add("setAsideOwnFile");
     const store = await open(withShares(), disk);
-    await expect(store.removePerson("t")).rejects.toThrow();
+    await expect(store.removePerson("t")).rejects.toThrow("setAsideOwnFile failed");
     expect(personIn(store.household(), "t").removed).toBeUndefined();
     expect(store.hasOwn("t")).toBe(true);
     expect(disk.writes()).toEqual([["setAsideOwnFile", "t"]]);
@@ -1126,7 +1129,7 @@ describe("removing a person", () => {
     disk.files.set("own-t.json", plainOwn({ ...annasMine(), note: "Tom's" }));
     const store = await open(withShares(), disk);
     disk.failing.add("writeHousehold");
-    await expect(store.removePerson("t")).rejects.toThrow();
+    await expect(store.removePerson("t")).rejects.toThrow("writeHousehold failed");
     expect(disk.ownBudget("t").note).toBe("Tom's");
     expect(store.hasOwn("t")).toBe(true);
     expect(personIn(store.household(), "t").removed).toBeUndefined();
@@ -1137,7 +1140,7 @@ describe("removing a person", () => {
     disk.files.set("own-t-removed-20260101-0900.json", plainOwn(annasMine()));
     const store = await open(household([anna, tom]), disk);
     disk.failing.add("writeHousehold");
-    await expect(store.removePerson("t")).rejects.toThrow();
+    await expect(store.removePerson("t")).rejects.toThrow("writeHousehold failed");
     expect(disk.files.has("own-t.json")).toBe(false);
   });
 });
@@ -1283,7 +1286,7 @@ describe("keep it as mine", () => {
     const disk = withBackups(raw);
     const store = await open(raw, disk);
     disk.failing.add("moveHouseholdBackupsTo");
-    await expect(store.keepAsMine("a")).rejects.toThrow();
+    await expect(store.keepAsMine("a")).rejects.toThrow("moveHouseholdBackupsTo failed");
     expect(JSON.stringify(disk.ownBudget("a"))).toContain("CANARY-7Q");
     expect(disk.writes().some(([op]) => op === "writeHousehold")).toBe(false);
     expect(JSON.stringify(store.household())).toContain("CANARY-7Q");
@@ -1301,7 +1304,7 @@ describe("keep it as mine", () => {
     const disk = withBackups(raw);
     const store = await open(raw, disk);
     disk.failing.add("ensureDailyBackup");
-    await expect(store.keepAsMine("a")).rejects.toThrow();
+    await expect(store.keepAsMine("a")).rejects.toThrow("ensureDailyBackup failed");
     expect(JSON.stringify(disk.ownBudget("a"))).toContain("CANARY-7Q");
     expect(disk.writes().map(([op]) => op)).toEqual(["writeOwnFile", "ensureDailyBackup"]);
     expect(disk.folder("").size).toBe(2);
@@ -1320,11 +1323,11 @@ describe("keep it as mine", () => {
     const disk = withBackups(raw);
     const store = await open(raw, disk);
     disk.failing.add("moveHouseholdBackupsTo");
-    await expect(store.keepAsMine("a")).rejects.toThrow();
+    await expect(store.keepAsMine("a")).rejects.toThrow("moveHouseholdBackupsTo failed");
     disk.failing.delete("moveHouseholdBackupsTo");
     await store.openProfile("a");
     await store.save({ ...(await store.openMine()), note: "edited since" });
-    await expect(store.keepAsMine("a")).rejects.toThrow();
+    await expect(store.keepAsMine("a")).rejects.toThrow("already has a budget of their own");
     expect(disk.ownBudget("a").note).toBe("edited since");
   });
 
@@ -1335,12 +1338,12 @@ describe("keep it as mine", () => {
     disk.failing.add("listOwnFiles");
     const store = await open(raw, disk);
     expect(store.hasOwn("a")).toBe(false);
-    await expect(store.keepAsMine("a")).rejects.toThrow();
+    await expect(store.keepAsMine("a")).rejects.toThrow("already has a budget of their own");
     expect(disk.ownBudget("a").note).toBe("hers already");
 
     const done = await open(onePerson(), withBackups(onePerson()));
     await done.keepAsMine("a");
-    await expect(done.keepAsMine("a")).rejects.toThrow();
+    await expect(done.keepAsMine("a")).rejects.toThrow("already has a budget of their own");
   });
 });
 
@@ -1363,5 +1366,220 @@ describe("ownFor", () => {
     const { store } = await annaWithMine();
     await store.closeProfile();
     expect(JSON.stringify(await store.ownFor("a"))).toContain("CANARY-7Q");
+  });
+});
+
+describe("a doc from before a privacy step", () => {
+  // One person with the canary in the household, and a backup of it.
+  function annaAlone() {
+    const raw = withExpense(household([anna]), "2026-10", { id: "e2", name: "CANARY-7Q", amount: 5, date: "2026-10-04", category: "Groceries", paidBy: "a" });
+    const disk = memoryDisk();
+    disk.folder("").set("budget-ctrl-2026-10-14-0900-daily.json", JSON.stringify(raw));
+    return { raw, disk };
+  }
+
+  it("is refused after Keep it as mine, so what is now hers never goes back into the household", async () => {
+    const { raw, disk } = annaAlone();
+    const store = await open(raw, disk);
+    const before = store.household();
+    const edited = { ...before, note: "edited before" };
+    await store.keepAsMine("a");
+    const written = disk.files.get(BUDGET_FILE);
+    expect(written).not.toContain("CANARY-7Q");
+
+    expect(await store.save(edited)).toBe(false);
+    expect(await store.save(before)).toBe(false);
+    expect(await store.saveBoth({ ...store.household(), note: "now" }, edited)).toBe(false);
+    expect(disk.files.get(BUDGET_FILE)).toBe(written);
+    expect(JSON.stringify(store.household())).not.toContain("CANARY-7Q");
+
+    // One built on the household as it is now saves as ever.
+    const now = { ...store.household(), note: "now" };
+    expect(await store.save(now)).toBe(now);
+    expect(disk.household().note).toBe("now");
+  });
+
+  it("is refused after removing someone, and doesn't bring them back as if added again", async () => {
+    const disk = memoryDisk();
+    disk.files.set("own-t.json", plainOwn({ ...annasMine(), note: "Tom's" }));
+    const store = await open(household([anna, { ...tom, hasOwn: true }]), disk);
+    const before = { ...store.household(), note: "edited before" };
+    await store.removePerson("t");
+    expect(await store.save(before)).toBe(false);
+    expect(personIn(disk.household(), "t").removed).toBe(true);
+    expect(store.hasOwn("t")).toBe(false);
+    expect(disk.files.has("own-t.json")).toBe(false);
+    expect(disk.log.some(([op]) => op === "restoreSetAsideOwnFile")).toBe(false);
+  });
+
+  it("refuses a Mine from before Keep it as mine wrote that person's file", async () => {
+    const { raw, disk } = annaAlone();
+    const store = await open(raw, disk);
+    await store.openProfile("a");
+    const fresh = await store.openMine();
+    await store.keepAsMine("a");
+    expect(store.mineOpen()).toBe(false);
+    const hers = await store.openMine();
+    expect(JSON.stringify(hers)).toContain("CANARY-7Q");
+    expect(await store.save({ ...fresh, note: "empty from before" })).toBe(false);
+    expect(JSON.stringify(disk.ownBudget("a"))).toContain("CANARY-7Q");
+    expect(await store.save({ ...hers, note: "hers" })).toBeTruthy();
+  });
+
+  it("refuses a Mine from before it was restored or started again", async () => {
+    const disk = memoryDisk();
+    disk.files.set("own-a.json", plainOwn(annasMine()));
+    disk.folder("a").set("budget-ctrl-2026-10-01-0900-daily.json", plainOwn({ ...annasMine(), note: "backup" }));
+    const store = await open(household([{ ...anna, hasOwn: true }, tom]), disk);
+    await store.openProfile("a");
+    const before = await store.openMine();
+    const restored = await store.restoreMine("budget-ctrl-2026-10-01-0900-daily.json");
+    expect(await store.save({ ...before, note: "from before" })).toBe(false);
+    expect(disk.ownBudget("a").note).toBe("backup");
+    expect(await store.save({ ...restored, note: "after" })).toBeTruthy();
+    expect(disk.ownBudget("a").note).toBe("after");
+
+    disk.files.set("own-a.json", "{trunc");
+    await store.lockMine();
+    await caught(store.openMine());
+    const again = await store.startMineAgain();
+    expect(await store.save({ ...restored, note: "from before again" })).toBe(false);
+    expect(await store.save({ ...again, note: "fresh" })).toBeTruthy();
+  });
+
+  it("takes a doc with no generation as a fresh replacement, and hands back one with it", async () => {
+    const { raw, disk } = annaAlone();
+    const store = await open(raw, disk);
+    await store.keepAsMine("a");
+    // As an import or a reset the app builds: stamped, with no generation.
+    const imported = { ...hydrate(migrate({ months: {}, currency: "PLN" })), budgetOf: HOUSEHOLD };
+    const stored = await store.save(imported);
+    expect(stored).not.toBe(imported);
+    expect(stored.budgetGen).toBe(store.household().budgetGen);
+    expect(personIn(stored, "a")).toMatchObject({ hasOwn: true });
+    expect(await store.save({ ...stored, note: "next edit" })).toBeTruthy();
+
+    // One that already keeps everyone comes back with a generation too, so
+    // what the app builds on it is protected by the next step.
+    const { budgetGen: _gen, ...whole } = store.household();
+    const kept = await store.save(whole);
+    expect(kept).not.toBe(whole);
+    expect(kept.budgetGen).toBe(store.household().budgetGen);
+    expect(store.household().budgetGen).toEqual(expect.any(Number));
+  });
+
+  it("never writes the generation into a file", async () => {
+    const { disk, store, mine } = await annaWithMine();
+    await store.save({ ...mine, note: "mine" });
+    await store.save({ ...store.household(), note: "ours" });
+    expect(typeof store.household().budgetGen).toBe("number");
+    expect(disk.files.get(BUDGET_FILE)).not.toContain("budgetGen");
+    expect(disk.ownText("a")).not.toContain("budgetGen");
+    expect(store.householdText()).not.toContain("budgetGen");
+  });
+});
+
+describe("store edges", () => {
+  it("sets the password even when the household won't take the first-save mark, and the next save writes it", async () => {
+    const disk = memoryDisk();
+    const store = await open(household(), disk);
+    await store.openProfile("t");
+    await store.openMine();
+    disk.failing.add("writeHousehold");
+    await store.setPassword("correct horse", makeRecoveryCode());
+    expect(await store.ownStatus("t")).toBe("sealed");
+    expect(store.hasOwn("t")).toBe(false);
+    disk.failing.delete("writeHousehold");
+    await store.save({ ...store.own(), n: 1 });
+    expect(store.hasOwn("t")).toBe(true);
+    expect(personIn(disk.household(), "t").hasOwn).toBe(true);
+  });
+
+  it("still rejects an ordinary first save of Mine whose mark the household won't take, and tries again", async () => {
+    const disk = memoryDisk();
+    const store = await open(household(), disk);
+    await store.openProfile("t");
+    const mine = await store.openMine();
+    disk.failing.add("writeHousehold");
+    await expect(store.save({ ...mine, n: 1 })).rejects.toThrow("writeHousehold failed");
+    expect(store.hasOwn("t")).toBe(false);
+    disk.failing.delete("writeHousehold");
+    await store.save({ ...mine, n: 2 });
+    expect(personIn(disk.household(), "t").hasOwn).toBe(true);
+  });
+
+  it("doesn't say every backup is sealed when the backups can't be listed", async () => {
+    const disk = memoryDisk();
+    disk.files.set("own-a.json", plainOwn(annasMine()));
+    disk.folder("a").set("budget-ctrl-2026-10-01-0900-daily.json", plainOwn(annasMine()));
+    const store = await open(household([{ ...anna, hasOwn: true }, tom]), disk);
+    await store.openProfile("a");
+    await store.openMine();
+    disk.failing.add("replaceOwnBackup:budget-ctrl-2026-10-01-0900-daily.json");
+    await store.setPassword("correct horse", makeRecoveryCode());
+    expect(store.plainBackupsLeft()).toBe(1);
+
+    disk.failing.delete("replaceOwnBackup:budget-ctrl-2026-10-01-0900-daily.json");
+    disk.failing.add("listOwnBackups");
+    await store.save({ ...store.own(), n: 1 });
+    expect(store.plainBackupsLeft()).toBe(1);
+    expect(disk.folder("a").get("budget-ctrl-2026-10-01-0900-daily.json")).toContain("CANARY-7Q");
+
+    disk.failing.delete("listOwnBackups");
+    await store.save({ ...store.own(), n: 2 });
+    expect(store.plainBackupsLeft()).toBe(0);
+  });
+
+  it("leaves the store's household as it was when Keep it as mine can't write the household, and can be tried again", async () => {
+    const raw = withExpense(household([anna]), "2026-10", { id: "e2", name: "CANARY-7Q", amount: 5, date: "2026-10-04", category: "Groceries", paidBy: "a" });
+    const disk = memoryDisk();
+    const store = await open(raw, disk);
+    const before = store.household();
+    disk.failing.add("writeHousehold");
+    await expect(store.keepAsMine("a")).rejects.toThrow("writeHousehold failed");
+    expect(store.household()).toBe(before);
+    expect(store.hasOwn("a")).toBe(false);
+    expect(JSON.stringify(disk.ownBudget("a"))).toContain("CANARY-7Q");
+
+    disk.failing.delete("writeHousehold");
+    await store.keepAsMine("a");
+    expect(disk.files.get(BUDGET_FILE)).not.toContain("CANARY-7Q");
+    expect(JSON.stringify(disk.ownBudget("a"))).toContain("CANARY-7Q");
+    expect(store.hasOwn("a")).toBe(true);
+  });
+
+  it("finishes removing someone when their due dates can't be forgotten", async () => {
+    const disk = memoryDisk();
+    disk.io.forgetPrivateDue = () => { throw new Error("localStorage is full"); };
+    const store = await open(household([anna, tom]), disk);
+    await store.removePerson("t");
+    expect(personIn(disk.household(), "t").removed).toBe(true);
+    expect(personIn(store.household(), "t").removed).toBe(true);
+  });
+
+  it("says a sealed Mine found damaged is damaged when it is asked for again, not locked", async () => {
+    const { disk, store } = await sealedAnna();
+    await store.closeProfile();
+    disk.files.set("own-a.json", JSON.stringify({ ...JSON.parse(disk.ownText("a")), sealed: await sealBudget(annasMine(), newBudgetKey()) }));
+    const first = await caught(store.openProfile("a", "correct horse"));
+    const again = await caught(store.openMine());
+    expect(again).toBeInstanceOf(OwnUnreadableError);
+    expect(again.reason).toBe("damaged");
+    expect(again.keptAs).toBe(first.keptAs);
+  });
+
+  it("lets a fault in the vault reject, never pass for a wrong password", async () => {
+    const { store, code } = await sealedAnna();
+    await store.closeProfile();
+    const real = globalThis.crypto;
+    vi.stubGlobal("crypto", { getRandomValues: (a) => real.getRandomValues(a) });
+    try {
+      await expect(store.openProfile("a", "correct horse")).rejects.toThrow(TypeError);
+      await expect(store.openWithRecovery("a", code)).rejects.toThrow(TypeError);
+      await expect(store.ownFor("a", "correct horse")).rejects.toThrow(TypeError);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(await store.openProfile("a", "correct horse")).toBe(true);
   });
 });

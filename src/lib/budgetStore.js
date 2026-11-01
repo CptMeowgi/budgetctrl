@@ -17,6 +17,15 @@
 // a budget that isn't open (someone else's, or Mine while it is locked or the
 // profile is closed) is refused, and nothing is written.
 //
+// Beside the stamp each doc carries `budgetGen`, its budget's generation, also
+// only in memory. The store moves a budget to a new generation when it
+// replaces it: "Keep it as mine", removing a person, restoring Mine, starting
+// Mine again. A doc from an older generation is refused, so one the app built
+// before such a step can't write it back: not the entries that are now
+// someone's own, nor a removed person. Edits spread the doc and keep its
+// generation. A doc with none at all is a fresh replacement the app built on
+// purpose (a reset, an import, a restore) and is taken as it is.
+//
 // The household holds nothing from an own budget but `people[i].hasOwn`. The
 // marker says a file exists, so a missing or damaged own file gets the
 // recovery choices, never a fresh empty Mine that the first save would write
@@ -70,10 +79,9 @@ const without = (obj, ...keys) => {
   for (const k of keys) delete out[k];
   return out;
 };
-const stamped = (doc, id) => ({ ...doc, budgetOf: id });
-// What a file holds: no stamp, and no `own`, which could only hold an own
-// budget and so never goes into a file.
-const bare = (doc) => without(doc, "budgetOf", "own");
+// What a file holds: no stamp or generation, and no `own`, which could only
+// hold an own budget and so never goes into a file.
+const bare = (doc) => without(doc, "budgetOf", "budgetGen", "own");
 
 const sameBytes = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
 
@@ -185,7 +193,12 @@ function withOwners(doc, ids) {
 const computerSettings = (doc) => Object.fromEntries(["language", "updates"].filter((k) => k in doc).map((k) => [k, doc[k]]));
 
 export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIterations = RECOVERY_ITERATIONS } = {}) {
-  let hh = stamped(bare(hydrate(migrate(raw))), HOUSEHOLD);
+  const gens = new Map(); // HOUSEHOLD or a person id → the generation of that budget
+  const genOf = (id) => gens.get(id) ?? 0;
+  const bump = (id) => gens.set(id, genOf(id) + 1);
+  const handOut = (doc, id) => ({ ...doc, budgetOf: id, budgetGen: genOf(id) });
+
+  let hh = handOut(bare(hydrate(migrate(raw))), HOUSEHOLD);
   let listFault = null;
   try {
     hh = withOwners(hh, await io.listOwnFiles());
@@ -202,8 +215,9 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
   let wraps = null; // { password, recovery }, written beside every seal
   let mustSet = false; // opened with the recovery code: a new password is due
   let keptFor = null; // keepAsMine wrote this person's file and stopped before the household
-  const damaged = new Map(); // person id → the text of their sealed file found damaged, and kept
+  const damaged = new Map(); // person id → { text, keptAs } of their sealed file found damaged
   const sealedBackups = new Set(); // "<pid>/<name>": backups seen sealed, never read again
+  const listedBackups = new Map(); // person id → every backup name a listing has shown
   const plainLeft = new Map(); // person id → backups still plain after the last try to seal them
 
   const queue = serial((job) => job());
@@ -227,8 +241,14 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
   }
 
   // Checked when the save runs, not when it is asked for: a save queued
-  // before Mine locks still finds it open, and one queued after doesn't.
-  const opens = (to) => to === HOUSEHOLD || (to === session && mine !== null);
+  // before Mine locks still finds it open, and one queued after doesn't. So
+  // is the generation: a save queued before "Keep it as mine" lands, and a doc
+  // built before it is refused afterwards.
+  const accepts = (doc) => {
+    const to = doc.budgetOf;
+    if (to !== HOUSEHOLD && !(to === session && mine !== null)) return false;
+    return doc.budgetGen === undefined || doc.budgetGen === genOf(to);
+  };
 
   function mustBeCurrent(pid) {
     const p = personById(hh, pid);
@@ -249,7 +269,7 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
     return { ...parsed, text: file.text };
   }
 
-  const loadMine = (budget, pid) => stamped(bare(hydrate(migrate(budget))), pid);
+  const loadMine = (budget, pid) => handOut(bare(hydrate(migrate(budget))), pid);
 
   // Opens a sealed file with a key from unwrapKey. A wrong secret gives no
   // key, and false. unwrapKey's own faults are left to reject: they are never
@@ -265,7 +285,7 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
     if (!isObject(doc)) {
       session = pid;
       const keptAs = await io.keepOwnUnreadable(pid, file.text);
-      if (keptAs) damaged.set(pid, file.text);
+      damaged.set(pid, { text: file.text, keptAs });
       throw new OwnUnreadableError(pid, "damaged", keptAs);
     }
     session = pid;
@@ -275,29 +295,42 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
     return true;
   }
 
-  // The first write of someone's file marks them in the household. The seal
-  // in memory changes only once the file has it, so a failed write never
-  // leaves the next save sealing differently from what is on disk. Every
-  // sealed write also seals what is still plain among Mine's backups.
-  async function writeMine(doc, k = key, w = wraps) {
+  // Writes the session's own file. The seal in memory changes only once the
+  // file has it, so a failed write never leaves the next save sealing
+  // differently from what is on disk. Every sealed write also seals what is
+  // still plain among Mine's backups.
+  async function writeOwn(doc, k, w) {
     await io.writeOwnFile(session, k ? await sealedText(doc, k, w) : plainText(doc));
     key = k;
     wraps = k ? w : null;
     damaged.delete(session);
-    const me = personById(hh, session);
-    // Someone the household has since removed is marked by the listing when
-    // the app next starts, rather than here on every save.
-    if (me && !me.removed && !me.hasOwn) {
-      hh = { ...hh, people: (hh.people || []).map((p) => (p.id === session ? { ...p, hasOwn: true } : p)) };
-      await io.writeHousehold(textOf(hh));
-    }
     if (k) await sealBackups(session, k, w);
     else plainLeft.delete(session);
   }
 
+  // The first write of someone's file marks them in the household. The mark
+  // goes into the store's household only once the budget file has it, so one
+  // that fails is written by the next save of Mine. Someone the household has
+  // since removed is marked by the listing when the app next starts, rather
+  // than here on every save. Adding a mark is no new generation: a household
+  // doc without it gets it back from keepPeople.
+  async function markOwner() {
+    const me = personById(hh, session);
+    if (!me || me.removed || me.hasOwn) return;
+    const marked = handOut({ ...hh, people: (hh.people || []).map((p) => (p.id === session ? { ...p, hasOwn: true } : p)) }, HOUSEHOLD);
+    await io.writeHousehold(textOf(marked));
+    hh = marked;
+  }
+
+  async function writeMine(doc, k = key, w = wraps) {
+    await writeOwn(doc, k, w);
+    await markOwner();
+  }
+
   // A household doc keeps its people: nobody with an own file vanishes (an old
   // backup restored, an import, a reset), and someone removed and now back
-  // gets their set-aside budget back.
+  // gets their set-aside budget back. What comes back carries the household's
+  // generation, so one built from it is current.
   async function keepPeople(doc) {
     const before = hh.people || [];
     let people = doc.people || [];
@@ -315,17 +348,17 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
       people = people.map((x) => (x.id === pid ? { ...x, hasOwn: true } : x));
       kept = true;
     }
-    if (kept) return stamped({ ...bare(doc), people }, HOUSEHOLD);
-    return "own" in doc ? stamped(bare(doc), HOUSEHOLD) : doc;
+    if (kept) return handOut({ ...bare(doc), people }, HOUSEHOLD);
+    return "own" in doc || doc.budgetGen !== genOf(HOUSEHOLD) ? handOut(bare(doc), HOUSEHOLD) : doc;
   }
 
   // The store's doc is the one asked for even if its write fails, as the
   // app's is: the next save that works writes it. The failure still rejects.
   async function saveNow(doc) {
     if (doc.budgetOf !== HOUSEHOLD) {
-      mine = doc;
-      await writeMine(doc);
-      return doc;
+      mine = doc.budgetGen === genOf(session) ? doc : handOut(doc, session);
+      await writeMine(mine);
+      return mine;
     }
     const next = await keepPeople(doc);
     hh = next;
@@ -354,8 +387,10 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
   async function mustBeReplaceable(pid) {
     const file = await io.readOwnFile(pid);
     if (file.status === "missing" || (file.status === "unreadable" && file.keptAs)) return;
-    if (file.status === "ok" && damaged.get(pid) === file.text) return;
-    throw new Error(file.status === "ok"
+    const hurt = damaged.get(pid);
+    const stillHurt = file.status === "ok" && hurt?.text === file.text;
+    if (stillHurt && hurt.keptAs) return;
+    throw new Error(file.status === "ok" && !stillHurt
       ? "This own budget's file opens, so it isn't written over"
       : "The damaged file couldn't be kept, so it isn't written over");
   }
@@ -368,10 +403,17 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
   // A failure never fails the write that asked: it is counted for the person
   // to be told, and tried again at the next sealed save.
   async function sealBackups(pid, k, w) {
-    let names;
-    try { names = await io.listOwnBackups(pid); } catch { return; }
+    const names = await io.listOwnBackups(pid).catch(() => null);
+    const listed = listedBackups.get(pid) || new Set();
+    // Storage answers a listing that fails with no names, and the app never
+    // empties a backups folder (pruning keeps 14). So no names, after a
+    // listing that had some, is a listing that failed: the count stays as it
+    // was rather than saying all is sealed.
+    if (!names || (!names.length && listed.size)) return;
+    listedBackups.set(pid, listed);
     let left = 0;
     for (const name of names) {
+      listed.add(name);
       const id = `${pid}/${name}`;
       if (sealedBackups.has(id)) continue;
       try {
@@ -445,10 +487,15 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
       if (!session) throw new Error("No profile is open");
       if (mine) return mine;
       const file = await readOwn(session);
-      if (file.kind === "sealed") throw new Error("Mine is locked: it opens with the password");
+      if (file.kind === "sealed") {
+        // Found damaged when the password was given, and still the same file.
+        const hurt = damaged.get(session);
+        if (hurt && hurt.text === file.text) throw new OwnUnreadableError(session, "damaged", hurt.keptAs);
+        throw new Error("Mine is locked: it opens with the password");
+      }
       key = null;
       wraps = null;
-      mine = file.kind === "plain" ? loadMine(file.budget, session) : stamped(newOwnBudget(hh), session);
+      mine = file.kind === "plain" ? loadMine(file.budget, session) : handOut(newOwnBudget(hh), session);
       return mine;
     }),
 
@@ -464,17 +511,17 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
     closeProfile: () => queue(async () => closeNow()),
 
     async save(doc) {
-      const to = stampOf(doc);
-      return queue(async () => (opens(to) ? saveNow(doc) : false));
+      stampOf(doc);
+      return queue(async () => (accepts(doc) ? saveNow(doc) : false));
     },
 
     // One job, so nothing can come between the two. The target goes first: if
     // the second write fails, the entry is in both budgets, never in neither.
     async saveBoth(first, second) {
-      const a = stampOf(first);
-      const b = stampOf(second);
+      stampOf(first);
+      stampOf(second);
       return queue(async () => {
-        if (!opens(a) || !opens(b)) return false;
+        if (!accepts(first) || !accepts(second)) return false;
         await saveNow(first);
         await saveNow(second);
         return true;
@@ -485,21 +532,29 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
     // as it is, sealed or not, and comes back if they are added again.
     removePerson: (pid) => queue(async () => {
       if (session === pid) closeNow();
-      const before = hh;
       const asideAs = validId(pid) ? await io.setAsideOwnFile(pid) : null;
       const gone = markRemoved(hh, pid);
       const people = gone.people.map((p) => (p.id === pid ? without(p, "hasOwn") : p));
-      hh = endShares({ ...gone, people }, pid);
+      const next = endShares({ ...gone, people }, pid);
       try {
-        await io.writeHousehold(textOf(hh));
+        await io.writeHousehold(textOf(next));
       } catch (err) {
         // The household on disk still has them, with their marker; their file
-        // goes back where it says it is.
-        hh = before;
+        // goes back where it says it is, and the store's household stays too.
         if (asideAs) await io.restoreSetAsideOwnFile(pid).catch(() => {});
         throw err;
       }
-      if (validId(pid)) await io.forgetPrivateDue(pid);
+      // A household doc from before still has them, and saved it would
+      // bring them back as if added again.
+      bump(HOUSEHOLD);
+      bump(pid);
+      hh = handOut(next, HOUSEHOLD);
+      try {
+        if (validId(pid)) await io.forgetPrivateDue(pid);
+      } catch {
+        // They are removed. Their due dates left on this computer only give a
+        // reminder that says nothing about what is due.
+      }
     }),
 
     // For an export before removing someone. `secret` is their password or
@@ -526,8 +581,11 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
     // they hold what is now theirs, and left behind anyone could restore them
     // into the household. The own file comes first, so a stop part way leaves
     // the entries in both, never in neither. A day's backup that can't be
-    // taken, or a move that fails, stops it before the household changes, and
-    // it can be tried again.
+    // taken, a move that fails, or a household that can't be written stops it
+    // with the store's household as it was, and it can be tried again. Done,
+    // both budgets are new generations: a household doc from before would
+    // write the entries that are now theirs back into the household, and a
+    // Mine of theirs from before would write over what is now in it.
     keepAsMine: (pid) => queue(async () => {
       mustBeCurrent(pid);
       // An own budget already there is never written over. The only file
@@ -539,29 +597,38 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
       const old = hh;
       keptFor = pid;
       await io.writeOwnFile(pid, plainText(asOwnBudget(old)));
+      bump(pid);
+      if (session === pid) forgetMine();
       // The day's first save backs up the budget file as it was, which would
       // be the old budget, left behind after the move. Taken now, it moves
       // with the rest, and the household's save takes none today. If it
       // can't be taken, that save would try again, so this rejects first.
       await io.ensureDailyBackup();
       await io.moveHouseholdBackupsTo(pid);
-      keptFor = null;
       const people = (old.people || []).map((p) => (p.id === pid ? { ...p, hasOwn: true } : p));
-      hh = stamped({ ...newOwnBudget(old), ...computerSettings(old), people }, HOUSEHOLD);
-      if (session === pid) forgetMine();
-      await io.writeHousehold(textOf(hh));
+      const emptied = { ...newOwnBudget(old), ...computerSettings(old), people };
+      await io.writeHousehold(textOf(emptied));
+      keptFor = null;
+      bump(HOUSEHOLD);
+      hh = handOut(emptied, HOUSEHOLD);
     }),
 
     // The first password. The UI has shown the recovery code before this is
     // called. Mine's file is sealed first, so the backup that write takes of
-    // the plain file is among the backups sealed after it. A backup that
-    // won't seal doesn't fail the call (plainBackupsLeft says so); the next
-    // save tries it again.
+    // the plain file is among the backups sealed after it. Once the file is
+    // sealed the password is set, so nothing after fails the call: a backup
+    // that won't seal is counted (plainBackupsLeft) and the next save tries it
+    // again, and so does a first-save mark the household didn't take.
     setPassword: (pw, code) => queue(async () => {
       if (!session || !mine) throw new Error("Mine isn't open");
       if (key) throw new Error("Mine has a password already");
       const k = newBudgetKey();
-      await writeMine(mine, k, { password: await wrapPassword(k, pw), recovery: await wrapCode(k, code) });
+      await writeOwn(mine, k, { password: await wrapPassword(k, pw), recovery: await wrapCode(k, code) });
+      try {
+        await markOwner();
+      } catch {
+        // The next save of Mine writes the mark.
+      }
     }),
 
     // The same key under a new password, so older backups still open with the
@@ -623,10 +690,12 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
       }
       // A damaged backup was sealed as its text, which is no budget to restore.
       if (!isObject(doc) || "damagedBackup" in doc) return null;
-      const restored = loadMine(doc, session);
+      const restored = bare(hydrate(migrate(doc)));
       await writeMine(restored, seal.k, seal.w);
-      mine = restored;
-      return restored;
+      // Mine is replaced: a doc from before it is out of date.
+      bump(session);
+      mine = handOut(restored, session);
+      return mine;
     }),
 
     // After an OwnUnreadableError: an empty Mine, written now so the damaged
@@ -635,10 +704,11 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
     startMineAgain: () => queue(async () => {
       if (!session) throw new Error("No profile is open");
       await mustBeReplaceable(session);
-      const fresh = stamped(newOwnBudget(hh), session);
+      const fresh = newOwnBudget(hh);
       await writeMine(fresh, null, null);
-      mine = fresh;
-      return fresh;
+      bump(session);
+      mine = handOut(fresh, session);
+      return mine;
     }),
   };
 }
