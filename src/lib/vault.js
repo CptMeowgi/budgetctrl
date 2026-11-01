@@ -11,6 +11,10 @@ export const PASSWORD_MIN = 8;
 export const ITERATIONS = 600000;
 export const RECOVERY_ITERATIONS = 10000;
 
+// A stored count above this is a damaged or hand-edited file, not a real one;
+// refusing it keeps an unlock from hanging on a crafted record.
+const MAX_ITERATIONS = 10000000;
+
 // Crockford base32: no I, L, O or U, so a code read off paper has no look-alikes.
 const ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
@@ -29,7 +33,7 @@ export function normalizePassword(pw) {
   return String(pw ?? "").normalize("NFC");
 }
 
-// Counted in characters you can see, not bytes.
+// Counted in code points after normalising, not bytes.
 export function validPassword(pw) {
   return [...normalizePassword(pw)].length >= PASSWORD_MIN;
 }
@@ -43,6 +47,20 @@ export function passwordProblem(pw, again) {
 export function newBudgetKey() {
   return crypto.getRandomValues(new Uint8Array(32));
 }
+
+// A budget key is exactly 32 bytes. Anything else is a bug in the caller, and
+// WebCrypto would otherwise happily seal with a shorter AES key.
+function checkKey(key) {
+  if (key?.length !== 32) throw new TypeError("A budget key is 32 bytes.");
+}
+
+// An undefined or empty secret would quietly become the guessable text
+// "undefined" or nothing at all, so it is refused rather than coerced.
+function checkSecret(secret) {
+  if (typeof secret !== "string" || !secret) throw new TypeError("A password or recovery code is needed.");
+}
+
+const validIterations = (n) => Number.isInteger(n) && n > 0 && n <= MAX_ITERATIONS;
 
 const aesKey = (bytes, usage) => crypto.subtle.importKey("raw", bytes, "AES-GCM", false, [usage]);
 
@@ -58,16 +76,19 @@ async function decrypt({ iv, data }, keyBytes) {
 }
 
 // A fresh IV each time, so sealing the same budget twice never looks alike.
-export function sealBudget(doc, key) {
+// Async so a bad key or a doc that cannot become JSON is a rejected promise.
+export async function sealBudget(doc, key) {
+  checkKey(key);
   return encrypt(new TextEncoder().encode(JSON.stringify(doc)), key);
 }
 
 export async function openSealed(sealed, key) {
+  checkKey(key);
   return JSON.parse(new TextDecoder().decode(await decrypt(sealed, key)));
 }
 
 async function secretKey(secret, salt, iterations, usage) {
-  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(String(secret)), "PBKDF2", false, ["deriveKey"]);
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), "PBKDF2", false, ["deriveKey"]);
   return crypto.subtle.deriveKey(
     { name: "PBKDF2", hash: "SHA-256", salt, iterations },
     base, { name: "AES-GCM", length: 256 }, false, [usage],
@@ -78,19 +99,36 @@ async function secretKey(secret, salt, iterations, usage) {
 // normalizeRecoveryCode(code) with RECOVERY_ITERATIONS. The count is kept in
 // the record, so changing the default later never locks anyone out.
 export async function wrapKey(key, secret, iterations) {
+  checkKey(key);
+  checkSecret(secret);
+  // A count that unwrapKey would refuse must never be written, or the key
+  // could never be opened again.
+  if (!validIterations(iterations)) throw new RangeError("The iteration count is out of range.");
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const data = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await secretKey(secret, salt, iterations, "encrypt"), key);
   return { v: 1, salt: toB64(salt), iterations, iv: toB64(iv), data: toB64(data) };
 }
 
-// null for a wrong secret (or a damaged record), never a throw, so the caller
-// only has to tell "not this one" from "opened".
+// null for a wrong secret or a damaged record, so the caller only has to tell
+// "not this one" from "opened". Only the final decrypt failing means a wrong
+// secret; anything else (no crypto.subtle, a secret that is not text) is a
+// real fault and throws instead of passing for a wrong password.
 export async function unwrapKey(wrapped, secret) {
+  if (typeof secret !== "string") throw new TypeError("A password or recovery code is needed.");
+  if (!secret || !validIterations(wrapped?.iterations)) return null;
+  let salt, iv, data;
   try {
-    const k = await secretKey(secret, fromB64(wrapped.salt), wrapped.iterations, "decrypt");
-    const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: fromB64(wrapped.iv) }, k, fromB64(wrapped.data));
-    return new Uint8Array(plain);
+    salt = fromB64(wrapped.salt);
+    iv = fromB64(wrapped.iv);
+    data = fromB64(wrapped.data);
+  } catch {
+    return null;
+  }
+  if (salt.length !== 16 || iv.length !== 12) return null;
+  const k = await secretKey(secret, salt, wrapped.iterations, "decrypt");
+  try {
+    return new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv }, k, data));
   } catch {
     return null;
   }
