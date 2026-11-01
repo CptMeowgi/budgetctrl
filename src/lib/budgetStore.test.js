@@ -1432,6 +1432,7 @@ describe("a doc from before a privacy step", () => {
     const hers = await store.openMine();
     expect(JSON.stringify(hers)).toContain("CANARY-7Q");
     expect(await store.save({ ...fresh, note: "empty from before" })).toBe(false);
+    expect(await store.save({ ...fresh, note: "empty from before" }, { replace: true })).toBe(false);
     expect(JSON.stringify(disk.ownBudget("a"))).toContain("CANARY-7Q");
     expect(await store.save({ ...hers, note: "hers" })).toBeTruthy();
   });
@@ -1494,6 +1495,83 @@ describe("a doc from before a privacy step", () => {
     expect(store.own()).toBe(mineStored);
     expect(await store.save({ ...mine, note: "from before" })).toBe(false);
     expect(disk.ownBudget("a").note).toBe("restored");
+  });
+
+  it("takes an undo or redo of a reset, replayed as a replacement", async () => {
+    const { disk, store } = await annaWithMine();
+    const snapshot = store.household();
+    const reset = await store.save({ ...hydrate(migrate({ months: {}, currency: "PLN" })), budgetOf: HOUSEHOLD, note: "reset" }, { replace: true });
+    expect(disk.household().note).toBe("reset");
+    const undone = await store.save(snapshot, { replace: true });
+    expect(undone).not.toBe(false);
+    expect(disk.household().months["2026-10"].expenses.map((e) => e.name)).toEqual(["Lidl"]);
+    expect(await store.save(reset, { replace: true })).not.toBe(false);
+    expect(disk.household().note).toBe("reset");
+  });
+
+  it("refuses even as a replacement a household from before Keep it as mine", async () => {
+    const { raw, disk } = annaAlone();
+    const store = await open(raw, disk);
+    const snapshot = store.household();
+    await store.keepAsMine("a");
+    const written = disk.files.get(BUDGET_FILE);
+    expect(await store.save(snapshot, { replace: true })).toBe(false);
+    expect(await store.save({ ...snapshot, note: "edited before" }, { replace: true })).toBe(false);
+    expect(disk.files.get(BUDGET_FILE)).toBe(written);
+    expect(JSON.stringify(store.household())).not.toContain("CANARY-7Q");
+  });
+
+  it("refuses even as a replacement a household from before someone was removed", async () => {
+    const disk = memoryDisk();
+    disk.files.set("own-t.json", plainOwn({ ...annasMine(), note: "Tom's" }));
+    const store = await open(household([anna, { ...tom, hasOwn: true }]), disk);
+    const snapshot = store.household();
+    await store.removePerson("t");
+    expect(await store.save(snapshot, { replace: true })).toBe(false);
+    expect(personIn(disk.household(), "t").removed).toBe(true);
+    expect(disk.files.has("own-t.json")).toBe(false);
+    expect(disk.log.some(([op]) => op === "restoreSetAsideOwnFile")).toBe(false);
+  });
+
+  it("refuses even as a replacement a Mine from before it was restored or started again", async () => {
+    const disk = memoryDisk();
+    disk.files.set("own-a.json", plainOwn(annasMine()));
+    disk.folder("a").set("budget-ctrl-2026-10-01-0900-daily.json", plainOwn({ ...annasMine(), note: "backup" }));
+    const store = await open(household([{ ...anna, hasOwn: true }, tom]), disk);
+    await store.openProfile("a");
+    const snapshot = await store.openMine();
+    const restored = await store.restoreMine("budget-ctrl-2026-10-01-0900-daily.json");
+    expect(await store.save(snapshot, { replace: true })).toBe(false);
+    expect(disk.ownBudget("a").note).toBe("backup");
+
+    disk.files.set("own-a.json", "{trunc");
+    await store.lockMine();
+    await caught(store.openMine());
+    await store.startMineAgain();
+    expect(await store.save(restored, { replace: true })).toBe(false);
+    expect(disk.ownBudget("a").note).toBeUndefined();
+  });
+
+  it("takes as a replacement, after a privacy step, a doc freshly built or one from another store", async () => {
+    const { raw, disk } = annaAlone();
+    // The other store's generations start below this one's floor, so taking
+    // its doc shows it counts as none rather than as an old one of ours.
+    const random = vi.spyOn(Math, "random");
+    random.mockReturnValueOnce(0.99);
+    const store = await open(raw, disk);
+    random.mockReturnValueOnce(0);
+    const other = await open(household([anna]), memoryDisk());
+    random.mockRestore();
+    expect(other.household().budgetGen).toBeLessThan(store.household().budgetGen);
+    await store.keepAsMine("a");
+    const fresh = { ...hydrate(migrate({ months: {}, currency: "PLN" })), budgetOf: HOUSEHOLD, note: "fresh" };
+    expect(await store.save(fresh, { replace: true })).not.toBe(false);
+    expect(disk.household().note).toBe("fresh");
+    const foreign = { ...other.household(), note: "another store's" };
+    expect(await store.save(foreign)).toBe(false);
+    expect(await store.save(foreign, { replace: true })).not.toBe(false);
+    expect(disk.household().note).toBe("another store's");
+    expect(personIn(disk.household(), "a").hasOwn).toBe(true);
   });
 
   it("still routes a replacement by its stamp, and refuses one for a budget that isn't open", async () => {

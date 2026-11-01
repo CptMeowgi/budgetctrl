@@ -30,6 +30,15 @@
 // from a number of its own, so a doc kept across a store made again can't
 // match one by chance.
 //
+// A replacement may put back any generation since the last privacy step (an
+// undo or redo of a reset or an import replays its snapshot this way), but
+// never one from before it. Those four steps raise their budget's floor to
+// its new generation, and a replacement carrying this store's generation
+// below the floor is refused. So no snapshot, however it is saved, writes
+// back what "Keep it as mine" took out or brings back someone removed. A
+// doc built fresh, or with another store's generation, has nothing to go
+// back to and is taken as a replacement.
+//
 // The household holds nothing from an own budget but `people[i].hasOwn`. The
 // marker says a file exists, so a missing or damaged own file gets the
 // recovery choices, never a fresh empty Mine that the first save would write
@@ -205,9 +214,19 @@ const computerSettings = (doc) => Object.fromEntries(["language", "updates"].fil
 
 export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIterations = RECOVERY_ITERATIONS } = {}) {
   const gens = new Map(); // HOUSEHOLD or a person id → the generation of that budget
+  const floors = new Map(); // HOUSEHOLD or a person id → its generation at its last privacy step
   const genBase = firstGen();
   const genOf = (id) => gens.get(id) ?? genBase;
+  const floorOf = (id) => floors.get(id) ?? genBase;
   const bump = (id) => gens.set(id, genOf(id) + GEN_STEP);
+  // For the four privacy steps: no replacement goes back past this.
+  const raiseFloor = (id) => {
+    bump(id);
+    floors.set(id, genOf(id));
+  };
+  // This store's generations are genBase plus whole steps; another store's
+  // have another low part (see firstGen), and anything else is none.
+  const ours = (gen) => Number.isInteger(gen) && gen >= genBase && (gen - genBase) % GEN_STEP === 0;
   const handOut = (doc, id) => ({ ...doc, budgetOf: id, budgetGen: genOf(id) });
 
   let hh = handOut(bare(hydrate(migrate(raw))), HOUSEHOLD);
@@ -255,12 +274,13 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
   // Checked when the save runs, not when it is asked for: a save queued
   // before Mine locks still finds it open, and one queued after doesn't. So
   // is the generation: a save queued before "Keep it as mine" lands, and a doc
-  // built before it is refused afterwards. A replacement takes the place of
-  // whatever generation is there, so only its stamp is checked.
+  // built before it is refused afterwards. A replacement may stand in for any
+  // generation since the budget's last privacy step, but not one before it.
   const accepts = (doc, replace = false) => {
     const to = doc.budgetOf;
     if (to !== HOUSEHOLD && !(to === session && mine !== null)) return false;
-    return replace || doc.budgetGen === genOf(to);
+    if (!replace) return doc.budgetGen === genOf(to);
+    return !ours(doc.budgetGen) || doc.budgetGen >= floorOf(to);
   };
 
   function mustBeCurrent(pid) {
@@ -524,8 +544,10 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
     closeProfile: () => queue(async () => closeNow()),
 
     // `replace` is for a whole budget the app built (a reset, an import, a
-    // restore): it moves that budget to a new generation, so an edit made on
-    // what was there before is refused, and the doc comes back with it.
+    // restore, or an undo replaying one): it moves that budget to a new
+    // generation, so an edit made on what was there before is refused, and
+    // the doc comes back with it. It doesn't raise the floor, so an undo of
+    // the replacement can replay what was there in its turn.
     async save(doc, { replace = false } = {}) {
       stampOf(doc);
       return queue(async () => {
@@ -567,8 +589,8 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
       }
       // A household doc from before still has them, and saved it would
       // bring them back as if added again.
-      bump(HOUSEHOLD);
-      bump(pid);
+      raiseFloor(HOUSEHOLD);
+      raiseFloor(pid);
       hh = handOut(next, HOUSEHOLD);
       try {
         if (validId(pid)) await io.forgetPrivateDue(pid);
@@ -618,7 +640,7 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
       const old = hh;
       keptFor = pid;
       await io.writeOwnFile(pid, plainText(asOwnBudget(old)));
-      bump(pid);
+      raiseFloor(pid);
       if (session === pid) forgetMine();
       // The day's first save backs up the budget file as it was, which would
       // be the old budget, left behind after the move. Taken now, it moves
@@ -630,7 +652,7 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
       const emptied = { ...newOwnBudget(old), ...computerSettings(old), people };
       await io.writeHousehold(textOf(emptied));
       keptFor = null;
-      bump(HOUSEHOLD);
+      raiseFloor(HOUSEHOLD);
       hh = handOut(emptied, HOUSEHOLD);
     }),
 
@@ -714,7 +736,7 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
       const restored = bare(hydrate(migrate(doc)));
       await writeMine(restored, seal.k, seal.w);
       // Mine is replaced: a doc from before it is out of date.
-      bump(session);
+      raiseFloor(session);
       mine = handOut(restored, session);
       return mine;
     }),
@@ -727,7 +749,7 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
       await mustBeReplaceable(session);
       const fresh = newOwnBudget(hh);
       await writeMine(fresh, null, null);
-      bump(session);
+      raiseFloor(session);
       mine = handOut(fresh, session);
       return mine;
     }),
