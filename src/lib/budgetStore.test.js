@@ -134,6 +134,7 @@ function memoryDisk() {
     },
     async ensureDailyBackup() {
       log.push(["ensureDailyBackup"]);
+      mustWork("ensureDailyBackup");
       daily("", BUDGET_FILE);
     },
     async moveHouseholdBackupsTo(pid) {
@@ -1293,6 +1294,25 @@ describe("keep it as mine", () => {
     expect(disk.files.get(BUDGET_FILE)).not.toContain("CANARY-7Q");
     expect(JSON.stringify(disk.ownBudget("a"))).toContain("CANARY-7Q");
     for (const [name, text] of disk.folder("")) expect(text, name).not.toContain("CANARY-7Q");
+  });
+
+  it("stops before the backups move or the household changes when the day's backup can't be taken", async () => {
+    const raw = onePerson();
+    const disk = withBackups(raw);
+    const store = await open(raw, disk);
+    disk.failing.add("ensureDailyBackup");
+    await expect(store.keepAsMine("a")).rejects.toThrow();
+    expect(JSON.stringify(disk.ownBudget("a"))).toContain("CANARY-7Q");
+    expect(disk.writes().map(([op]) => op)).toEqual(["writeOwnFile", "ensureDailyBackup"]);
+    expect(disk.folder("").size).toBe(2);
+    expect(JSON.stringify(store.household())).toContain("CANARY-7Q");
+    expect(store.hasOwn("a")).toBe(false);
+
+    disk.failing.delete("ensureDailyBackup");
+    await store.keepAsMine("a");
+    expect(disk.files.get(BUDGET_FILE)).not.toContain("CANARY-7Q");
+    expect([...disk.folder("").keys()]).toEqual([]);
+    expect([...disk.folder("a").values()].filter((t) => t.includes("CANARY-7Q"))).toHaveLength(3);
   });
 
   it("won't try again over a Mine the person has saved since", async () => {

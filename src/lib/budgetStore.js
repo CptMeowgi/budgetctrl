@@ -525,8 +525,9 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
     // the same people and categories takes its place. Its backups go with it:
     // they hold what is now theirs, and left behind anyone could restore them
     // into the household. The own file comes first, so a stop part way leaves
-    // the entries in both, never in neither. A failed move stops before the
-    // household changes, and can be tried again.
+    // the entries in both, never in neither. A day's backup that can't be
+    // taken, or a move that fails, stops it before the household changes, and
+    // it can be tried again.
     keepAsMine: (pid) => queue(async () => {
       mustBeCurrent(pid);
       // An own budget already there is never written over. The only file
@@ -540,7 +541,8 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
       await io.writeOwnFile(pid, plainText(asOwnBudget(old)));
       // The day's first save backs up the budget file as it was, which would
       // be the old budget, left behind after the move. Taken now, it moves
-      // with the rest, and the household's save takes none today.
+      // with the rest, and the household's save takes none today. If it
+      // can't be taken, that save would try again, so this rejects first.
       await io.ensureDailyBackup();
       await io.moveHouseholdBackupsTo(pid);
       keptFor = null;

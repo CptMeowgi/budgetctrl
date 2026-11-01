@@ -1167,10 +1167,36 @@ describe("ownIo, the store's way to the disk", () => {
       expect(disk.files.get("backups/budget-ctrl-2026-10-28-0900-daily.json")).toBe(doc("h2"));
     });
 
-    it("never throws when the backup can't be made", async () => {
+    it("rejects when the backup can't be made, leaves the day open, and works when tried again", async () => {
       disk.put("budget-ctrl.json", doc("old"));
       disk.state.beforeWrite = (path) => { if (path.startsWith("backups/")) throw new Error("os error 112: disk full"); };
-      await expect(storage.ensureDailyBackup()).resolves.toBeUndefined();
+      await expect(storage.ensureDailyBackup()).rejects.toThrow("disk full");
+      expect(ls.getItem("budget-ctrl-last-backup")).toBeNull();
+      expect(storage.getStorageFault()).toContain("backup");
+      disk.state.beforeWrite = null;
+      await storage.ensureDailyBackup();
+      expect(disk.files.get("backups/budget-ctrl-2026-10-27-1432-daily.json")).toBe(doc("old"));
+    });
+
+    it("rejects when the budget file can't be read to back it up", async () => {
+      disk.put("budget-ctrl.json", doc("old"));
+      disk.state.failRead.add("budget-ctrl.json");
+      await expect(storage.ensureDailyBackup()).rejects.toThrow();
+      expect(filesIn("backups")).toEqual([]);
+    });
+
+    it("rejects when the day can't be marked as backed up, since the next save would back up again", async () => {
+      disk.put("budget-ctrl.json", doc("old"));
+      const setItem = ls.setItem;
+      ls.setItem = (k, v) => { if (k === "budget-ctrl-last-backup") throw new Error("QuotaExceededError"); setItem(k, v); };
+      await expect(storage.ensureDailyBackup()).rejects.toThrow();
+    });
+
+    it("leaves a save's own daily backup as it was: a failed one never stops the save", async () => {
+      disk.put("budget-ctrl.json", doc("old"));
+      disk.state.beforeWrite = (path) => { if (path.startsWith("backups/")) throw new Error("os error 112: disk full"); };
+      await expect(window.storage.set(HOUSEHOLD_KEY, doc("new"))).resolves.toEqual({ key: HOUSEHOLD_KEY, value: doc("new") });
+      expect(disk.files.get("budget-ctrl.json")).toBe(doc("new"));
     });
 
     it("does nothing outside the app, where there are no backups", async () => {

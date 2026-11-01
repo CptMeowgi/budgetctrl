@@ -181,17 +181,20 @@ const dayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,
 // One backup per calendar day, plus an explicit one before anything
 // destructive. Writing one on every keystroke would be noise. It is taken
 // before the day's first change is written, so it holds the budget as the
-// last session left it - not the state after that first change.
-async function maybeDailyBackup() {
+// last session left it - not the state after that first change. This throws
+// when the backup can't be made; a save goes through maybeDailyBackup.
+async function takeDailyBackup() {
   const today = dayKey(new Date());
   let last = null;
   try { last = localStorage.getItem(LAST_BACKUP_KEY); } catch { /* unavailable */ }
   if (last === today) return;
-  try {
-    const current = await readStoreFile();
-    if (current.status === "ok") await writeBackup(current.text, "daily");
-    try { localStorage.setItem(LAST_BACKUP_KEY, today); } catch { /* unavailable */ }
-  } catch { /* a failed backup must never block a save */ }
+  const current = await readStoreFile();
+  if (current.status === "ok") await writeBackup(current.text, "daily");
+  try { localStorage.setItem(LAST_BACKUP_KEY, today); } catch { /* unavailable */ }
+}
+
+async function maybeDailyBackup() {
+  try { await takeDailyBackup(); } catch { /* a failed backup must never block a save */ }
 }
 
 // Saving writes the whole file, so writes go one at a time, in order: two in
@@ -217,10 +220,22 @@ const saveToFile = (key, value) => budgetFileJob(async () => {
 // before the budget file's backups move into a person's folder, so it moves
 // with them and the household's save after that takes none (the day's is
 // done). Otherwise that save would back up the old budget and leave it here.
-// There are no backups outside the app.
+// So unlike a save's, a backup that can't be made, or a day that can't be
+// marked as backed up, rejects: the caller must stop rather than go on to
+// that save. There are no backups outside the app.
 export async function ensureDailyBackup() {
   if (!isTauri) return;
-  await budgetFileJob(() => maybeDailyBackup());
+  await budgetFileJob(async () => {
+    try {
+      await takeDailyBackup();
+      let marked = null;
+      try { marked = localStorage.getItem(LAST_BACKUP_KEY); } catch { /* reported below */ }
+      if (marked !== dayKey(new Date())) throw new Error("the day's backup of the budget file couldn't be marked as taken");
+    } catch (err) {
+      noteStorageFault("backup", err);
+      throw err;
+    }
+  });
 }
 
 if (!window.storage) {
