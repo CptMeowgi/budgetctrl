@@ -1132,12 +1132,77 @@ describe("ownIo, the store's way to the disk", () => {
 
   it("has the own-file functions and the household writer, under their own names", () => {
     expect(Object.keys(storage.ownIo).sort()).toEqual([
-      "forgetPrivateDue", "listOwnBackups", "listOwnFiles", "moveHouseholdBackupsTo", "readOwnBackup", "readOwnFile",
-      "rememberPrivateDue", "replaceOwnBackup", "restoreSetAsideOwnFile", "setAsideOwnFile", "writeHousehold", "writeOwnFile",
+      "ensureDailyBackup", "forgetPrivateDue", "keepOwnUnreadable", "listOwnBackups", "listOwnFiles", "moveHouseholdBackupsTo",
+      "readOwnBackup", "readOwnFile", "rememberPrivateDue", "replaceOwnBackup", "restoreSetAsideOwnFile", "setAsideOwnFile",
+      "writeHousehold", "writeOwnFile",
     ]);
     for (const name of Object.keys(storage.ownIo)) expect(typeof storage.ownIo[name]).toBe("function");
     expect(storage.ownIo.writeOwnFile).toBe(storage.writeOwnFile);
     expect(storage.ownIo.readOwnFile).toBe(storage.readOwnFile);
+    expect(storage.ownIo.ensureDailyBackup).toBe(storage.ensureDailyBackup);
+    expect(storage.ownIo.keepOwnUnreadable).toBe(storage.keepOwnUnreadable);
+  });
+
+  describe("ensureDailyBackup, so the day's backup moves with the rest", () => {
+    it("backs up the budget file as it is, and the save after it takes none", async () => {
+      disk.put("budget-ctrl.json", doc("old"));
+      await storage.ensureDailyBackup();
+      expect(filesIn("backups")).toEqual(["budget-ctrl-2026-10-27-1432-daily.json"]);
+      expect(disk.files.get("backups/budget-ctrl-2026-10-27-1432-daily.json")).toBe(doc("old"));
+      await storage.moveHouseholdBackupsTo("a");
+      await storage.ownIo.writeHousehold(doc("new"));
+      expect(filesIn("backups")).toEqual([]);
+      expect(disk.files.get("backups/own-a/budget-ctrl-2026-10-27-1432-daily.json")).toBe(doc("old"));
+      expect(disk.files.get("budget-ctrl.json")).toBe(doc("new"));
+    });
+
+    it("takes it once a day, as a save does", async () => {
+      await window.storage.set(HOUSEHOLD_KEY, doc("h1"));
+      await window.storage.set(HOUSEHOLD_KEY, doc("h2"));
+      await storage.ensureDailyBackup();
+      expect(filesIn("backups")).toEqual([]);
+      vi.setSystemTime(new Date(2026, 9, 28, 9, 0));
+      await storage.ensureDailyBackup();
+      expect(filesIn("backups")).toEqual(["budget-ctrl-2026-10-28-0900-daily.json"]);
+      expect(disk.files.get("backups/budget-ctrl-2026-10-28-0900-daily.json")).toBe(doc("h2"));
+    });
+
+    it("never throws when the backup can't be made", async () => {
+      disk.put("budget-ctrl.json", doc("old"));
+      disk.state.beforeWrite = (path) => { if (path.startsWith("backups/")) throw new Error("os error 112: disk full"); };
+      await expect(storage.ensureDailyBackup()).resolves.toBeUndefined();
+    });
+
+    it("does nothing outside the app, where there are no backups", async () => {
+      storage = await load(false);
+      await storage.ensureDailyBackup();
+      expect(disk.calls).toEqual([]);
+      expect(ls.map.size).toBe(0);
+    });
+  });
+
+  describe("keepOwnUnreadable, for a sealed file the store finds damaged", () => {
+    const SEALED = JSON.stringify({ v: 1, sealed: { iv: "x", data: "y" }, password: {}, recovery: {} });
+
+    it("keeps the text beside the file, once, as the read path does", async () => {
+      disk.put("own-a.json", SEALED);
+      expect(await storage.keepOwnUnreadable("a", SEALED)).toBe("own-a-unreadable-20261027-1432.json");
+      expect(await storage.keepOwnUnreadable("a", SEALED)).toBe("own-a-unreadable-20261027-1432.json");
+      expect(disk.files.get("own-a-unreadable-20261027-1432.json")).toBe(SEALED);
+      expect(disk.files.get("own-a.json")).toBe(SEALED);
+    });
+
+    it("gives null, and notes it, when the copy can't be kept", async () => {
+      disk.put("own-a.json", SEALED);
+      disk.state.mangle = (path, text) => (path.includes("-unreadable-") ? "" : text);
+      expect(await storage.keepOwnUnreadable("a", SEALED)).toBeNull();
+      expect(storage.getStorageFault()).toContain("set aside");
+    });
+
+    it("refuses a bad id and touches nothing", async () => {
+      await expect(storage.keepOwnUnreadable("../x", SEALED)).rejects.toThrow();
+      expect(disk.calls).toEqual([]);
+    });
   });
 
   it("writes the household as the budget file, through the same path as every other save", async () => {

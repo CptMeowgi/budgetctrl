@@ -202,6 +202,9 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
   let wraps = null; // { password, recovery }, written beside every seal
   let mustSet = false; // opened with the recovery code: a new password is due
   let keptFor = null; // keepAsMine wrote this person's file and stopped before the household
+  const damaged = new Map(); // person id → the text of their sealed file found damaged, and kept
+  const sealedBackups = new Set(); // "<pid>/<name>": backups seen sealed, never read again
+  const plainLeft = new Map(); // person id → backups still plain after the last try to seal them
 
   const queue = serial((job) => job());
 
@@ -243,20 +246,28 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
     }
     const parsed = file.status === "ok" ? parseOwn(file.text) : null;
     if (!parsed) throw new OwnUnreadableError(pid, "damaged", file.keptAs ?? null);
-    return parsed;
+    return { ...parsed, text: file.text };
   }
 
   const loadMine = (budget, pid) => stamped(bare(hydrate(migrate(budget))), pid);
 
   // Opens a sealed file with a key from unwrapKey. A wrong secret gives no
-  // key; a key that doesn't open the data (a wrapper copied in from an older
-  // file, or data changed on disk) is no better. unwrapKey's own faults are
-  // left to reject: they are never a wrong password.
+  // key, and false. unwrapKey's own faults are left to reject: they are never
+  // a wrong password. A key the secret did unwrap that doesn't open the data
+  // means the data is damaged (changed on disk, or a wrapper copied in from
+  // another file): its text is kept, as the read path keeps damage, the
+  // profile opens for the household as it does over any damaged file, and the
+  // error lets the person restore a backup or start again.
   async function openWithKey(pid, file, k) {
     if (!k) return false;
-    let doc;
-    try { doc = await openSealed(file.sealed, k); } catch { return false; }
-    if (!isObject(doc)) return false;
+    let doc = null;
+    try { doc = await openSealed(file.sealed, k); } catch { /* damage, below */ }
+    if (!isObject(doc)) {
+      session = pid;
+      const keptAs = await io.keepOwnUnreadable(pid, file.text);
+      if (keptAs) damaged.set(pid, file.text);
+      throw new OwnUnreadableError(pid, "damaged", keptAs);
+    }
     session = pid;
     key = k;
     wraps = { password: file.password, recovery: file.recovery };
@@ -266,11 +277,13 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
 
   // The first write of someone's file marks them in the household. The seal
   // in memory changes only once the file has it, so a failed write never
-  // leaves the next save sealing differently from what is on disk.
+  // leaves the next save sealing differently from what is on disk. Every
+  // sealed write also seals what is still plain among Mine's backups.
   async function writeMine(doc, k = key, w = wraps) {
     await io.writeOwnFile(session, k ? await sealedText(doc, k, w) : plainText(doc));
     key = k;
     wraps = k ? w : null;
+    damaged.delete(session);
     const me = personById(hh, session);
     // Someone the household has since removed is marked by the listing when
     // the app next starts, rather than here on every save.
@@ -278,6 +291,8 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
       hh = { ...hh, people: (hh.people || []).map((p) => (p.id === session ? { ...p, hasOwn: true } : p)) };
       await io.writeHousehold(textOf(hh));
     }
+    if (k) await sealBackups(session, k, w);
+    else plainLeft.delete(session);
   }
 
   // A household doc keeps its people: nobody with an own file vanishes (an old
@@ -333,30 +348,44 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
   const wrapCode = (k, code) => wrapKey(k, normalizeRecoveryCode(code), recoveryIterations);
 
   // Writing over Mine is allowed only when nothing would be lost: there is no
-  // file, or it is damaged and its text was kept. A file that can't be read
-  // just now (locked by a sync client, say) is never written over.
+  // file, or it is damaged and its text was kept. That includes a sealed file
+  // found damaged and kept, while it still holds that same text. A file that
+  // can't be read just now (locked by a sync client, say) is never written over.
   async function mustBeReplaceable(pid) {
     const file = await io.readOwnFile(pid);
     if (file.status === "missing" || (file.status === "unreadable" && file.keptAs)) return;
+    if (file.status === "ok" && damaged.get(pid) === file.text) return;
     throw new Error(file.status === "ok"
       ? "This own budget's file opens, so it isn't written over"
       : "The damaged file couldn't be kept, so it isn't written over");
   }
 
-  // Mine's backups were plain until now. Each is sealed in place with the new
-  // key, so no plain copy of Mine is left behind; one that fails doesn't stop
-  // the rest, and the call then says how many are left.
+  // No plain copy of a sealed Mine is left among its backups: those from
+  // before the password, the budget file's that "Keep it as mine" moved in,
+  // and any that failed to seal last time. Each is sealed in place. One that
+  // isn't a budget is sealed as its text, so that isn't left plain either. A
+  // backup seen sealed isn't read again, so a save reads only what is new.
+  // A failure never fails the write that asked: it is counted for the person
+  // to be told, and tried again at the next sealed save.
   async function sealBackups(pid, k, w) {
+    let names;
+    try { names = await io.listOwnBackups(pid); } catch { return; }
     let left = 0;
-    for (const name of await io.listOwnBackups(pid)) {
+    for (const name of names) {
+      const id = `${pid}/${name}`;
+      if (sealedBackups.has(id)) continue;
       try {
-        const backup = parseBackup(await io.readOwnBackup(pid, name));
-        if (backup?.kind === "plain") await io.replaceOwnBackup(pid, name, await sealedText(backup.budget, k, w));
+        const text = await io.readOwnBackup(pid, name);
+        const backup = parseBackup(text);
+        if (backup?.kind !== "sealed") {
+          await io.replaceOwnBackup(pid, name, await sealedText(backup ? backup.budget : { damagedBackup: text }, k, w));
+        }
+        sealedBackups.add(id);
       } catch {
         left += 1;
       }
     }
-    if (left) throw new Error(`${left} of this budget's backups could not be sealed`);
+    plainLeft.set(pid, left);
   }
 
   return {
@@ -373,6 +402,8 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
     session: () => session,
     mineOpen: () => mine !== null,
     mustSetPassword: () => mustSet,
+    // How many of the open person's backups the last sealed save couldn't seal.
+    plainBackupsLeft: () => (session ? plainLeft.get(session) ?? 0 : 0),
     own: () => mine,
     doc: (id) => (id === HOUSEHOLD ? hh : id && id === session ? mine : null),
 
@@ -507,27 +538,28 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
       const old = hh;
       keptFor = pid;
       await io.writeOwnFile(pid, plainText(asOwnBudget(old)));
+      // The day's first save backs up the budget file as it was, which would
+      // be the old budget, left behind after the move. Taken now, it moves
+      // with the rest, and the household's save takes none today.
+      await io.ensureDailyBackup();
       await io.moveHouseholdBackupsTo(pid);
       keptFor = null;
       const people = (old.people || []).map((p) => (p.id === pid ? { ...p, hasOwn: true } : p));
       hh = stamped({ ...newOwnBudget(old), ...computerSettings(old), people }, HOUSEHOLD);
       if (session === pid) forgetMine();
       await io.writeHousehold(textOf(hh));
-      // The first save of the day backs up the budget file as it was, which
-      // here is the old budget: that backup is theirs too.
-      await io.moveHouseholdBackupsTo(pid);
     }),
 
     // The first password. The UI has shown the recovery code before this is
-    // called. Mine is sealed first, so the backup its write takes of the
-    // plain file is among those sealed after.
+    // called. Mine's file is sealed first, so the backup that write takes of
+    // the plain file is among the backups sealed after it. A backup that
+    // won't seal doesn't fail the call (plainBackupsLeft says so); the next
+    // save tries it again.
     setPassword: (pw, code) => queue(async () => {
       if (!session || !mine) throw new Error("Mine isn't open");
       if (key) throw new Error("Mine has a password already");
       const k = newBudgetKey();
-      const w = { password: await wrapPassword(k, pw), recovery: await wrapCode(k, code) };
-      await writeMine(mine, k, w);
-      await sealBackups(session, k, w);
+      await writeMine(mine, k, { password: await wrapPassword(k, pw), recovery: await wrapCode(k, code) });
     }),
 
     // The same key under a new password, so older backups still open with the
@@ -587,7 +619,8 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
           if (!key) seal = { k, w: { password: backup.password, recovery: backup.recovery } };
         }
       }
-      if (!isObject(doc)) return null;
+      // A damaged backup was sealed as its text, which is no budget to restore.
+      if (!isObject(doc) || "damagedBackup" in doc) return null;
       const restored = loadMine(doc, session);
       await writeMine(restored, seal.k, seal.w);
       mine = restored;

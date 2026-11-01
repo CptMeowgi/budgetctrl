@@ -196,8 +196,10 @@ async function maybeDailyBackup() {
 
 // Saving writes the whole file, so writes go one at a time, in order: two in
 // flight at once could finish in either order and leave an older budget on
-// disk. Inputs that save on every keystroke made that likely.
-const saveToFile = serial(async (key, value) => {
+// disk. Inputs that save on every keystroke made that likely. The daily backup
+// asked for on its own (ensureDailyBackup) waits in the same line.
+const budgetFileJob = serial((job) => job());
+const saveToFile = (key, value) => budgetFileJob(async () => {
   try {
     await maybeDailyBackup();
     await writeStoreFile(value);
@@ -210,6 +212,16 @@ const saveToFile = serial(async (key, value) => {
   }
   return { key, value };
 });
+
+// For "Keep it as mine": the day's backup of the budget file is taken now,
+// before the budget file's backups move into a person's folder, so it moves
+// with them and the household's save after that takes none (the day's is
+// done). Otherwise that save would back up the old budget and leave it here.
+// There are no backups outside the app.
+export async function ensureDailyBackup() {
+  if (!isTauri) return;
+  await budgetFileJob(() => maybeDailyBackup());
+}
 
 if (!window.storage) {
   window.storage = {
@@ -433,6 +445,22 @@ async function readOwnNow(pid) {
 
 export async function readOwnFile(pid) {
   return inOrder(pid, () => readOwnNow(pid));
+}
+
+// A sealed file is a JSON object here, so it reads as "ok" even when its data
+// won't open with the right password. The store, which can tell, keeps its
+// text as damage is kept above. Resolves to the copy's name, or null when no
+// copy could be written.
+export async function keepOwnUnreadable(pid, text) {
+  return inOrder(pid, async () => {
+    if (typeof text !== "string") throw new Error("There is no text to keep");
+    try {
+      return await keepUnreadable(pid, text);
+    } catch (err) {
+      noteStorageFault("set aside", err);
+      return null;
+    }
+  });
 }
 
 async function ownBackupNames(pid) {
@@ -736,6 +764,7 @@ async function writeHousehold(text) {
 // on this computer by a later task; until then the store's calls do nothing.
 export const ownIo = {
   readOwnFile,
+  keepOwnUnreadable,
   writeOwnFile,
   setAsideOwnFile,
   restoreSetAsideOwnFile,
@@ -743,6 +772,7 @@ export const ownIo = {
   readOwnBackup,
   replaceOwnBackup,
   moveHouseholdBackupsTo,
+  ensureDailyBackup,
   listOwnFiles,
   writeHousehold,
   rememberPrivateDue: () => {},

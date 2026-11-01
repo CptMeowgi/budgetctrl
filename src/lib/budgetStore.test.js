@@ -48,6 +48,15 @@ function memoryDisk() {
     backedUpToday.add(who);
     if (isBudgetText(files.get(file))) folder(who).set(`budget-ctrl-2026-10-15-${next()}-daily.json`, files.get(file));
   };
+  // One copy per distinct damage, as storage.js keeps it; none for a locked file.
+  const keep = (pid, text) => {
+    if (locked.has(pid)) return null;
+    const kept = [...files].find(([f, t]) => f.startsWith(`own-${pid}-unreadable-`) && t === text);
+    if (kept) return kept[0];
+    const name = `own-${pid}-unreadable-20261015-${next()}.json`;
+    files.set(name, text);
+    return name;
+  };
 
   const io = {
     async listOwnFiles() {
@@ -62,10 +71,12 @@ function memoryDisk() {
       const text = files.get(file);
       if (isBudgetText(text)) return { status: "ok", text };
       if (locked.has(pid)) return { status: "unreadable", text: "", keptAs: null };
-      const kept = [...files].find(([f, t]) => f.startsWith(`own-${pid}-unreadable-`) && t === text);
-      const keptAs = kept ? kept[0] : `own-${pid}-unreadable-20261015-${next()}.json`;
-      files.set(keptAs, text);
-      return { status: "unreadable", text, keptAs };
+      return { status: "unreadable", text, keptAs: keep(pid, text) };
+    },
+    async keepOwnUnreadable(pid, text) {
+      ownFile(pid);
+      log.push(["keepOwnUnreadable", pid]);
+      return keep(pid, text);
     },
     async writeOwnFile(pid, text) {
       const file = ownFile(pid);
@@ -117,8 +128,13 @@ function memoryDisk() {
       ownFile(pid);
       mustBeBudget(text);
       mustWork("replaceOwnBackup");
+      mustWork(`replaceOwnBackup:${name}`);
       folder(pid).set(name, text);
       log.push(["replaceOwnBackup", pid, name]);
+    },
+    async ensureDailyBackup() {
+      log.push(["ensureDailyBackup"]);
+      daily("", BUDGET_FILE);
     },
     async moveHouseholdBackupsTo(pid) {
       ownFile(pid);
@@ -618,8 +634,66 @@ describe("a sealed Mine", () => {
     }
     expect(disk.files.get(BUDGET_FILE)).not.toContain("CANARY-7Q");
     expect(await store.ownStatus("a")).toBe("sealed");
+    expect(store.plainBackupsLeft()).toBe(0);
     // Nothing about the password or the key is in the household.
     expect(store.householdText()).not.toMatch(/sealed|salt|iterations/);
+  });
+
+  it("says how many backups are still plain when one can't be sealed, and seals it at the next save", async () => {
+    const disk = memoryDisk();
+    disk.files.set("own-a.json", plainOwn(annasMine()));
+    disk.folder("a").set("budget-ctrl-2026-10-01-0900-daily.json", plainOwn(annasMine()));
+    disk.folder("a").set("budget-ctrl-2026-10-02-0900-daily.json", plainOwn(annasMine()));
+    const store = await open(household([{ ...anna, hasOwn: true }, tom]), disk);
+    await store.openProfile("a");
+    await store.openMine();
+    expect(store.plainBackupsLeft()).toBe(0);
+    disk.failing.add("replaceOwnBackup:budget-ctrl-2026-10-01-0900-daily.json");
+    // Mine is sealed, so the password is set: the call doesn't fail over a backup.
+    await store.setPassword("correct horse", makeRecoveryCode());
+    expect(await store.ownStatus("a")).toBe("sealed");
+    expect(disk.ownText("a")).not.toContain("CANARY-7Q");
+    expect(store.plainBackupsLeft()).toBe(1);
+    expect(disk.folder("a").get("budget-ctrl-2026-10-01-0900-daily.json")).toContain("CANARY-7Q");
+    expect(disk.folder("a").get("budget-ctrl-2026-10-02-0900-daily.json")).not.toContain("CANARY-7Q");
+
+    // Still failing: the next save says so again.
+    await store.save({ ...store.own(), n: 1 });
+    expect(store.plainBackupsLeft()).toBe(1);
+
+    disk.failing.delete("replaceOwnBackup:budget-ctrl-2026-10-01-0900-daily.json");
+    await store.save({ ...store.own(), n: 2 });
+    expect(store.plainBackupsLeft()).toBe(0);
+    for (const [name, text] of disk.folder("a")) expect(text, name).not.toContain("CANARY-7Q");
+  });
+
+  it("reads a backup it has seen sealed only once", async () => {
+    const { disk, store } = await sealedAnna();
+    const reads = [];
+    const read = disk.io.readOwnBackup;
+    disk.io.readOwnBackup = (pid, name) => { reads.push(name); return read(pid, name); };
+    await store.save({ ...store.own(), n: 1 });
+    await store.save({ ...store.own(), n: 2 });
+    expect(reads).toEqual([]);
+  });
+
+  it("seals a damaged backup's text as it is, and won't restore it", async () => {
+    const disk = memoryDisk();
+    disk.files.set("own-a.json", plainOwn(annasMine()));
+    disk.folder("a").set("budget-ctrl-2026-10-01-0900-daily.json", '{"v":1,"budget":{"note":"CANARY-7Q", cut sh');
+    const store = await open(household([{ ...anna, hasOwn: true }, tom]), disk);
+    await store.openProfile("a");
+    await store.openMine();
+    await store.setPassword("correct horse", makeRecoveryCode());
+    expect(store.plainBackupsLeft()).toBe(0);
+    for (const [name, text] of disk.folder("a")) expect(text, name).not.toContain("CANARY-7Q");
+
+    const backup = JSON.parse(disk.folder("a").get("budget-ctrl-2026-10-01-0900-daily.json"));
+    const key = await unwrapKey(backup.password, normalizePassword("correct horse"));
+    expect(await openSealed(backup.sealed, key)).toEqual({ damagedBackup: '{"v":1,"budget":{"note":"CANARY-7Q", cut sh' });
+    const before = disk.ownText("a");
+    expect(await store.restoreMine("budget-ctrl-2026-10-01-0900-daily.json", "correct horse")).toBeNull();
+    expect(disk.ownText("a")).toBe(before);
   });
 
   it("opens with the right password only, and Mine with it", async () => {
@@ -715,10 +789,15 @@ describe("changing the password", () => {
     const now = JSON.parse(disk.ownText("a"));
     const oldKey = await unwrapKey(backup.password, normalizePassword("correct horse"));
     await expect(openSealed(now.sealed, oldKey)).rejects.toThrow();
-    // The old wrapper copied into the file doesn't open it either.
+    // The old wrapper copied into the file doesn't open it either: the old
+    // password unwraps the old key, which doesn't open the data.
     disk.files.set("own-a.json", JSON.stringify({ ...now, password: backup.password }));
     await store.closeProfile();
-    expect(await store.openProfile("a", "correct horse")).toBe(false);
+    const err = await caught(store.openProfile("a", "correct horse"));
+    expect(err).toBeInstanceOf(OwnUnreadableError);
+    expect(err.reason).toBe("damaged");
+    expect(store.mineOpen()).toBe(false);
+    await store.closeProfile();
 
     disk.files.set("own-a.json", JSON.stringify(now));
     expect(await store.openProfile("a", "battery staple")).toBe(true);
@@ -832,6 +911,95 @@ describe("restoring Mine", () => {
     const before = sealed.disk.ownText("a");
     await expect(sealed.store.restoreMine(name, "correct horse")).rejects.toThrow();
     expect(sealed.disk.ownText("a")).toBe(before);
+  });
+});
+
+describe("a sealed file whose key unwraps but whose data won't open", () => {
+  // Anna's sealed file with its data sealed again under another key, as if it
+  // changed on disk: "correct horse" still unwraps the key it names.
+  async function breakSeal(disk) {
+    const broken = JSON.stringify({ ...JSON.parse(disk.ownText("a")), sealed: await sealBudget(annasMine(), newBudgetKey()) });
+    disk.files.set("own-a.json", broken);
+    return broken;
+  }
+  async function brokenAnna({ locked = false } = {}) {
+    const { disk, store, code } = await sealedAnna();
+    await store.closeProfile();
+    const broken = await breakSeal(disk);
+    if (locked) disk.locked.add("a");
+    return { disk, store, code, broken };
+  }
+
+  const isDamage = (err, broken, disk) => {
+    expect(err).toBeInstanceOf(OwnUnreadableError);
+    expect(err.personId).toBe("a");
+    expect(err.reason).toBe("damaged");
+    expect(err.keptAs).toMatch(/^own-a-unreadable-/);
+    expect(disk.files.get(err.keptAs)).toBe(broken);
+    expect(disk.ownText("a")).toBe(broken);
+  };
+
+  it("is damage on opening the profile, which opens for the household", async () => {
+    const { disk, store, broken } = await brokenAnna();
+    expect(await store.openProfile("a", "wrong horse")).toBe(false);
+    isDamage(await caught(store.openProfile("a", "correct horse")), broken, disk);
+    expect(store.session()).toBe("a");
+    expect(store.mineOpen()).toBe(false);
+    expect(store.own()).toBeNull();
+  });
+
+  it("is damage on unlocking Mine", async () => {
+    const { disk, store } = await sealedAnna();
+    await store.lockMine();
+    const broken = await breakSeal(disk);
+    expect(await store.unlockMine("wrong horse")).toBe(false);
+    isDamage(await caught(store.unlockMine("correct horse")), broken, disk);
+    expect(store.session()).toBe("a");
+    expect(store.mineOpen()).toBe(false);
+  });
+
+  it("is damage on opening with the recovery code", async () => {
+    const { disk, store, code, broken } = await brokenAnna();
+    expect(await store.openWithRecovery("a", makeRecoveryCode())).toBe(false);
+    isDamage(await caught(store.openWithRecovery("a", code)), broken, disk);
+    expect(store.session()).toBe("a");
+    expect(store.mustSetPassword()).toBe(false);
+  });
+
+  it("can be replaced by a backup once its text is kept", async () => {
+    const { disk, store } = await brokenAnna();
+    await caught(store.openProfile("a", "correct horse"));
+    const [name] = await disk.io.listOwnBackups("a");
+    const doc = await store.restoreMine(name, "correct horse");
+    expect(JSON.stringify(doc)).toContain("CANARY-7Q");
+    await store.closeProfile();
+    expect(await store.openProfile("a", "correct horse")).toBe(true);
+    expect(JSON.stringify(store.own())).toContain("CANARY-7Q");
+  });
+
+  it("can be started again once its text is kept", async () => {
+    const { store } = await brokenAnna();
+    await caught(store.openProfile("a", "correct horse"));
+    const fresh = await store.startMineAgain();
+    expect(fresh.budgetOf).toBe("a");
+    expect(await store.ownStatus("a")).toBe("plain");
+  });
+
+  it("is never written over when its text couldn't be kept, nor once it has changed", async () => {
+    const { disk, store, broken } = await brokenAnna({ locked: true });
+    const err = await caught(store.openProfile("a", "correct horse"));
+    expect(err.reason).toBe("damaged");
+    expect(err.keptAs).toBeNull();
+    const [name] = await disk.io.listOwnBackups("a");
+    await expect(store.restoreMine(name, "correct horse")).rejects.toThrow();
+    await expect(store.startMineAgain()).rejects.toThrow();
+    expect(disk.ownText("a")).toBe(broken);
+
+    const other = await brokenAnna();
+    await caught(other.store.openProfile("a", "correct horse"));
+    const changed = await breakSeal(other.disk);
+    await expect(other.store.startMineAgain()).rejects.toThrow();
+    expect(other.disk.ownText("a")).toBe(changed);
   });
 });
 
@@ -1075,24 +1243,26 @@ describe("keep it as mine", () => {
     expect(store.profilesOn()).toBe(true);
   });
 
-  it("writes the own file before the budget file", async () => {
+  it("writes the own file, takes the day's backup, moves the backups, then writes the budget file", async () => {
     const raw = onePerson();
     const disk = withBackups(raw);
     const store = await open(raw, disk);
     await store.keepAsMine("a");
-    const order = disk.writes().map(([op]) => op).filter((op) => op === "writeOwnFile" || op === "writeHousehold");
-    expect(order).toEqual(["writeOwnFile", "writeHousehold"]);
+    expect(disk.writes()).toEqual([["writeOwnFile", "a"], ["ensureDailyBackup"], ["moveHouseholdBackupsTo", "a"], ["writeHousehold"]]);
   });
 
-  it("moves the budget file's backups into hers, including one taken as the household was written", async () => {
+  it("moves the budget file's backups into hers, today's with them, and leaves none of the old budget behind", async () => {
     const raw = onePerson();
     const disk = withBackups(raw);
     const store = await open(raw, disk);
     await store.keepAsMine("a");
-    for (const [name, text] of disk.folder("")) expect(text, name).not.toContain("CANARY-7Q");
+    expect([...disk.folder("").keys()]).toEqual([]);
     const hers = [...disk.folder("a").values()].filter((t) => t.includes("CANARY-7Q"));
-    // The two from before, and the daily one the household's write took of the old budget.
+    // The two from before, and the day's backup of the old budget taken before the move.
     expect(hers).toHaveLength(3);
+    // The household's next saves take no backup of their own today.
+    await store.save({ ...store.household(), note: "ours" });
+    for (const [name, text] of disk.folder("")) expect(text, name).not.toContain("CANARY-7Q");
   });
 
   it("leaves no canary in the household once the second person is added", async () => {
@@ -1122,6 +1292,7 @@ describe("keep it as mine", () => {
     await store.keepAsMine("a");
     expect(disk.files.get(BUDGET_FILE)).not.toContain("CANARY-7Q");
     expect(JSON.stringify(disk.ownBudget("a"))).toContain("CANARY-7Q");
+    for (const [name, text] of disk.folder("")) expect(text, name).not.toContain("CANARY-7Q");
   });
 
   it("won't try again over a Mine the person has saved since", async () => {
