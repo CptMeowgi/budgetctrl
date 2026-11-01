@@ -503,37 +503,80 @@ export async function writeOwnFile(pid, text) {
   });
 }
 
-// Takes a person's file out of use without destroying it. Resolves to the
-// copy's name, or null when there was nothing to keep.
+// Takes a person's file out of use without losing any of it. The rule:
+// nothing is removed, neither the file nor its mirror, until the text it holds
+// right then is in a copy that was read back. A budget goes in an
+// own-<id>-removed-<time>.json copy, damage in an -unreadable- one.
+//
+// The file and the mirror can hold different budgets: a write to one of them
+// failed, or something outside the app (a sync client) changed the file. Both
+// are kept, and the file's is copied last, so it is the newest copy and the
+// one restoreSetAsideOwnFile brings back, as readOwnFile goes by the file
+// whenever it holds a budget. A damaged file with no budget beside it is set
+// aside as it is, so restoring brings back what the person had (and the
+// recovery screen) rather than nothing. Resolves to the newest -removed-
+// copy's name, or null when no budget or file was there to set aside.
 export async function setAsideOwnFile(pid) {
   return inOrder(pid, async () => {
     const file = ownFileName(pid);
-    // Read it as readOwnFile does first: a damaged file is copied to
-    // -unreadable- and a good mirror is adopted. What comes back is what to
-    // keep: the file's text, or the mirror's when the file was damaged. (Not
-    // what is on disk now: the mirror may not have been written back.) If the
-    // damage can't be kept, nothing is touched.
-    const now = await readOwnNow(pid);
-    // No file and no budget in the mirror: a leftover mirror is just cleared.
-    if (now.status === "missing") {
+    const kept = new Set();
+    let newest = null;
+    const setAside = async (text) => {
+      const name = await freeCopyName(pid, "removed");
+      await appFiles.write(name, text);
+      newest = name;
+    };
+    const keep = async (text) => {
+      if (text === null || kept.has(text)) return;
+      if (isBudgetText(text)) {
+        await setAside(text);
+      } else {
+        try {
+          await keepUnreadable(pid, text);
+        } catch (err) {
+          noteStorageFault("set aside", err);
+          throw new Error("Damaged text could not be kept, so nothing was removed");
+        }
+      }
+      kept.add(text);
+    };
+    const removeMirror = async () => {
+      await keep(mirrorGet(file));
       mirrorRemove(file);
-      return null;
-    }
-    if (now.status === "unreadable" && now.keptAs === null) throw new Error("The damaged file could not be kept, so it was left where it is");
-    const keptAs = await freeCopyName(pid, "removed");
-    await appFiles.write(keptAs, now.text);
+    };
+
+    // 1. Keep everything there is: damage first, so that if it can't be kept
+    // nothing else has been written, then the mirror's budget and the file's.
+    // A file that can't be read for a moment (a sync client or a virus
+    // scanner holding it) is read again in 2.
+    const mirror = mirrorGet(file);
+    let first = null;
+    try {
+      if (await appFiles.exists(file)) first = await appFiles.read(file);
+    } catch { /* read again below, where a failure rejects */ }
+    for (const text of [first, mirror]) if (text !== null && !isBudgetText(text)) await keep(text);
+    await keep(mirror);
+    await keep(first);
+
+    // 2. Read the file again right before it goes, and keep what it holds now
+    // if that isn't kept yet: it changed since, or the first read failed. A
+    // budget kept here is newer than the rest, so its copy is the newest. A
+    // read that fails rejects, with the file and the mirror where they are.
     const onDisk = await appFiles.exists(file);
-    // Left behind, the mirror would bring the budget back as soon as anything
-    // read the file and found it missing. When the file holds the same text it
-    // goes first, so a stop between the two leaves the file for the next try
-    // rather than a mirror to resurrect it. When the file holds something else
-    // (damaged, and the mirror couldn't be written over it) the mirror stays
-    // until the file is really gone, so a file that won't go leaves it untouched.
-    const same = onDisk && (await appFiles.read(file)) === now.text;
-    if (same) mirrorRemove(file);
+    const now = onDisk ? await appFiles.read(file) : null;
+    await keep(now);
+    // Damage, and no budget anywhere: set aside as it is.
+    if (onDisk && newest === null) await setAside(now);
+
+    // 3. Remove. When the mirror holds what the file holds it goes first, so a
+    // stop between the two leaves the file for the next try rather than a
+    // mirror to bring it back. Otherwise the file goes first, so a file that
+    // won't go leaves the mirror as it was.
+    const same = onDisk && mirror === now;
+    if (same) await removeMirror();
     if (onDisk) await appFiles.remove(file);
-    if (!same) mirrorRemove(file);
-    return keptAs;
+    if (!same) await removeMirror();
+    return newest;
   });
 }
 
