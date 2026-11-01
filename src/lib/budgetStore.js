@@ -23,8 +23,12 @@
 // Mine again. A doc from an older generation is refused, so one the app built
 // before such a step can't write it back: not the entries that are now
 // someone's own, nor a removed person. Edits spread the doc and keep its
-// generation. A doc with none at all is a fresh replacement the app built on
-// purpose (a reset, an import, a restore) and is taken as it is.
+// generation. A doc with none is refused too: a re-stamp that dropped it would
+// otherwise slip past. A whole budget the app builds on purpose (a reset, an
+// import, a restore) says so, with save(doc, { replace: true }), which moves
+// the budget to a new generation in turn. Each store starts its generations
+// from a number of its own, so a doc kept across a store made again can't
+// match one by chance.
 //
 // The household holds nothing from an own budget but `people[i].hasOwn`. The
 // marker says a file exists, so a missing or damaged own file gets the
@@ -188,14 +192,22 @@ function withOwners(doc, ids) {
   return changed ? { ...doc, people } : doc;
 }
 
+// Each store's generations start at a random number and go up in steps of
+// GEN_STEP, and the low part counts the stores made in this page, so no two
+// stores made here ever share a generation, and two pages are unlikely to.
+const GEN_STEP = 2 ** 16;
+let storesMade = 0;
+const firstGen = () => Math.floor(Math.random() * 2 ** 32) * GEN_STEP + (storesMade++ % GEN_STEP);
+
 // Language and updates are this computer's settings, still kept in the budget
 // file. An emptied household keeps them, or the app would change under you.
 const computerSettings = (doc) => Object.fromEntries(["language", "updates"].filter((k) => k in doc).map((k) => [k, doc[k]]));
 
 export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIterations = RECOVERY_ITERATIONS } = {}) {
   const gens = new Map(); // HOUSEHOLD or a person id → the generation of that budget
-  const genOf = (id) => gens.get(id) ?? 0;
-  const bump = (id) => gens.set(id, genOf(id) + 1);
+  const genBase = firstGen();
+  const genOf = (id) => gens.get(id) ?? genBase;
+  const bump = (id) => gens.set(id, genOf(id) + GEN_STEP);
   const handOut = (doc, id) => ({ ...doc, budgetOf: id, budgetGen: genOf(id) });
 
   let hh = handOut(bare(hydrate(migrate(raw))), HOUSEHOLD);
@@ -243,11 +255,12 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
   // Checked when the save runs, not when it is asked for: a save queued
   // before Mine locks still finds it open, and one queued after doesn't. So
   // is the generation: a save queued before "Keep it as mine" lands, and a doc
-  // built before it is refused afterwards.
-  const accepts = (doc) => {
+  // built before it is refused afterwards. A replacement takes the place of
+  // whatever generation is there, so only its stamp is checked.
+  const accepts = (doc, replace = false) => {
     const to = doc.budgetOf;
     if (to !== HOUSEHOLD && !(to === session && mine !== null)) return false;
-    return doc.budgetGen === undefined || doc.budgetGen === genOf(to);
+    return replace || doc.budgetGen === genOf(to);
   };
 
   function mustBeCurrent(pid) {
@@ -510,13 +523,21 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
     lockMine: () => queue(async () => forgetMine()),
     closeProfile: () => queue(async () => closeNow()),
 
-    async save(doc) {
+    // `replace` is for a whole budget the app built (a reset, an import, a
+    // restore): it moves that budget to a new generation, so an edit made on
+    // what was there before is refused, and the doc comes back with it.
+    async save(doc, { replace = false } = {}) {
       stampOf(doc);
-      return queue(async () => (accepts(doc) ? saveNow(doc) : false));
+      return queue(async () => {
+        if (!accepts(doc, replace)) return false;
+        if (replace) bump(doc.budgetOf);
+        return saveNow(doc);
+      });
     },
 
     // One job, so nothing can come between the two. The target goes first: if
     // the second write fails, the entry is in both budgets, never in neither.
+    // Both are edits of what the store handed out, never replacements.
     async saveBoth(first, second) {
       stampOf(first);
       stampOf(second);

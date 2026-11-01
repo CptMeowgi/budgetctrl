@@ -143,8 +143,18 @@ function memoryDisk() {
       ownFile(pid);
       log.push(["moveHouseholdBackupsTo", pid]);
       mustWork("moveHouseholdBackupsTo");
+      // As storage.js: the same text already there isn't copied again, and a
+      // different one is never replaced: it goes in as -household, -household-2...
       for (const [name, text] of folder("")) {
-        folder(pid).set(folder(pid).has(name) ? name.replace(/\.json$/, "-household.json") : name, text);
+        const stem = name.slice(0, -".json".length);
+        for (let n = 0; ; n += 1) {
+          const to = n === 0 ? name : `${stem}-household${n > 1 ? `-${n}` : ""}.json`;
+          if (!folder(pid).has(to)) {
+            folder(pid).set(to, text);
+            break;
+          }
+          if (folder(pid).get(to) === text) break;
+        }
         folder("").delete(name);
       }
     },
@@ -1447,25 +1457,71 @@ describe("a doc from before a privacy step", () => {
     expect(await store.save({ ...again, note: "fresh" })).toBeTruthy();
   });
 
-  it("takes a doc with no generation as a fresh replacement, and hands back one with it", async () => {
+  it("refuses a doc with no generation unless it says it replaces the budget", async () => {
     const { raw, disk } = annaAlone();
     const store = await open(raw, disk);
     await store.keepAsMine("a");
+    const written = disk.files.get(BUDGET_FILE);
     // As an import or a reset the app builds: stamped, with no generation.
-    const imported = { ...hydrate(migrate({ months: {}, currency: "PLN" })), budgetOf: HOUSEHOLD };
-    const stored = await store.save(imported);
+    const imported = { ...hydrate(migrate({ months: {}, currency: "PLN" })), budgetOf: HOUSEHOLD, note: "imported" };
+    expect(await store.save(imported)).toBe(false);
+    // A doc re-stamped in a way that dropped its generation is refused too.
+    const { budgetGen: _gen, ...dropped } = store.household();
+    expect(await store.save({ ...dropped, note: "dropped" })).toBe(false);
+    expect(disk.files.get(BUDGET_FILE)).toBe(written);
+
+    const stored = await store.save(imported, { replace: true });
     expect(stored).not.toBe(imported);
     expect(stored.budgetGen).toBe(store.household().budgetGen);
     expect(personIn(stored, "a")).toMatchObject({ hasOwn: true });
+    expect(disk.household().note).toBe("imported");
     expect(await store.save({ ...stored, note: "next edit" })).toBeTruthy();
+  });
 
-    // One that already keeps everyone comes back with a generation too, so
-    // what the app builds on it is protected by the next step.
-    const { budgetGen: _gen, ...whole } = store.household();
-    const kept = await store.save(whole);
-    expect(kept).not.toBe(whole);
-    expect(kept.budgetGen).toBe(store.household().budgetGen);
-    expect(store.household().budgetGen).toEqual(expect.any(Number));
+  it("moves the budget to a new generation on a replacement, so a doc from before it is refused", async () => {
+    const { disk, store, mine } = await annaWithMine();
+    const before = store.household();
+    const edited = { ...before, note: "edited before" };
+    const stored = await store.save({ ...before, note: "replaced" }, { replace: true });
+    expect(stored.budgetGen).not.toBe(before.budgetGen);
+    expect(store.household()).toBe(stored);
+    expect(await store.save(edited)).toBe(false);
+    expect(disk.household().note).toBe("replaced");
+
+    // Mine the same way, as a restore built by the app.
+    const mineStored = await store.save({ ...mine, note: "restored" }, { replace: true });
+    expect(mineStored.budgetGen).not.toBe(mine.budgetGen);
+    expect(store.own()).toBe(mineStored);
+    expect(await store.save({ ...mine, note: "from before" })).toBe(false);
+    expect(disk.ownBudget("a").note).toBe("restored");
+  });
+
+  it("still routes a replacement by its stamp, and refuses one for a budget that isn't open", async () => {
+    const { disk, store, mine } = await annaWithMine();
+    const before = disk.writes().length;
+    expect(await store.save({ ...mine, budgetOf: "t" }, { replace: true })).toBe(false);
+    await store.lockMine();
+    expect(await store.save(mine, { replace: true })).toBe(false);
+    expect(disk.writes().length).toBe(before);
+  });
+
+  it("takes only docs with their generation in saveBoth", async () => {
+    const { disk, store, mine } = await annaWithMine();
+    const before = disk.writes().length;
+    const { budgetGen: _gen, ...genless } = store.household();
+    expect(await store.saveBoth(mine, genless)).toBe(false);
+    expect(await store.saveBoth({ ...mine, budgetGen: undefined }, store.household())).toBe(false);
+    expect(disk.writes().length).toBe(before);
+  });
+
+  it("never hands out the same generation from two stores, so a doc kept across a new store can't match", async () => {
+    const raw = household();
+    const first = await open(raw, memoryDisk());
+    const disk = memoryDisk();
+    const second = await open(raw, disk);
+    expect(first.household().budgetGen).not.toBe(second.household().budgetGen);
+    expect(await second.save({ ...first.household(), note: "from the old store" })).toBe(false);
+    expect(disk.writes()).toEqual([]);
   });
 
   it("never writes the generation into a file", async () => {
