@@ -315,6 +315,9 @@ const appFiles = isTauri
   ? {
       async list() {
         const { fs, base } = await fsApi();
+        // On a clean machine nothing has been saved, so there is no folder and
+        // no files. Any other reason the folder can't be read is an error.
+        if (!(await fs.exists("", { baseDir: base }))) return [];
         return (await fs.readDir("", { baseDir: base })).filter((e) => e.isFile).map((e) => e.name);
       },
       async exists(file) {
@@ -355,6 +358,34 @@ function inOrder(pid, job) {
   return ownQueues.get(pid)(job);
 }
 
+// A copy of someone's budget is never written over another. The minute is the
+// only part of its name that varies, so a second copy in the same minute takes
+// the next free one: still eight digits, a dash and four, and still sorting in
+// the order the copies were made.
+async function freeCopyName(pid, why) {
+  let at = new Date();
+  for (;;) {
+    const name = ownCopyName(pid, why, at);
+    if (!(await appFiles.exists(name))) return name;
+    at = new Date(at.getFullYear(), at.getMonth(), at.getDate(), at.getHours(), at.getMinutes() + 1);
+  }
+}
+
+// Keeps a damaged file's text beside it. Reading the same damaged file again
+// must not pile up identical copies, so an existing copy of the same text is
+// the one kept; different damage is a different copy.
+async function keepUnreadable(pid, text) {
+  const mine = new RegExp(`^own-${pid}-unreadable-\\d{8}-\\d{4}\\.json$`);
+  try {
+    for (const f of (await appFiles.list()).filter((name) => mine.test(name)).sort()) {
+      if ((await appFiles.read(f)) === text) return f;
+    }
+  } catch { /* can't tell, so keep another copy */ }
+  const name = await freeCopyName(pid, "unreadable");
+  await appFiles.write(name, text);
+  return name;
+}
+
 // As readStoreFile: { status: "missing" }, { status: "ok", text } or
 // { status: "unreadable", text }.
 async function readOwnState(file) {
@@ -380,13 +411,14 @@ async function readOwnNow(pid) {
   if (state.status === "ok") return state;
   let keptAs = null;
   if (state.status === "unreadable") {
-    keptAs = ownCopyName(pid, "unreadable", new Date());
     try {
-      await appFiles.write(keptAs, state.text);
+      keptAs = await keepUnreadable(pid, state.text);
     } catch (err) {
       noteStorageFault("set aside", err);
-      keptAs = null;
     }
+    // Without a copy of the damaged file, writing the mirror over it would
+    // leave no record of what was there.
+    if (keptAs === null) return { ...state, keptAs: null };
   }
   // The file is missing or damaged: adopt the copy localStorage mirrors and
   // write it back. (In the browser the mirror is the file, so it never
@@ -445,12 +477,19 @@ async function maybeDailyOwnBackup(pid) {
   } catch { /* a failed backup must never block a save */ }
 }
 
+// Text that isn't a JSON object is refused before anything is touched: saved,
+// it would read back as a damaged file.
+const mustBeBudgetText = (text) => {
+  if (typeof text !== "string" || !isBudgetText(text)) throw new Error("That is not a budget to save");
+};
+
 // Unlike the budget file's save, a failed write is thrown after it is noted:
 // moving an entry between files must not take it out of the first until the
 // second really has it. The mirror still gets the text.
 export async function writeOwnFile(pid, text) {
   return inOrder(pid, async () => {
     const file = ownFileName(pid);
+    mustBeBudgetText(text);
     if (!isTauri) return appFiles.write(file, text);
     try {
       await maybeDailyOwnBackup(pid);
@@ -465,18 +504,24 @@ export async function writeOwnFile(pid, text) {
 }
 
 // Takes a person's file out of use without destroying it. Resolves to the
-// copy's name, or null when there was no file.
+// copy's name, or null when there was nothing to keep.
 export async function setAsideOwnFile(pid) {
   return inOrder(pid, async () => {
     const file = ownFileName(pid);
-    if (!(await appFiles.exists(file))) return null;
-    const text = await appFiles.read(file);
-    const keptAs = ownCopyName(pid, "removed", new Date());
+    const onDisk = await appFiles.exists(file);
+    // With the file gone, the mirror may be all that is left of the budget.
+    const text = onDisk ? await appFiles.read(file) : mirrorGet(file);
+    if (!onDisk && !isBudgetText(text)) {
+      mirrorRemove(file);
+      return null;
+    }
+    const keptAs = await freeCopyName(pid, "removed");
     await appFiles.write(keptAs, text);
-    await appFiles.remove(file);
     // Left behind, the mirror would bring the budget back as soon as anything
-    // read the file and found it missing.
+    // read the file and found it missing. It goes first, so a stop between the
+    // two leaves the file for the next try rather than a mirror to resurrect.
     mirrorRemove(file);
+    if (onDisk) await appFiles.remove(file);
     return keptAs;
   });
 }
@@ -493,24 +538,35 @@ export async function restoreSetAsideOwnFile(pid) {
     const text = await appFiles.read(newest);
     await appFiles.write(file, text);
     mirrorSet(file, text);
-    await appFiles.remove(newest);
+    try {
+      await appFiles.remove(newest);
+    } catch (err) {
+      // The file is back, which is what was asked for. The leftover copy only
+      // means a later restore finds it first, so it is noted, not thrown.
+      noteStorageFault("remove restored copy", err);
+    }
     return true;
   });
 }
 
 // The person ids that have an own-<id>.json. Set-aside and unreadable copies,
-// conflict copies and anything else are not own files.
+// conflict copies and anything else are not own files. Empty only when there
+// is no folder yet; if the folder can't be read it rejects, because an empty
+// answer would pass for "nobody has an own file".
 export async function listOwnFiles() {
+  let files;
   try {
-    const ids = new Set();
-    for (const f of await appFiles.list()) {
-      const m = OWN_FILE.exec(f);
-      if (m) ids.add(m[1]);
-    }
-    return [...ids].sort();
-  } catch {
-    return [];
+    files = await appFiles.list();
+  } catch (err) {
+    noteStorageFault("list own files", err);
+    throw err;
   }
+  const ids = new Set();
+  for (const f of files) {
+    const m = OWN_FILE.exec(f);
+    if (m) ids.add(m[1]);
+  }
+  return [...ids].sort();
 }
 
 function ownBackupPath(pid, name) {
@@ -552,6 +608,7 @@ export async function readOwnBackup(pid, name) {
 export async function replaceOwnBackup(pid, name, text) {
   return inOrder(pid, async () => {
     const path = ownBackupPath(pid, name);
+    mustBeBudgetText(text);
     if (!isTauri) return;
     await writeVerified(`${path}.new`, text);
     await removeIfThere(path);
@@ -561,9 +618,13 @@ export async function replaceOwnBackup(pid, name, text) {
 }
 
 // For keepAsMine: the budget file's backups hold what is now the person's, so
-// they go into their folder, each copied and checked before it is removed. One
-// that can't be moved stays where it was (an existing backup of theirs is never
-// replaced), and the rest still go; the call then says some were left.
+// they go into their folder, each copied and checked before it is removed.
+// Their backups and the budget's are named alike, so a name can be taken
+// already. A file that is the same is not copied again; a different one is
+// never replaced, and the backup goes in under the name with "-household"
+// before the .json (then -2, -3...). So a move stopped half way finishes when
+// it is run again. One that can't be moved stays where it was and the rest
+// still go; the call then says some were left.
 export async function moveHouseholdBackupsTo(pid) {
   return inOrder(pid, async () => {
     if (!isTauri) return;
@@ -577,10 +638,18 @@ export async function moveHouseholdBackupsTo(pid) {
     let left = 0;
     for (const name of names) {
       try {
-        const to = `${ownDir(pid)}/${name}`;
-        if (await fs.exists(to, { baseDir: base })) throw new Error(`${to} is already there`);
-        await writeVerified(to, await fs.readTextFile(`${BACKUP_DIR}/${name}`, { baseDir: base }));
-        await fs.remove(`${BACKUP_DIR}/${name}`, { baseDir: base });
+        const from = `${BACKUP_DIR}/${name}`;
+        const text = await fs.readTextFile(from, { baseDir: base });
+        const stem = name.slice(0, -".json".length);
+        for (let n = 0; ; n += 1) {
+          const to = `${ownDir(pid)}/${n === 0 ? name : `${stem}-household${n > 1 ? `-${n}` : ""}.json`}`;
+          if (!(await fs.exists(to, { baseDir: base }))) {
+            await writeVerified(to, text);
+            break;
+          }
+          if ((await fs.readTextFile(to, { baseDir: base })) === text) break;
+        }
+        await fs.remove(from, { baseDir: base });
       } catch (err) {
         left += 1;
         noteStorageFault("move backup", err);
@@ -588,6 +657,25 @@ export async function moveHouseholdBackupsTo(pid) {
     }
     if (left) throw new Error(`${left} of the budget's backups could not be moved`);
   });
+}
+
+// The budget file's save swallows a failed file write and carries on from the
+// localStorage mirror. That is fine for an ordinary edit, but moving an entry
+// out of the household must know the household file really has it, so the store
+// gets a write that reads the file back. (In the browser the save is
+// localStorage itself, which throws when it fails.)
+async function writeHousehold(text) {
+  const saved = await window.storage.set(STORAGE_KEY, text);
+  if (isTauri) {
+    let held = null;
+    try {
+      held = await readStoreFile();
+    } catch (err) {
+      noteStorageFault("read back", err);
+    }
+    if (!held || held.status !== "ok" || held.text !== text) throw new Error("The budget file does not hold what was just saved");
+  }
+  return saved;
 }
 
 // What budgetStore.js is given to reach the disk. Private due dates are kept
@@ -602,7 +690,7 @@ export const ownIo = {
   replaceOwnBackup,
   moveHouseholdBackupsTo,
   listOwnFiles,
-  writeHousehold: (text) => window.storage.set(STORAGE_KEY, text),
+  writeHousehold,
   rememberPrivateDue: () => {},
   forgetPrivateDue: () => {},
 };

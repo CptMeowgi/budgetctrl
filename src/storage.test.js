@@ -9,7 +9,7 @@ const disk = vi.hoisted(() => {
   const files = new Map();
   const dirs = new Set();
   const calls = [];
-  const state = { rootMade: false, beforeWrite: null, mangle: null, failRead: new Set() };
+  const state = { rootMade: false, beforeWrite: null, mangle: null, failRead: new Set(), failRemove: new Set(), failReadDir: false };
   const clean = (p) => p.replace(/\\/g, "/").replace(/\/+$/, "");
   const parentOf = (p) => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
   const hasDir = (p) => (p === "" ? state.rootMade : dirs.has(p));
@@ -25,6 +25,7 @@ const disk = vi.hoisted(() => {
     BaseDirectory: { AppData: "AppData" },
     async exists(path) {
       path = clean(path);
+      if (path === "") return state.rootMade;
       return files.has(path) || dirs.has(path);
     },
     async readTextFile(path) {
@@ -54,6 +55,7 @@ const disk = vi.hoisted(() => {
     async readDir(path) {
       path = clean(path);
       calls.push(["readDir", path]);
+      if (state.failReadDir) throw new Error("os error 5: access denied");
       if (!hasDir(path)) throw new Error(`os error 3: ${path} not found`);
       const own = (child) => child.slice(path ? path.length + 1 : 0);
       const entries = [];
@@ -64,6 +66,7 @@ const disk = vi.hoisted(() => {
     async remove(path) {
       path = clean(path);
       calls.push(["remove", path]);
+      if (state.failRemove.has(path)) throw new Error(`os error 5: ${path} is locked`);
       if (!files.delete(path) && !dirs.delete(path)) throw new Error(`os error 2: ${path} not found`);
     },
   };
@@ -76,6 +79,8 @@ const disk = vi.hoisted(() => {
     state.beforeWrite = null;
     state.mangle = null;
     state.failRead.clear();
+    state.failRemove.clear();
+    state.failReadDir = false;
   };
   return { files, dirs, calls, state, api, put, reset, parentOf };
 });
@@ -236,6 +241,52 @@ describe("an own budget file in the app", () => {
     expect(disk.files.get("own-a.json")).toBe(PLAIN);
   });
 
+  it("keeps one copy of a damaged file however often it is read", async () => {
+    const cut = PLAIN.slice(0, 25);
+    disk.put("own-a.json", cut);
+    const first = await storage.readOwnFile("a");
+    const second = await storage.readOwnFile("a");
+    vi.setSystemTime(new Date(2026, 9, 28, 9, 0));
+    const third = await storage.readOwnFile("a");
+    expect(second.keptAs).toBe(first.keptAs);
+    expect(third.keptAs).toBe(first.keptAs);
+    expect(filesIn("").filter((f) => f.includes("-unreadable-"))).toEqual(["own-a-unreadable-20261027-1432.json"]);
+  });
+
+  it("keeps different damage as another copy, in the next free minute, and replaces none", async () => {
+    disk.put("own-a.json", "{\"v\":1,");
+    const first = await storage.readOwnFile("a");
+    disk.put("own-a.json", "{\"v\":2,");
+    const second = await storage.readOwnFile("a");
+    disk.put("own-a.json", "{\"v\":3,");
+    const third = await storage.readOwnFile("a");
+    expect([first.keptAs, second.keptAs, third.keptAs]).toEqual([
+      "own-a-unreadable-20261027-1432.json",
+      "own-a-unreadable-20261027-1433.json",
+      "own-a-unreadable-20261027-1434.json",
+    ]);
+    expect(disk.files.get(first.keptAs)).toBe("{\"v\":1,");
+    expect(disk.files.get(second.keptAs)).toBe("{\"v\":2,");
+    expect(disk.files.get(third.keptAs)).toBe("{\"v\":3,");
+  });
+
+  it("does not count another person's copy of the same text as its own", async () => {
+    disk.put("own-t-unreadable-20261027-1432.json", "{\"v\":1,");
+    disk.put("own-a.json", "{\"v\":1,");
+    expect((await storage.readOwnFile("a")).keptAs).toBe("own-a-unreadable-20261027-1432.json");
+    expect(disk.files.get("own-a-unreadable-20261027-1432.json")).toBe("{\"v\":1,");
+  });
+
+  it("does not adopt the mirror over a damaged file it could not keep a copy of", async () => {
+    const cut = PLAIN.slice(0, 25);
+    disk.put("own-a.json", cut);
+    ls.setItem(OWN_A_KEY, PLAIN);
+    disk.state.mangle = (path, text) => (path.includes("-unreadable-") ? "" : text);
+    expect(await storage.readOwnFile("a")).toEqual({ status: "unreadable", text: cut, keptAs: null });
+    expect(disk.files.get("own-a.json")).toBe(cut);
+    expect(storage.getStorageFault()).toContain("set aside");
+  });
+
   it("adopts the mirror and writes it back when the file is missing", async () => {
     ls.setItem(OWN_A_KEY, PLAIN);
     expect(await storage.readOwnFile("a")).toEqual({ status: "ok", text: PLAIN });
@@ -267,6 +318,15 @@ describe("an own budget file in the app", () => {
     const sealed = JSON.stringify({ v: 1, sealed: { iv: "AAAA", data: "BBBB" }, password: {}, recovery: {} });
     await storage.writeOwnFile("a", sealed);
     expect(await storage.readOwnFile("a")).toEqual({ status: "ok", text: sealed });
+  });
+
+  it("refuses text that isn't a JSON object, before touching anything", async () => {
+    for (const bad of ["", "   ", "[1]", "null", "not json", "{\"v\":1,", undefined, null, 42, {}]) {
+      await expect(storage.writeOwnFile("a", bad)).rejects.toThrow();
+    }
+    expect(disk.calls).toEqual([]);
+    expect(ls.map.size).toBe(0);
+    expect(storage.getStorageFault()).toBeNull();
   });
 
   it("saves one at a time, in the order asked, even when an earlier one is slow", async () => {
@@ -451,6 +511,67 @@ describe("setting an own file aside, and bringing it back", () => {
     expect(disk.files.size).toBe(0);
   });
 
+  it("never writes over an earlier copy made in the same minute: the next free minute is used", async () => {
+    await storage.writeOwnFile("a", doc("first"));
+    expect(await storage.setAsideOwnFile("a")).toBe("own-a-removed-20261027-1432.json");
+    await storage.writeOwnFile("a", doc("second"));
+    expect(await storage.setAsideOwnFile("a")).toBe("own-a-removed-20261027-1433.json");
+    await storage.writeOwnFile("a", doc("third"));
+    expect(await storage.setAsideOwnFile("a")).toBe("own-a-removed-20261027-1434.json");
+    expect(disk.files.get("own-a-removed-20261027-1432.json")).toBe(doc("first"));
+    expect(disk.files.get("own-a-removed-20261027-1433.json")).toBe(doc("second"));
+    expect(disk.files.get("own-a-removed-20261027-1434.json")).toBe(doc("third"));
+  });
+
+  it("restores the one set aside last, even when it took a later minute's name", async () => {
+    await storage.writeOwnFile("a", doc("first"));
+    await storage.setAsideOwnFile("a");
+    await storage.writeOwnFile("a", doc("second"));
+    await storage.setAsideOwnFile("a");
+    expect(await storage.restoreSetAsideOwnFile("a")).toBe(true);
+    expect(disk.files.get("own-a.json")).toBe(doc("second"));
+    expect(filesIn("").filter((f) => f.includes("-removed-"))).toEqual(["own-a-removed-20261027-1432.json"]);
+  });
+
+  it("carries on past midnight when the minute after is in the next day", async () => {
+    vi.setSystemTime(new Date(2026, 9, 27, 23, 59));
+    await storage.writeOwnFile("a", doc(1));
+    expect(await storage.setAsideOwnFile("a")).toBe("own-a-removed-20261027-2359.json");
+    await storage.writeOwnFile("a", doc(2));
+    expect(await storage.setAsideOwnFile("a")).toBe("own-a-removed-20261028-0000.json");
+  });
+
+  it("does not take another person's copy for a clash", async () => {
+    disk.put("own-t-removed-20261027-1432.json", doc("tom"));
+    await storage.writeOwnFile("a", doc("anna"));
+    expect(await storage.setAsideOwnFile("a")).toBe("own-a-removed-20261027-1432.json");
+  });
+
+  it("removes the mirror before the file, once the copy is made", async () => {
+    await storage.writeOwnFile("a", PLAIN);
+    const removeItem = ls.removeItem;
+    ls.removeItem = (k) => { disk.calls.push(["mirror-remove", k]); removeItem(k); };
+    disk.calls.length = 0;
+    await storage.setAsideOwnFile("a");
+    const order = disk.calls.filter(([op]) => op === "write" || op === "remove" || op === "mirror-remove").map(([op, path]) => `${op} ${path}`);
+    expect(order).toEqual(["write own-a-removed-20261027-1432.json", `mirror-remove ${OWN_A_KEY}`, "remove own-a.json"]);
+  });
+
+  it("keeps a budget that only the mirror still holds, and clears the mirror", async () => {
+    ls.setItem(OWN_A_KEY, PLAIN);
+    expect(await storage.setAsideOwnFile("a")).toBe("own-a-removed-20261027-1432.json");
+    expect(disk.files.get("own-a-removed-20261027-1432.json")).toBe(PLAIN);
+    expect(ls.getItem(OWN_A_KEY)).toBeNull();
+    expect(await storage.readOwnFile("a")).toEqual({ status: "missing" });
+  });
+
+  it("clears a mirror that holds no budget when the file is missing, and keeps nothing", async () => {
+    ls.setItem(OWN_A_KEY, "{\"v\":1,");
+    expect(await storage.setAsideOwnFile("a")).toBeNull();
+    expect(ls.getItem(OWN_A_KEY)).toBeNull();
+    expect(disk.files.size).toBe(0);
+  });
+
   it("round-trips: restore puts the file back and removes the set-aside copy", async () => {
     await storage.writeOwnFile("a", PLAIN);
     await storage.setAsideOwnFile("a");
@@ -477,6 +598,20 @@ describe("setting an own file aside, and bringing it back", () => {
     expect(await storage.restoreSetAsideOwnFile("a")).toBe(false);
     expect(disk.files.has("own-a.json")).toBe(false);
     expect(filesIn("")).toHaveLength(3);
+  });
+
+  it("still says it restored when the set-aside copy can't be removed afterwards, and notes why", async () => {
+    disk.put("own-a-removed-20261026-1015.json", doc("old"));
+    disk.state.failRemove.add("own-a-removed-20261026-1015.json");
+    expect(await storage.restoreSetAsideOwnFile("a")).toBe(true);
+    expect(disk.files.get("own-a.json")).toBe(doc("old"));
+    expect(filesIn("")).toContain("own-a-removed-20261026-1015.json");
+    expect(storage.getStorageFault()).toContain("remove restored copy");
+  });
+
+  it("is false on a clean machine, where there is no folder yet", async () => {
+    expect(await storage.restoreSetAsideOwnFile("a")).toBe(false);
+    expect(storage.getStorageFault()).toBeNull();
   });
 
   it("never replaces a file that is there", async () => {
@@ -516,8 +651,21 @@ describe("which own files are there", () => {
     expect(await storage.listOwnFiles()).toEqual(["a"]);
   });
 
-  it("is empty on a clean machine, where there is no folder yet", async () => {
+  it("is empty on a clean machine, where there is no folder yet, and that is no fault", async () => {
     expect(await storage.listOwnFiles()).toEqual([]);
+    expect(storage.getStorageFault()).toBeNull();
+  });
+
+  it("is empty when the folder is there and holds no own file", async () => {
+    disk.put("budget-ctrl.json", "{}");
+    expect(await storage.listOwnFiles()).toEqual([]);
+  });
+
+  it("rejects, and notes a fault, when the folder can't be read: an empty answer would say nobody has one", async () => {
+    disk.put("own-a.json", "{}");
+    disk.state.failReadDir = true;
+    await expect(storage.listOwnFiles()).rejects.toThrow("access denied");
+    expect(storage.getStorageFault()).toContain("list own files");
   });
 });
 
@@ -571,6 +719,17 @@ describe("the backups of an own file", () => {
     expect(filesIn(dir)).toEqual([one(20), one(21)]);
     expect(disk.files.get(`${dir}/${one(20)}`)).toBe(doc("sealed"));
     expect(disk.files.get(`${dir}/${one(21)}`)).toBe(doc("untouched"));
+  });
+
+  it("refuses new text that isn't a JSON object, and leaves the backup as it was", async () => {
+    disk.put(`${dir}/${one(20)}`, doc("old"));
+    disk.calls.length = 0;
+    for (const bad of ["", "[1]", "not json", "{\"v\":1,", undefined, 42]) {
+      await expect(storage.replaceOwnBackup("a", one(20), bad)).rejects.toThrow();
+    }
+    expect(disk.calls).toEqual([]);
+    expect(filesIn(dir)).toEqual([one(20)]);
+    expect(disk.files.get(`${dir}/${one(20)}`)).toBe(doc("old"));
   });
 
   it("goes by write .new, remove, write, remove .new, since there is no rename", async () => {
@@ -646,15 +805,66 @@ describe("moving the budget file's backups into an own folder", () => {
     expect(disk.files.size).toBe(1);
   });
 
-  it("never replaces a backup already in the folder: that one stays where it is, and the rest still move", async () => {
-    disk.put(`backups/${one(20)}`, doc("h20"));
-    disk.put(`backups/${one(21)}`, doc("h21"));
-    disk.put(`backups/own-a/${one(20)}`, doc("anna's own"));
-    await expect(storage.moveHouseholdBackupsTo("a")).rejects.toThrow();
-    expect(disk.files.get(`backups/own-a/${one(20)}`)).toBe(doc("anna's own"));
-    expect(disk.files.get(`backups/${one(20)}`)).toBe(doc("h20"));
-    expect(filesIn("backups").filter((f) => f.endsWith(".json"))).toEqual([one(20)]);
-    expect(disk.files.get(`backups/own-a/${one(21)}`)).toBe(doc("h21"));
+  describe("when a backup of the same name is already in the folder", () => {
+    const moved = (n = 1) => `budget-ctrl-2026-10-20-0900-daily-household${n > 1 ? `-${n}` : ""}.json`;
+
+    it("removes the budget's backup and adds nothing when it is the same text", async () => {
+      disk.put(`backups/${one(20)}`, doc("same"));
+      disk.put(`backups/${one(21)}`, doc("h21"));
+      disk.put(`backups/own-a/${one(20)}`, doc("same"));
+      await storage.moveHouseholdBackupsTo("a");
+      expect(filesIn("backups").filter((f) => f.endsWith(".json"))).toEqual([]);
+      expect(filesIn("backups/own-a")).toEqual([one(20), one(21)]);
+      expect(disk.files.get(`backups/own-a/${one(20)}`)).toBe(doc("same"));
+    });
+
+    it("keeps both when the text is different: the budget's goes in under a -household name", async () => {
+      disk.put(`backups/${one(20)}`, doc("household's"));
+      disk.put(`backups/${one(21)}`, doc("h21"));
+      disk.put(`backups/own-a/${one(20)}`, doc("anna's own"));
+      await storage.moveHouseholdBackupsTo("a");
+      expect(disk.files.get(`backups/own-a/${one(20)}`)).toBe(doc("anna's own"));
+      expect(disk.files.get(`backups/own-a/${moved()}`)).toBe(doc("household's"));
+      expect(disk.files.get(`backups/own-a/${one(21)}`)).toBe(doc("h21"));
+      expect(filesIn("backups").filter((f) => f.endsWith(".json"))).toEqual([]);
+    });
+
+    it("numbers the -household name when that is taken by something different too", async () => {
+      disk.put(`backups/${one(20)}`, doc("third"));
+      disk.put(`backups/own-a/${one(20)}`, doc("own"));
+      disk.put(`backups/own-a/${moved()}`, doc("an earlier move"));
+      await storage.moveHouseholdBackupsTo("a");
+      expect(disk.files.get(`backups/own-a/${one(20)}`)).toBe(doc("own"));
+      expect(disk.files.get(`backups/own-a/${moved()}`)).toBe(doc("an earlier move"));
+      expect(disk.files.get(`backups/own-a/${moved(2)}`)).toBe(doc("third"));
+      expect(filesIn("backups").filter((f) => f.endsWith(".json"))).toEqual([]);
+    });
+
+    it("finishes when run again after being stopped between the copy and the remove", async () => {
+      disk.put(`backups/${one(20)}`, doc("household's"));
+      disk.put(`backups/${one(21)}`, doc("h21"));
+      disk.put(`backups/own-a/${one(20)}`, doc("anna's own"));
+      disk.state.failRemove.add(`backups/${one(20)}`);
+      await expect(storage.moveHouseholdBackupsTo("a")).rejects.toThrow();
+      // The copy is there and the source is too: in both places, not in neither.
+      expect(disk.files.get(`backups/own-a/${moved()}`)).toBe(doc("household's"));
+      expect(disk.files.get(`backups/${one(20)}`)).toBe(doc("household's"));
+
+      disk.state.failRemove.clear();
+      await storage.moveHouseholdBackupsTo("a");
+      expect(filesIn("backups").filter((f) => f.endsWith(".json"))).toEqual([]);
+      expect(filesIn("backups/own-a")).toEqual([moved(), one(20), one(21)]);
+      expect(disk.files.get(`backups/own-a/${one(20)}`)).toBe(doc("anna's own"));
+      expect(disk.files.get(`backups/own-a/${moved()}`)).toBe(doc("household's"));
+    });
+
+    it("keeps the moved name readable as a backup of that day", async () => {
+      disk.put(`backups/${one(20)}`, doc("household's"));
+      disk.put(`backups/own-a/${one(20)}`, doc("anna's own"));
+      await storage.moveHouseholdBackupsTo("a");
+      expect(await storage.listOwnBackups("a")).toEqual([one(20), moved()].sort().reverse());
+      expect(await storage.readOwnBackup("a", moved())).toBe(doc("household's"));
+    });
   });
 
   it("keeps a backup in the budget's folder when its copy didn't come out right", async () => {
@@ -683,6 +893,38 @@ describe("ownIo, the store's way to the disk", () => {
     expect(disk.files.get("budget-ctrl.json")).toBe(doc("h"));
     expect(ls.getItem(HOUSEHOLD_KEY)).toBe(doc("h"));
     expect(disk.files.has("own-a.json")).toBe(false);
+  });
+
+  describe("writeHousehold, which must not say yes when the budget file doesn't have it", () => {
+    it("resolves, with what the save gave, once the file holds exactly the text", async () => {
+      expect(await storage.ownIo.writeHousehold(doc("h"))).toEqual({ key: HOUSEHOLD_KEY, value: doc("h") });
+      expect(disk.files.get("budget-ctrl.json")).toBe(doc("h"));
+    });
+
+    it("rejects when the file write failed, although the save itself carried on from the mirror", async () => {
+      disk.state.beforeWrite = (path) => { if (path === "budget-ctrl.json") throw new Error("os error 5: access denied"); };
+      await expect(storage.ownIo.writeHousehold(doc("h"))).rejects.toThrow("does not hold");
+      expect(disk.files.has("budget-ctrl.json")).toBe(false);
+      expect(ls.getItem(HOUSEHOLD_KEY)).toBe(doc("h"));
+    });
+
+    it("rejects when the file still holds an older budget", async () => {
+      await storage.ownIo.writeHousehold(doc("old"));
+      disk.state.beforeWrite = (path) => { if (path === "budget-ctrl.json") throw new Error("os error 5: access denied"); };
+      await expect(storage.ownIo.writeHousehold(doc("new"))).rejects.toThrow();
+      expect(disk.files.get("budget-ctrl.json")).toBe(doc("old"));
+    });
+
+    it("rejects when the file can't be read back", async () => {
+      disk.state.failRead.add("budget-ctrl.json");
+      await expect(storage.ownIo.writeHousehold(doc("h"))).rejects.toThrow();
+    });
+
+    it("leaves window.storage.set as it was: a failed file write is still carried on from the mirror", async () => {
+      disk.state.beforeWrite = (path) => { if (path === "budget-ctrl.json") throw new Error("os error 5: access denied"); };
+      await expect(window.storage.set(HOUSEHOLD_KEY, doc("h"))).resolves.toEqual({ key: HOUSEHOLD_KEY, value: doc("h") });
+      expect(ls.getItem(HOUSEHOLD_KEY)).toBe(doc("h"));
+    });
   });
 
   it("has the private-due-date hooks, which do nothing yet", async () => {
@@ -767,6 +1009,39 @@ describe("an own file in the browser", () => {
     expect(await storage.restoreSetAsideOwnFile("a")).toBe(true);
     expect(await storage.readOwnFile("a")).toEqual({ status: "ok", text: PLAIN });
     expect(ls.getItem("budget-app-data:own-a-removed-20261027-1432")).toBeNull();
+  });
+
+  it("refuses text that isn't a JSON object", async () => {
+    await expect(storage.writeOwnFile("a", "{\"v\":1,")).rejects.toThrow();
+    await expect(storage.writeOwnFile("a", "")).rejects.toThrow();
+    expect(ls.map.size).toBe(0);
+  });
+
+  it("keeps a copy set aside twice in one minute under the next minute's name", async () => {
+    await storage.writeOwnFile("a", doc("first"));
+    await storage.setAsideOwnFile("a");
+    await storage.writeOwnFile("a", doc("second"));
+    expect(await storage.setAsideOwnFile("a")).toBe("own-a-removed-20261027-1433.json");
+    expect(ls.getItem("budget-app-data:own-a-removed-20261027-1432")).toBe(doc("first"));
+    expect(ls.getItem("budget-app-data:own-a-removed-20261027-1433")).toBe(doc("second"));
+  });
+
+  it("keeps one copy of a damaged file read twice, and another for different damage", async () => {
+    ls.setItem(OWN_A_KEY, "{\"v\":1,");
+    await storage.readOwnFile("a");
+    await storage.readOwnFile("a");
+    ls.setItem(OWN_A_KEY, "{\"v\":2,");
+    await storage.readOwnFile("a");
+    const copies = [...ls.map.keys()].filter((k) => k.includes("-unreadable-")).sort();
+    expect(copies).toEqual(["budget-app-data:own-a-unreadable-20261027-1432", "budget-app-data:own-a-unreadable-20261027-1433"]);
+  });
+
+  it("writes the household through localStorage, which throws when it fails", async () => {
+    expect(await storage.ownIo.writeHousehold(doc("h"))).toEqual({ key: HOUSEHOLD_KEY, value: doc("h") });
+    expect(ls.getItem(HOUSEHOLD_KEY)).toBe(doc("h"));
+    ls.setItem = () => { throw new Error("QuotaExceededError"); };
+    await expect(storage.ownIo.writeHousehold(doc("more"))).rejects.toThrow("QuotaExceededError");
+    expect(disk.calls).toEqual([]);
   });
 
   it("has no backups to list, read, replace or move", async () => {
