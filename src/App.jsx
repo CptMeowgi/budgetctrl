@@ -54,6 +54,7 @@ import { catName, due, ordinal, shortDate } from "./text.js";
 import { listBackups, listOwnBackups, ownIo, readBackup, readLock, setAsideUnreadable, writeBackup, writeLock } from "./storage.js";
 import { createStore, HOUSEHOLD, newOwnBudget } from "./lib/budgetStore.js";
 import { deviceAutoUpdate, deviceLanguage, setDeviceAutoUpdate, setDeviceLanguage } from "./lib/device.js";
+import { afterSave, needsReplace, stampFor } from "./lib/saving.js";
 import { RecoveryScreen } from "./components/RecoveryScreen.jsx";
 import { DARK_THEME, FOCUS_RING, FONT, LIGHT_THEME, makeStyles, RADIUS, SPACE, ThemeContext, TYPE } from "./theme.js";
 import { BrandMark, Icon } from "./components/Icon.jsx";
@@ -211,7 +212,7 @@ export default function App() {
     await backupBefore("before-reset");
     // A fresh budget of the kind that's open.
     const fresh = openRef.current === HOUSEHOLD ? hydrate(defaultData()) : newOwnBudget(storeRef.current.household());
-    await save(fresh, { replace: true });
+    if (!(await replaced(save(fresh, { replace: true })))) return;
     setSettingsOpen(false);
   };
   const onImportFile = (e) => {
@@ -230,7 +231,8 @@ export default function App() {
         await backupBefore("before-import");
         // The budget alone: who had an own budget where it came from isn't so
         // here, and the store keeps everyone who has one here.
-        await save(hydrate(migrate(budgetFromFile(parsed, { imported: true }))), { replace: true });
+        const doc = hydrate(migrate(budgetFromFile(parsed, { imported: true })));
+        await replaced(save(doc, { replace: true }));
       } catch {
         alert(t("Could not read backup file. Make sure it's a valid budget-ctrl JSON export."));
       } finally {
@@ -252,80 +254,82 @@ export default function App() {
   }, []);
   // The open budget's backups: the budget file's, or an own budget's own.
   const loadBackups = useCallback(() => (openRef.current === HOUSEHOLD ? listBackups() : listOwnBackups(openRef.current)), []);
+  // A reset, an import or a restore that couldn't be written didn't happen:
+  // the store leaves the budget as it was, and so does the screen. Said
+  // here, as a refusal says itself. Resolves to whether it happened.
+  const replaced = async (saving) => {
+    const result = await saving;
+    if (result === null) alert(t("That couldn't be saved, so your budget is as it was."));
+    return !!result;
+  };
 
-  // Hands a doc to the store, then shows what the store holds. A doc the
-  // store takes comes back carrying its budget's generation, which every
-  // later edit must carry too, so it is shown in place of the one sent,
-  // unless a newer edit has been shown since (made from it, that carries the
-  // generation already). A whole budget (`replace`) is always shown: nothing
-  // made while it was on its way can be saved over it. `orReplace` is for
-  // undo and redo: a snapshot from before a whole budget was replaced has the
-  // generation the budget had then, so the store takes it back only as a
-  // whole budget, and never one from before a privacy step.
+  // Hands a doc to the store, then shows what the store holds (see
+  // afterSave in lib/saving.js). `replace` is for a whole budget.
+  // `orReplace` is for undo and redo: a snapshot the store refuses as an edit
+  // goes back as a whole budget, if the store will take it as one; never one
+  // from before a privacy step.
   //
-  // A doc the store refuses leaves the open budget as the store holds it,
-  // and says so. A write that fails is caught as it always was: the store
-  // keeps the doc as the app does, the next save that works writes it, and
-  // Settings shows the fault. Resolves to the doc as stored, false when it
-  // was refused, or null when the write failed.
+  // A write that fails is caught as it always was. An edit is kept by the
+  // store as the app keeps it, the next save that works writes it, and
+  // Settings shows the fault; a whole budget isn't put in at all. Resolves
+  // to the doc as stored, false when it was refused, or null when the write
+  // failed.
   const persist = useCallback(async (doc, { replace = false, orReplace = false } = {}) => {
     const store = storeRef.current;
     let stored = false;
-    let failed = false;
-    let replaced = replace;
+    let whole = replace;
     try {
       if (store) {
         stored = await store.save(doc, { replace });
         if (stored === false && orReplace && !replace) {
-          replaced = true;
+          whole = true;
           stored = await store.save(doc, { replace: true });
         }
       }
     } catch {
-      failed = true;
+      stored = null;
     }
     // Another budget (or the sample) is showing now, and stays.
-    if (doc.budgetOf !== openRef.current || sampleRef.current) return failed ? null : stored;
-    const latest = replaced || dataRef.current === doc;
-    if (stored) {
-      if (latest && stored !== dataRef.current) show(stored);
-      return stored;
-    }
-    const held = store?.doc(openRef.current);
-    if (latest && held && held !== dataRef.current) show(held);
-    if (failed) return null;
-    setToast(t("That change couldn't be saved."));
-    return false;
+    if (doc.budgetOf !== openRef.current || sampleRef.current) return stored;
+    const next = afterSave({ doc, stored, replaced: whole, shown: dataRef.current, held: store?.doc(openRef.current) });
+    if (next.show) show(next.show);
+    if (next.refused) setToast(t("That change couldn't be saved."));
+    return stored;
   }, [show]);
 
   // Every user change goes through here and becomes undoable. System writes -
   // first-launch defaults, the period rollover - pass { undoable: false }, so
   // Ctrl+Z can never undo something the user did not do. A whole budget made
   // on purpose (the first one, a reset, an import, a restore) passes
-  // { replace: true }, and is shown once the store has it, so no edit of
-  // what was there before can land after it.
+  // { replace: true }, and is shown, and becomes undoable, once the store has
+  // it: no edit of what was there before can land after it, and one that
+  // didn't happen is no step to undo.
   const save = useCallback(async (next, opts = {}) => {
-    // A doc made fresh is the open budget's. An edit keeps the stamp of the
-    // doc it was made from, through every spread.
-    const doc = next.budgetOf ? next : { ...next, budgetOf: openRef.current };
-    // An edit of a budget that isn't open any more: nothing to show or save.
-    if (doc.budgetOf !== openRef.current) return false;
-    if (opts.undoable !== false) {
+    const doc = stampFor(next, openRef.current);
+    if (!doc) return false;
+    const before = dataRef.current;
+    const step = () => {
+      if (opts.undoable === false) return;
       const h = historyRef.current;
       const now = Date.now();
       // Saves within a second coalesce into one step. Some inputs save on every
       // keystroke; undo should step back over "8000", not over each digit.
       if (now - h.lastPushAt > 1000 || !h.past.length) {
-        h.past.push(dataRef.current);
+        h.past.push(before);
         if (h.past.length > UNDO_LIMIT) h.past.shift();
       }
       h.lastPushAt = now;
       h.future = [];
       setHistorySize({ past: h.past.length, future: 0 });
-    }
+    };
     // The sample is never saved.
-    if (sampleRef.current) { show(doc); return doc; }
-    if (opts.replace) return persist(doc, { replace: true });
+    if (sampleRef.current) { step(); show(doc); return doc; }
+    if (opts.replace) {
+      const stored = await persist(doc, { replace: true });
+      if (stored) step();
+      return stored;
+    }
+    step();
     show(doc);
     return persist(doc);
   }, [show, persist]);
@@ -497,13 +501,24 @@ export default function App() {
     const h = historyRef.current;
     if (!h[from].length) { setToast(label === "Undo" ? t("Nothing to undo") : t("Nothing to redo")); return; }
     const target = h[from].pop();
-    h[to].push(dataRef.current);
+    const current = dataRef.current;
+    h[to].push(current);
     h.lastPushAt = 0; // the next edit starts a fresh undo step
     setHistorySize({ past: h.past.length, future: h.future.length });
-    show(target);
-    // Refused, it has said so, and the open budget shows as the store has it.
-    if (!sampleRef.current && (await persist(target, { orReplace: true })) === false) return;
-    setToast(label === "Undo" ? t("Undone") : t("Redone"));
+    const done = () => setToast(label === "Undo" ? t("Undone") : t("Redone"));
+    if (sampleRef.current) { show(target); done(); return; }
+    // A snapshot from before a reset, an import or a restore goes back as a
+    // whole budget, shown once the store has it, as those are.
+    const whole = needsReplace(target, storeRef.current?.doc(openRef.current));
+    if (!whole) show(target);
+    if (await persist(target, whole ? { replace: true } : { orReplace: true })) { done(); return; }
+    setToast(t("That change couldn't be saved."));
+    // It didn't happen: the step stays where it was, to try again.
+    if (dataRef.current !== target && h[to][h[to].length - 1] === current) {
+      h[to].pop();
+      h[from].push(target);
+      setHistorySize({ past: h.past.length, future: h.future.length });
+    }
   }, [show, persist]);
   const undo = useCallback(() => restore("past", "future", "Undo"), [restore]);
   const redo = useCallback(() => restore("future", "past", "Redo"), [restore]);
@@ -601,11 +616,13 @@ export default function App() {
       setLoadError(null);
       setLoaded(true);
     };
-    const adoptText = async (text) => {
+    // One of this computer's backups keeps its own marks; a file from
+    // anywhere doesn't say who has an own budget here, as an import doesn't.
+    const adoptText = async (text, opts) => {
       try {
         const parsed = JSON.parse(text);
         if (!parsed || typeof parsed !== "object" || !parsed.months || typeof parsed.months !== "object") throw new Error("not a budget");
-        await adopt(budgetFromFile(parsed));
+        await adopt(budgetFromFile(parsed, opts));
       } catch {
         alert(t("That backup could not be read."));
       }
@@ -621,7 +638,7 @@ export default function App() {
             try { text = await readBackup(name); } catch { alert(t("That backup could not be read.")); return; }
             await adoptText(text);
           }}
-          onOpenFile={adoptText}
+          onOpenFile={(text) => adoptText(text, { imported: true })}
           onStartNew={async () => {
             if (!confirm(t("Start a new, empty budget? The unreadable budget and your backups are kept."))) return;
             await adopt(defaultData());
@@ -1897,7 +1914,8 @@ export default function App() {
               // Snapshot the current state before replacing it, so restoring to
               // the wrong point is itself recoverable.
               await backupBefore("before-restore");
-              await save(hydrate(migrate(budgetFromFile(parsed))), { replace: true });
+              const doc = hydrate(migrate(budgetFromFile(parsed)));
+              if (!(await replaced(save(doc, { replace: true })))) return;
               setSettingsOpen(false);
             } catch {
               alert(t("That backup could not be read."));

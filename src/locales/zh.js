@@ -949,4 +949,5 @@ export default {
   "Paid by {who}": "付款人：{who}",
   "That change couldn't be saved.": "无法保存该更改。",
   "That backup of your own budget doesn't open with your password.": "无法用你的密码打开你自己预算的这个备份。",
+  "That couldn't be saved, so your budget is as it was.": "无法保存，你的预算保持不变。",
 };

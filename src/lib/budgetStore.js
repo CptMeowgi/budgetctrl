@@ -387,16 +387,44 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
 
   // The store's doc is the one asked for even if its write fails, as the
   // app's is: the next save that works writes it. The failure still rejects.
-  async function saveNow(doc) {
+  // `written` is called once the budget's own file has the doc.
+  async function saveNow(doc, written = () => {}) {
     if (doc.budgetOf !== HOUSEHOLD) {
       mine = doc.budgetGen === genOf(session) ? doc : handOut(doc, session);
-      await writeMine(mine);
+      await writeOwn(mine, key, wraps);
+      written();
+      await markOwner();
       return mine;
     }
     const next = await keepPeople(doc);
     hh = next;
     await io.writeHousehold(textOf(next));
+    written();
     return next;
+  }
+
+  // A replacement moves its budget to a new generation only once the
+  // budget's file has it. One that fails before then (a person who can't be
+  // brought back, a write that fails) leaves the budget as it was, its
+  // generation too, so the doc the app has open can still be saved. Once
+  // Mine's file has it, Mine is replaced even if the household then won't
+  // take the first-save mark; the next save writes that.
+  async function replaceNow(doc) {
+    const id = doc.budgetOf;
+    const was = { gen: gens.get(id), hh, mine };
+    let done = false;
+    bump(id);
+    try {
+      return await saveNow(doc, () => { done = true; });
+    } catch (err) {
+      if (!done) {
+        if (was.gen === undefined) gens.delete(id);
+        else gens.set(id, was.gen);
+        hh = was.hh;
+        mine = was.mine;
+      }
+      throw err;
+    }
   }
 
   function needSealedMine() {
@@ -546,14 +574,14 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
     // `replace` is for a whole budget the app built (a reset, an import, a
     // restore, or an undo replaying one): it moves that budget to a new
     // generation, so an edit made on what was there before is refused, and
-    // the doc comes back with it. It doesn't raise the floor, so an undo of
+    // the doc comes back with it. One that fails moves nothing (see
+    // replaceNow). It doesn't raise the floor, so an undo of
     // the replacement can replay what was there in its turn.
     async save(doc, { replace = false } = {}) {
       stampOf(doc);
       return queue(async () => {
         if (!accepts(doc, replace)) return false;
-        if (replace) bump(doc.budgetOf);
-        return saveNow(doc);
+        return replace ? replaceNow(doc) : saveNow(doc);
       });
     },
 

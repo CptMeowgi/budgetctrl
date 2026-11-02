@@ -1613,6 +1613,74 @@ describe("a doc from before a privacy step", () => {
   });
 });
 
+describe("a replacement that fails", () => {
+  // Anna was removed; the budget brought in has her back, so saving it
+  // brings back her set-aside file first.
+  async function annaRemoved(disk = memoryDisk()) {
+    const store = await open(household([{ ...anna, removed: true }, tom]), disk);
+    const imported = { ...hydrate(migrate({ months: {}, currency: "EUR" })), people: [anna, tom], budgetOf: HOUSEHOLD };
+    return { disk, store, imported };
+  }
+
+  it("leaves the store taking edits of its household when a person can't be brought back", async () => {
+    const { disk, store, imported } = await annaRemoved();
+    const before = store.household();
+    const written = disk.files.get(BUDGET_FILE);
+    disk.failing.add("restoreSetAsideOwnFile");
+    await expect(store.save(imported, { replace: true })).rejects.toThrow("restoreSetAsideOwnFile failed");
+    expect(store.household()).toBe(before);
+    expect(disk.files.get(BUDGET_FILE)).toBe(written);
+
+    const edited = await store.save({ ...store.household(), note: "next edit" });
+    expect(edited).toBeTruthy();
+    expect(disk.household().note).toBe("next edit");
+  });
+
+  it("leaves the budget and its generation as they were when the household can't be written", async () => {
+    const { disk, store, imported } = await annaRemoved();
+    const before = store.household();
+    disk.failing.add("writeHousehold");
+    await expect(store.save(imported, { replace: true })).rejects.toThrow("writeHousehold failed");
+    expect(store.household()).toBe(before);
+
+    disk.failing.delete("writeHousehold");
+    expect(await store.save({ ...store.household(), note: "next edit" })).toBeTruthy();
+    expect(disk.household().note).toBe("next edit");
+    expect(disk.household().currency).toBe("PLN");
+    // And the replacement can be tried again.
+    const stored = await store.save(imported, { replace: true });
+    expect(stored.currency).toBe("EUR");
+    expect(await store.save({ ...stored, note: "after" })).toBeTruthy();
+  });
+
+  it("leaves Mine and its generation as they were when its file can't be written", async () => {
+    const { disk, store, mine } = await annaWithMine();
+    disk.failing.add("writeOwnFile");
+    await expect(store.save({ ...mine, note: "restored" }, { replace: true })).rejects.toThrow("writeOwnFile failed");
+    expect(store.own()).toBe(mine);
+
+    disk.failing.delete("writeOwnFile");
+    expect(await store.save({ ...store.own(), note: "next edit" })).toBeTruthy();
+    expect(disk.ownBudget("a").note).toBe("next edit");
+  });
+
+  it("keeps a replaced Mine whose file was written, when only the household's mark fails", async () => {
+    const disk = memoryDisk();
+    const store = await open(household(), disk);
+    await store.openProfile("t");
+    const mine = await store.openMine();
+    disk.failing.add("writeHousehold");
+    await expect(store.save({ ...mine, note: "reset" }, { replace: true })).rejects.toThrow("writeHousehold failed");
+    expect(store.own().note).toBe("reset");
+    expect(disk.ownBudget("t").note).toBe("reset");
+
+    disk.failing.delete("writeHousehold");
+    expect(await store.save({ ...store.own(), note: "next edit" })).toBeTruthy();
+    expect(store.hasOwn("t")).toBe(true);
+    expect(await store.save({ ...mine, note: "from before the reset" })).toBe(false);
+  });
+});
+
 describe("store edges", () => {
   it("sets the password even when the household won't take the first-save mark, and the next save writes it", async () => {
     const disk = memoryDisk();

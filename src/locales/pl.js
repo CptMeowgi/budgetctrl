@@ -949,4 +949,5 @@ export default {
   "Paid by {who}": "Płatnik: {who}",
   "That change couldn't be saved.": "Nie udało się zapisać tej zmiany.",
   "That backup of your own budget doesn't open with your password.": "Tej kopii Twojego własnego budżetu nie da się otworzyć Twoim hasłem.",
+  "That couldn't be saved, so your budget is as it was.": "Nie udało się tego zapisać, więc budżet jest taki jak wcześniej.",
 };
