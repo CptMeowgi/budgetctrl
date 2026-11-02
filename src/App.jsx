@@ -37,7 +37,7 @@ import { EntryName, ExpenseRow, MissingFromTemplate, NotDueThisPeriod, PayerLabe
 import { SettingsModal } from "./components/SettingsModal.jsx";
 import { PayScheduleModal } from "./components/PayScheduleModal.jsx";
 import { perPeriodOf } from "./lib/paySchedule.js";
-import { isShared } from "./lib/people.js";
+import { addPerson, hasProfiles, isShared, markAllJoint, peopleOf, personById, removePerson } from "./lib/people.js";
 import { StatementImport } from "./components/StatementImport.jsx";
 import { UpdateBanner } from "./components/UpdateBanner.jsx";
 import { WindowControls } from "./components/WindowControls.jsx";
@@ -52,7 +52,11 @@ import { currencyCode, fmt, setMoneyFormat } from "./money.js";
 import { isLinux, isTauri } from "./platform.js";
 import { catName, due, ordinal, shortDate } from "./text.js";
 import { listBackups, listOwnBackups, ownIo, readBackup, readLock, setAsideUnreadable, writeBackup, writeLock } from "./storage.js";
-import { createStore, HOUSEHOLD, newOwnBudget } from "./lib/budgetStore.js";
+import { createStore, HOUSEHOLD, newOwnBudget, OwnUnreadableError } from "./lib/budgetStore.js";
+import { PasswordAsk, ProfilePicker } from "./components/ProfilePicker.jsx";
+import { BudgetSwitch, OwnUnreadableDialog } from "./components/BudgetSwitch.jsx";
+import { SecondPersonDialog } from "./components/SecondPersonDialog.jsx";
+import { OpenBudgetContext } from "./hooks/useCollapsed.js";
 import { deviceAutoUpdate, deviceLanguage, setDeviceAutoUpdate, setDeviceLanguage } from "./lib/device.js";
 import { afterSave, needsReplace, stampFor } from "./lib/saving.js";
 import { RecoveryScreen } from "./components/RecoveryScreen.jsx";
@@ -63,6 +67,13 @@ import { dateLocale, fmtDate, getLanguage, setLanguage, t, tk, tn } from "./i18n
 
 const UNDO_LIMIT = 50;
 const THEME_KEY = "budget-ctrl-theme";
+// A sealed Mine locks after this long without using the app.
+const MINE_IDLE_MS = 10 * 60 * 1000;
+
+// A store or vault fault, said as one: never "wrong password".
+const fault = (err) => t("Something went wrong: {error}", { error: String(err?.message || err) });
+// Who has an own budget, to tell when a save brought someone's back.
+const ownersOf = (doc) => peopleOf(doc).filter((p) => p.hasOwn).map((p) => p.id).join(",");
 
 // Development only: ?demo opens a made-up budget instead of yours (for
 // screenshots and trying things), and &tab=, &theme=, &lang= choose what it
@@ -125,6 +136,22 @@ export default function App() {
   // there are profiles.
   const storeRef = useRef(null);
   const openRef = useRef(HOUSEHOLD);
+  // With profiles: the budget showing (openRef's value, for drawing; saves
+  // and switching read openRef, which changes first), and the open profile's
+  // person id as the store has it (store.session()).
+  const [openId, setOpenId] = useState(HOUSEHOLD);
+  const [session, setSession] = useState(null);
+  // The people whose own budget has a password, for the picker.
+  const [sealedPeople, setSealedPeople] = useState(() => new Set());
+  // Dialogs about Mine: its password, a file that won't open ({ reason,
+  // keptAs }), and a backup's password ({ title, text }, answered through
+  // promptRef).
+  const [unlockAsk, setUnlockAsk] = useState(false);
+  const [ownTrouble, setOwnTrouble] = useState(null);
+  const [passwordPrompt, setPasswordPrompt] = useState(null);
+  const promptRef = useRef(null);
+  // { name } while adding the person who turns profiles on asks how to share.
+  const [secondPerson, setSecondPerson] = useState(null);
   // This computer's settings (lib/device.js) are read at each render, so a
   // change to one just renders again.
   const [, setDeviceTick] = useState(0);
@@ -254,6 +281,77 @@ export default function App() {
   }, []);
   // The open budget's backups: the budget file's, or an own budget's own.
   const loadBackups = useCallback(() => (openRef.current === HOUSEHOLD ? listBackups() : listOwnBackups(openRef.current)), []);
+  // The open profile's own backups, while Mine itself won't open.
+  const loadMineBackups = useCallback(() => listOwnBackups(storeRef.current?.session()), []);
+
+  // Shows another budget: the household, or the open profile's Mine. openRef
+  // changes before the screen does, so a save still on its way for the budget
+  // that was showing goes to its own file and never onto the screen (see
+  // persist), and the doc comes from the store, carrying its generation.
+  // Nothing of the budget that was showing stays: no undo or redo, no
+  // selection, no unlocked periods, no period open in History, no dialog, no
+  // search typed. The tab stays.
+  const switchTo = useCallback((id) => {
+    const doc = storeRef.current?.doc(id);
+    if (!doc) return false;
+    openRef.current = id;
+    setOpenId(id);
+    show(doc);
+    clearHistory();
+    setSelecting(null);
+    setSelected(new Set());
+    unlockedRef.current = new Set();
+    setUnlocked(new Set());
+    setHistoryKey(null);
+    setModalState(null);
+    setLockAsk(null);
+    backToCheckup.current = false;
+    setSearchOpen(false);
+    setSearchQuery({ text: "", kinds: [] });
+    for (const set of [setExpensesView, setRecurringView, setUpcomingView, setCreditsView]) set({ search: "", sorts: [] });
+    setSettingsOpen(false);
+    setCategoriesOpen(false);
+    setRulesOpen(false);
+    setCheckupOpen(false);
+    setStatementOpen(false);
+    setPayDialog(null);
+    setUnlockAsk(false);
+    setOwnTrouble(null);
+    if (promptRef.current) { promptRef.current(null); promptRef.current = null; }
+    setPasswordPrompt(null);
+    setPendingDelete(null);
+    setToast(null);
+    return true;
+  }, [show, clearHistory]);
+
+  // After a store method changed the household (someone removed, a budget
+  // kept as someone's own, someone back with their own budget): the store's
+  // household is shown if it is open, and nothing from before can be undone.
+  const householdChanged = useCallback(() => {
+    const store = storeRef.current;
+    if (store && openRef.current === HOUSEHOLD) show(store.household());
+    clearHistory();
+  }, [show, clearHistory]);
+
+  // Closes the profile: the household first, so Mine is off the screen before
+  // anything else, then the store forgets who is open once the saves already
+  // on their way have landed. The picker follows, or the only person's
+  // profile opens again. A budget without profiles has nothing to close.
+  const closeProfileNow = useCallback(async () => {
+    const store = storeRef.current;
+    setSession(null);
+    if (!store || (!store.session() && openRef.current === HOUSEHOLD)) return;
+    switchTo(HOUSEHOLD);
+    await store.closeProfile();
+  }, [switchTo]);
+
+  // Locks Mine and forgets its key; the household shows if Mine was showing.
+  const lockMineNow = useCallback(async () => {
+    const store = storeRef.current;
+    if (!store) return;
+    if (openRef.current !== HOUSEHOLD) switchTo(HOUSEHOLD);
+    await store.lockMine();
+  }, [switchTo]);
   // A reset, an import or a restore that couldn't be written didn't happen:
   // the store leaves the budget as it was, and so does the screen. Said
   // here, as a refusal says itself. Resolves to whether it happened.
@@ -459,6 +557,24 @@ export default function App() {
   const autoUpdate = deviceAutoUpdate(household);
   const changeAutoUpdate = (on) => { setDeviceAutoUpdate(on); setDeviceTick((n) => n + 1); };
 
+  // Profiles are on from two current people, or one with a budget of their
+  // own (hasProfiles). While the household shows, it counts as shown, so a
+  // person just added counts before the store has written them. Never in the
+  // sample, which has no store behind it. Without profiles nothing below
+  // shows: no picker, no switch, no band.
+  const shownHousehold = openId === HOUSEHOLD ? data : household;
+  const currentPeople = peopleOf(shownHousehold);
+  const profiles = !!storeRef.current && !sample && hasProfiles(shownHousehold);
+  const me = session ? personById(household, session) : null;
+  // "Who's budgeting?": after the PIN's lock screen, and never over Settings.
+  const picking = loaded && profiles && !session && currentPeople.length > 1 && !settingsOpen;
+  // The one person there is opens their profile without the picker.
+  const soleId = profiles && currentPeople.length === 1 ? currentPeople[0].id : null;
+  // Under a form's title, for a new entry: which budget it goes into.
+  const addingTo = profiles ? (openId === HOUSEHOLD ? t("Adding to the household") : t("Adding to Mine")) : undefined;
+  // A new household entry in someone's profile starts as paid by them.
+  const payingMe = openId === HOUSEHOLD && session ? session : undefined;
+
   const deleteArm = useMemo(() => ({ armedId: pendingDelete, arm: setPendingDelete }), [pendingDelete]);
 
   // ensureCurrentMonth used to run only inside hydrate(), i.e. only at launch.
@@ -511,12 +627,16 @@ export default function App() {
     // whole budget, shown once the store has it, as those are.
     const whole = needsReplace(target, storeRef.current?.doc(openRef.current));
     if (!whole) show(target);
-    if (await persist(target, whole ? { replace: true } : { orReplace: true })) { done(); return; }
+    const stored = await persist(target, whole ? { replace: true } : { orReplace: true });
+    if (stored) { done(); return; }
     setToast(t("That change couldn't be saved."));
-    // It didn't happen: the step stays where it was, to try again.
+    // It didn't happen. A write that failed (null) can work next time, so the
+    // step goes back where it was. A refusal (false) never will: the step is
+    // from before a privacy step (someone's budget kept as their own, someone
+    // removed). Put back, it would stay the next undo for good, so it's dropped.
     if (dataRef.current !== target && h[to][h[to].length - 1] === current) {
       h[to].pop();
-      h[from].push(target);
+      if (stored === null) h[from].push(target);
       setHistorySize({ past: h.past.length, future: h.future.length });
     }
   }, [show, persist]);
@@ -531,7 +651,9 @@ export default function App() {
       const el = e.target;
       const tag = (el?.tagName || "").toLowerCase();
       const typing = tag === "input" || tag === "textarea" || tag === "select" || el?.isContentEditable;
-      const dialogOpen = !!modal || settingsOpen || categoriesOpen || statementOpen || searchOpen || rulesOpen || setupOpen || !!pinDialog || !!payDialog || !!whatsNew || checkupOpen || !!lockAsk;
+      // The picker counts as one: nothing behind it is undone or opened.
+      const dialogOpen = !!modal || settingsOpen || categoriesOpen || statementOpen || searchOpen || rulesOpen || setupOpen || !!pinDialog || !!payDialog || !!whatsNew || checkupOpen || !!lockAsk
+        || picking || unlockAsk || !!ownTrouble || !!passwordPrompt || !!secondPerson;
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
       // Locking works from anywhere, open dialog or not.
@@ -557,7 +679,8 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [loaded, modal, settingsOpen, categoriesOpen, statementOpen, searchOpen, rulesOpen, setupOpen, pinDialog, payDialog, whatsNew, checkupOpen, lockAsk, lockCfg, locked, tab, undo, redo, setModal]);
+  }, [loaded, modal, settingsOpen, categoriesOpen, statementOpen, searchOpen, rulesOpen, setupOpen, pinDialog, payDialog, whatsNew, checkupOpen, lockAsk, lockCfg, locked, tab, undo, redo, setModal,
+    picking, unlockAsk, ownTrouble, passwordPrompt, secondPerson]);
 
   useEffect(() => {
     let alive = true;
@@ -584,11 +707,254 @@ export default function App() {
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [lockCfg]);
 
+  // The PIN locking closes the profile: the lock is for the whole app, and
+  // whoever unlocks it picks who they are again.
+  useEffect(() => {
+    if (lockCfg && locked && session) closeProfileNow();
+  }, [lockCfg, locked, session, closeProfileNow]);
+
+  // So does closing the window to the tray (Rust says so before hiding it).
+  // Minimising does nothing.
+  useEffect(() => {
+    if (!isTauri) return;
+    let alive = true;
+    let unlisten = null;
+    (async () => {
+      try {
+        const { listen } = await import("@tauri-apps/api/event");
+        const off = await listen("closed-to-tray", () => { if (storeRef.current?.session()) closeProfileNow(); });
+        if (alive) unlisten = off; else off();
+      } catch { /* Tauri API unavailable (browser dev server) */ }
+    })();
+    return () => { alive = false; if (unlisten) unlisten(); };
+  }, [closeProfileNow]);
+
+  // A sealed Mine locks after a spell of not using the app, by the same signs
+  // as the PIN's idle lock. A plain one has nothing to lock.
+  useEffect(() => {
+    if (!session) return;
+    let last = Date.now();
+    let checking = false;
+    const bump = () => { last = Date.now(); };
+    const events = ["pointerdown", "pointermove", "keydown", "wheel"];
+    events.forEach((ev) => window.addEventListener(ev, bump, { passive: true }));
+    const iv = setInterval(async () => {
+      const store = storeRef.current;
+      if (checking || !store?.mineOpen() || Date.now() - last < MINE_IDLE_MS) return;
+      checking = true;
+      try {
+        if ((await store.ownStatus(session)) === "sealed") await lockMineNow();
+        else last = Date.now();
+      } catch {
+        last = Date.now();
+      }
+      checking = false;
+    }, 15000);
+    return () => { events.forEach((ev) => window.removeEventListener(ev, bump)); clearInterval(iv); };
+  }, [session, lockMineNow]);
+
+  // Profiles turned off (the second person removed, nobody with an own
+  // budget): back to a budget without them.
+  useEffect(() => {
+    if (session && !profiles) closeProfileNow();
+  }, [session, profiles, closeProfileNow]);
+
+  // The only person there is opens their profile without the picker; a
+  // sealed Mine asks for its password when Mine is opened.
+  useEffect(() => {
+    if (!loaded || !soleId || session || settingsOpen || lockCfg === undefined || (lockCfg && locked)) return;
+    const store = storeRef.current;
+    let alive = true;
+    store.openSoleProfile(soleId).then(
+      () => { if (alive && store.session() === soleId) { setSession(soleId); switchTo(HOUSEHOLD); } },
+      (err) => { if (alive) alert(fault(err)); },
+    );
+    return () => { alive = false; };
+  }, [loaded, soleId, session, settingsOpen, lockCfg, locked, switchTo]);
+
+  // Which profiles ask for a password, for the picker.
+  const pickIds = picking ? currentPeople.map((p) => p.id).join(",") : "";
+  useEffect(() => {
+    if (!pickIds) return;
+    const store = storeRef.current;
+    let alive = true;
+    (async () => {
+      const sealed = new Set();
+      for (const pid of pickIds.split(",")) {
+        try {
+          if ((await store.ownStatus(pid)) === "sealed") sealed.add(pid);
+        } catch { /* missing or damaged: the profile opens for the household, and Mine says what's wrong */ }
+      }
+      if (alive) setSealedPeople(sealed);
+    })();
+    return () => { alive = false; };
+  }, [pickIds]);
+
   // Derived from todayKey rather than recomputed per render: stable within a
   // day, and guaranteed to refresh when the tick above crosses midnight. Local
   // midnight is also the right value for the day-granularity comparisons in
   // isRecurringDue, which treat period bounds as whole days.
   const today = useMemo(() => new Date(`${todayKey}T00:00:00`), [todayKey]);
+
+  // The picker chose someone. Resolves to true once their profile is open,
+  // with the household showing, and to false for a wrong password. Anything
+  // else rejects (the picker says so), never as a wrong password, except a
+  // sealed file whose data won't open: the profile is open for the household
+  // then, and opening Mine says what is wrong.
+  const pickProfile = async (pid, password) => {
+    const store = storeRef.current;
+    let ok;
+    try {
+      ok = await store.openProfile(pid, password);
+    } catch (err) {
+      if (!(err instanceof OwnUnreadableError && store.session() === pid)) {
+        if (store.session()) await store.closeProfile().catch(() => {});
+        throw err;
+      }
+      ok = true;
+    }
+    if (!ok) return false;
+    setSession(pid);
+    switchTo(HOUSEHOLD);
+    return true;
+  };
+
+  const ownUnreadable = (err) => setOwnTrouble({ reason: err.reason, keptAs: err.keptAs ?? null });
+
+  // The switch's "Mine". A sealed Mine that is locked asks for its password
+  // first; one that won't open says why and offers what can be done.
+  const showMine = async () => {
+    const store = storeRef.current;
+    const pid = store?.session();
+    if (!pid) return;
+    if (!store.mineOpen()) {
+      try {
+        await store.openMine();
+      } catch (err) {
+        if (err instanceof OwnUnreadableError) { ownUnreadable(err); return; }
+        let status = null;
+        try {
+          status = await store.ownStatus(pid);
+        } catch (again) {
+          if (again instanceof OwnUnreadableError) { ownUnreadable(again); return; }
+        }
+        if (status === "sealed") setUnlockAsk(true);
+        else alert(fault(err));
+        return;
+      }
+    }
+    if (store.session() === pid) switchTo(pid);
+  };
+
+  // The unlock dialog's password: false is a wrong one; a rejection is a fault.
+  const unlockMine = async (password) => {
+    const store = storeRef.current;
+    const pid = store.session();
+    let ok;
+    try {
+      ok = await store.unlockMine(password);
+    } catch (err) {
+      if (!(err instanceof OwnUnreadableError)) throw err;
+      setUnlockAsk(false);
+      ownUnreadable(err);
+      return true;
+    }
+    if (!ok) return false;
+    if (store.session() === pid) switchTo(pid);
+    return true;
+  };
+
+  // Asks for a password in a small dialog; resolves to it, or null if closed.
+  const askPassword = (ask) => new Promise((resolve) => {
+    promptRef.current = resolve;
+    setPasswordPrompt(ask);
+  });
+  const answerPrompt = (password) => {
+    const resolve = promptRef.current;
+    promptRef.current = null;
+    setPasswordPrompt(null);
+    resolve?.(password);
+  };
+
+  // One of Mine's backups in place of Mine, or of its file that won't open.
+  // A backup sealed under another password (or another key) needs that
+  // password: it is asked for once, then the restore is tried again.
+  // Resolves to whether Mine was restored; a fault rejects. Mine is shown
+  // once restored, which leaves nothing from before to undo.
+  const restoreMineBackup = async (name) => {
+    const store = storeRef.current;
+    const pid = store.session();
+    let mine = await store.restoreMine(name);
+    if (!mine) {
+      const password = await askPassword({ title: t("Restore a backup"), text: t("Enter the password this backup was saved with.") });
+      if (password === null) return false;
+      mine = await store.restoreMine(name, password);
+      if (!mine) {
+        alert(t("That backup of your own budget doesn't open with your password."));
+        return false;
+      }
+    }
+    if (store.session() === pid) switchTo(pid);
+    return true;
+  };
+
+  // People, from Settings. The person who turns profiles on asks first what
+  // becomes of the budget so far, and nothing is saved before. Someone added
+  // back gets their own budget back from the store: nothing from before
+  // that can be undone.
+  const onAddPerson = async (name) => {
+    const store = storeRef.current;
+    const next = addPerson(data, name, uid);
+    if (next === data) return;
+    if (store && !sample && !store.profilesOn() && hasProfiles(next)) {
+      setSecondPerson({ name: String(name).trim() });
+      return;
+    }
+    const stored = await save(next);
+    if (stored && ownersOf(stored) !== ownersOf(next)) householdChanged();
+  };
+
+  // With profiles, removing someone goes through the store: their own budget
+  // is put away, their share ends, and no undo can bring them back (adding
+  // them again does). Without, it's an edit as before.
+  const onRemovePerson = async (pid) => {
+    const store = storeRef.current;
+    if (!store || sample || !store.profilesOn()) { save(removePerson(data, pid)); return; }
+    try {
+      await store.removePerson(pid);
+    } catch (err) {
+      alert(fault(err));
+      return;
+    }
+    if (!store.session()) setSession(null);
+    householdChanged();
+  };
+
+  // The second person's dialog. Either way the person is added to the
+  // store's household as it is now, never to the budget the People list
+  // built before the dialog: after "Keep it as mine" that still holds
+  // everything that is now someone's own.
+  const shareWithSecond = async ({ markJoint }) => {
+    const { name } = secondPerson;
+    const base = storeRef.current.household();
+    setSecondPerson(null);
+    await save(addPerson(markJoint ? markAllJoint(base) : base, name, uid));
+  };
+  const keepAsMineForSecond = async (pid) => {
+    const store = storeRef.current;
+    const { name } = secondPerson;
+    try {
+      await store.keepAsMine(pid);
+    } catch (err) {
+      setSecondPerson(null);
+      alert(fault(err));
+      return;
+    }
+    householdChanged();
+    setSecondPerson(null);
+    await save(addPerson(store.household(), name, uid), { undoable: false });
+    alert(t("Recurring bills that belong to the household can be moved there one at a time."));
+  };
 
   if ((!loaded && !loadError) || lockCfg === undefined) return <div style={s.shell}><div style={{ color: theme.textFaint, textAlign: "center", marginTop: 200, fontSize: 14 }}>{t("Loading...")}</div></div>;
 
@@ -644,6 +1010,18 @@ export default function App() {
             await adopt(defaultData());
             setSetupOpen(true);
           }} />
+      </ThemeContext.Provider>
+    );
+  }
+
+  // In place of the app, as the lock screen is: no budget is drawn behind it.
+  if (picking) {
+    return (
+      <ThemeContext.Provider value={themedValue}>
+        <div data-tauri-drag-region style={{ position: "fixed", top: 0, left: 0, right: 0, height: 40, zIndex: 2 }}>
+          <WindowControls />
+        </div>
+        <ProfilePicker people={currentPeople} sealed={sealedPeople} onOpen={pickProfile} />
       </ThemeContext.Provider>
     );
   }
@@ -800,6 +1178,7 @@ export default function App() {
   return (
     <ThemeContext.Provider value={themedValue}>
     <DeleteArmContext.Provider value={deleteArm}>
+    <OpenBudgetContext.Provider value={openId}>
     <div style={s.shell}>
       <style>{`
         *[data-tauri-drag-region] { app-region: drag; -webkit-app-region: drag; }
@@ -879,7 +1258,11 @@ export default function App() {
           <BrandMark />
           <span data-tauri-drag-region style={{ fontSize: 20, fontWeight: 700, letterSpacing: -0.7, color: theme.outerText, whiteSpace: "nowrap" }}>Budget Ctrl</span>
         </div>
-        <nav style={s.nav}>
+        {session && (
+          <BudgetSwitch value={openId === HOUSEHOLD ? "household" : "mine"}
+            onChange={(v) => { if (v === "mine") showMine(); else switchTo(HOUSEHOLD); }} />
+        )}
+        <nav style={session ? { ...s.nav, marginTop: 20 } : s.nav}>
           {TABS.map((tb) => {
             const active = tab === tb.id;
             return (
@@ -895,6 +1278,15 @@ export default function App() {
           })}
         </nav>
         <div style={{ display: "flex", flexDirection: "column", gap: 6, borderTop: `1px solid ${theme.outerBorder}`, paddingTop: SPACE.sm, marginTop: SPACE.md }}>
+          {profiles && (
+            <button className="nav-item" style={s.navItem} onClick={closeProfileNow} title={me?.name}>
+              <span aria-hidden="true" style={{ width: 18, height: 18, borderRadius: "50%", background: me?.color || theme.outerTextMuted, color: "#fff",
+                fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
+                {me ? [...String(me.name)][0]?.toUpperCase() : null}
+              </span>
+              <span>{t("Switch person")}</span>
+            </button>
+          )}
           {lockCfg && (
             <button className="nav-item" style={s.navItem} onClick={() => setLocked(true)} title={t("Lock now (Ctrl+L)")}>
               <Icon name="lock" /><span>{t("Lock")}</span>
@@ -959,8 +1351,17 @@ export default function App() {
         </header>
 
         <div style={s.content}>
-          <div style={s.contentInner}>
+          {/* Keyed by the budget, so nothing a screen kept of one is still
+              there when another opens. */}
+          <div key={openId} style={s.contentInner}>
           <UpdateBanner updater={updater} onInstall={installUpdate} />
+          {openId !== HOUSEHOLD && (
+            <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm, padding: "10px 16px", marginBottom: 18, borderRadius: 16,
+                          background: `${me?.color || theme.accent}22`, border: `1px solid ${me?.color || theme.accent}`, ...TYPE.caption, fontWeight: 600, color: theme.text }}>
+              <Icon name="lock" size={15} style={{ color: me?.color || theme.accent }} />
+              {t("Only you can see this")}
+            </div>
+          )}
           {sample && (
             <div style={{ ...s.card, borderRadius: 16, padding: "10px 16px", marginBottom: 18, display: "flex", alignItems: "center", gap: SPACE.md, flexWrap: "wrap",
                           border: `1px solid ${theme.accent}` }}>
@@ -1540,7 +1941,8 @@ export default function App() {
         const editing = modal.editId ? targetMonth.expenses.find((x) => x.id === modal.editId) : null;
         return (
           <ExpenseModal editing={editing} categories={data.categories} defaultDate={cal.newEntryDate(targetKey, today)}
-            payer={isShared(data) ? { data, defaultValue: startingPayer(data, editing) } : null}
+            payer={isShared(data) ? { data, defaultValue: startingPayer(data, editing, payingMe) } : null}
+            addingTo={editing ? undefined : addingTo}
             onClose={() => setModal(null)}
             onSave={(v) => {
               // Every category named - the one, or each part's - is created if new.
@@ -1577,7 +1979,7 @@ export default function App() {
         const source = editingTpl || editing;
         const sched = editingTpl || tplOf || editing || {};
         return (
-          <FormModal title={source ? t("Edit Recurring Payment") : t("Add Recurring Payment")} fields={[
+          <FormModal title={source ? t("Edit Recurring Payment") : t("Add Recurring Payment")} addingTo={source ? undefined : addingTo} fields={[
             { key: "name", label: t("Name"), placeholder: t("e.g. Rent"), defaultValue: source?.name },
             { key: "amount", label: t("Amount ({currency})", { currency: currencyCode() }), type: "number", placeholder: "0", defaultValue: source ? String(source.amount) : "" },
             { key: "category", label: t("Category"), type: "category", categories: data.categories, defaultValue: source?.category },
@@ -1592,7 +1994,7 @@ export default function App() {
               { key: "startDate", label: t("First date"), type: "date", defaultValue: sched.startDate || cal.newEntryDate(curKey, today),
                 when: (vals) => !!weeklyChoice(vals) },
             ] : []),
-            ...payerField(data, source),
+            ...payerField(data, source, { me: payingMe }),
             { key: "autoPay", label: t("Pays itself"), type: "checkbox", defaultValue: source?.autoPay,
               hint: t("Direct debit or card on file. Never sends a reminder.") },
             // Saving up belongs to the bill, so it's offered where the bill is edited,
@@ -1623,12 +2025,12 @@ export default function App() {
         const targetMonth = data.months[targetKey] || emptyMonth();
         const editing = modal.editId ? targetMonth.upcoming.find((x) => x.id === modal.editId) : null;
         return (
-          <FormModal title={editing ? t("Edit Upcoming Payment") : t("Add Upcoming Payment")} fields={[
+          <FormModal title={editing ? t("Edit Upcoming Payment") : t("Add Upcoming Payment")} addingTo={editing ? undefined : addingTo} fields={[
             { key: "name", label: t("Name"), placeholder: t("e.g. Car Insurance"), defaultValue: editing?.name },
             { key: "amount", label: t("Amount ({currency})", { currency: currencyCode() }), type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
             { key: "category", label: t("Category"), type: "category", categories: data.categories, defaultValue: editing?.category },
             { key: "dueDate", label: t("Due Date"), type: "date", defaultValue: editing?.dueDate || cal.newEntryDate(targetKey, today) },
-            ...payerField(data, editing),
+            ...payerField(data, editing, { me: payingMe }),
             { key: "autoPay", label: t("Pays itself"), type: "checkbox", defaultValue: editing?.autoPay,
               hint: t("Direct debit or card on file. Counts as paid on its due date and never sends a reminder.") },
             NOTE_FIELD(editing),
@@ -1672,7 +2074,7 @@ export default function App() {
         const source = editingTpl || editing;
         const sched = editingTpl || tplOf || editing || {};
         return (
-          <FormModal title={source ? t("Edit Recurring Credit") : t("Add Recurring Credit")} fields={[
+          <FormModal title={source ? t("Edit Recurring Credit") : t("Add Recurring Credit")} addingTo={source ? undefined : addingTo} fields={[
             { key: "name", label: t("Name"), placeholder: t("e.g. Allowance"), defaultValue: source?.name },
             { key: "amount", label: t("Amount ({currency})", { currency: currencyCode() }), type: "number", placeholder: "0", defaultValue: source ? String(source.amount) : "" },
             { key: "category", label: t("Source"), type: "category", categories: data.creditCategories || [], defaultValue: source?.category },
@@ -1687,7 +2089,7 @@ export default function App() {
               { key: "startDate", label: t("First date"), type: "date", defaultValue: sched.startDate || cal.newEntryDate(curKey, today),
                 when: (vals) => !!weeklyChoice(vals) },
             ] : []),
-            ...payerField(data, source, { incoming: true }),
+            ...payerField(data, source, { incoming: true, me: payingMe }),
             NOTE_FIELD(source),
           ]} onClose={() => setModal(null)} onSave={(v) => {
             const amt = +v.amount;
@@ -1707,12 +2109,12 @@ export default function App() {
         const targetMonth = data.months[targetKey] || emptyMonth();
         const editing = modal.editId ? (targetMonth.credits || []).find((x) => x.id === modal.editId) : null;
         return (
-          <FormModal title={editing ? t("Edit Credit") : t("Add Credit")} fields={[
+          <FormModal title={editing ? t("Edit Credit") : t("Add Credit")} addingTo={editing ? undefined : addingTo} fields={[
             { key: "name", label: t("Name"), placeholder: t("e.g. Amazon refund"), defaultValue: editing?.name },
             { key: "amount", label: t("Amount ({currency})", { currency: currencyCode() }), type: "number", placeholder: "0", defaultValue: editing ? String(editing.amount) : "" },
             { key: "category", label: t("Source"), type: "category", categories: data.creditCategories || [], defaultValue: editing?.category || editing?.source },
             { key: "date", label: t("Date"), type: "date", defaultValue: editing?.date || cal.newEntryDate(targetKey, today) },
-            ...payerField(data, editing, { incoming: true }),
+            ...payerField(data, editing, { incoming: true, me: payingMe }),
             NOTE_FIELD(editing),
           ]} onClose={() => setModal(null)} onSave={(v) => {
             const amt = +v.amount;
@@ -1885,6 +2287,9 @@ export default function App() {
           language={language}
           onChangeLanguage={changeLanguage}
           onChangePeople={save}
+          onAddPerson={onAddPerson}
+          onRemovePerson={onRemovePerson}
+          showPeople={openId === HOUSEHOLD}
           onManageCategories={() => { setSettingsOpen(false); setCategoriesOpen(true); }}
           onManageRules={() => { setSettingsOpen(false); setRulesOpen(true); }}
           lockCfg={lockCfg}
@@ -1892,18 +2297,17 @@ export default function App() {
           onChangeLock={(cfg) => { writeLock(cfg).then(() => setLockCfg(cfg)).catch((err) => alert(t("Couldn't save the lock: {error}", { error: String(err) }))); }}
           loadBackups={loadBackups}
           onRestore={async (name) => {
-            if (!confirm(t("Replace all current data with the backup \"{name}\"?\n\nWhat you have now is backed up first.", { name }))) return;
             if (openRef.current !== HOUSEHOLD) {
-              // An own budget's backup, opened with the key it holds now. Its
-              // budget is replaced, so nothing from before can be undone into it.
-              let mine;
-              try { mine = await storeRef.current.restoreMine(name); } catch { alert(t("That backup could not be read.")); return; }
-              if (!mine) { alert(t("That backup of your own budget doesn't open with your password.")); return; }
-              clearHistory();
-              show(mine);
+              // An own budget's backup. Nothing of Mine is backed up first
+              // (its backups are its own, taken once a day), so the question
+              // doesn't say so. Its budget is replaced, so nothing from before
+              // can be undone into it.
+              if (!confirm(t("Replace your own budget with the backup \"{name}\"?", { name }))) return;
               setSettingsOpen(false);
+              try { await restoreMineBackup(name); } catch { alert(t("That backup could not be read.")); }
               return;
             }
+            if (!confirm(t("Replace all current data with the backup \"{name}\"?\n\nWhat you have now is backed up first.", { name }))) return;
             try {
               const text = await readBackup(name);
               const parsed = JSON.parse(text);
@@ -1923,7 +2327,35 @@ export default function App() {
           }}
         />
       )}
+
+      {/* Profiles' dialogs, over Settings where one is opened from there. */}
+      {secondPerson && (
+        <SecondPersonDialog name={secondPerson.name} people={currentPeople}
+          onShare={shareWithSecond} onKeepAsMine={keepAsMineForSecond} onClose={() => setSecondPerson(null)} />
+      )}
+      {unlockAsk && (
+        <PasswordAsk title={t("Mine")} text={t("Enter your password to open your own budget.")} person={me}
+          onSubmit={unlockMine} onClose={() => setUnlockAsk(false)} />
+      )}
+      {/* Hidden while a backup's password is asked for, and back if the
+          restore didn't happen. */}
+      {ownTrouble && !passwordPrompt && (
+        <OwnUnreadableDialog reason={ownTrouble.reason} keptAs={ownTrouble.keptAs} loadBackups={loadMineBackups}
+          onRestore={restoreMineBackup}
+          onStartEmpty={async () => {
+            const store = storeRef.current;
+            const pid = store.session();
+            await store.startMineAgain();
+            if (store.session() === pid) switchTo(pid);
+          }}
+          onClose={() => setOwnTrouble(null)} />
+      )}
+      {passwordPrompt && (
+        <PasswordAsk title={passwordPrompt.title} text={passwordPrompt.text}
+          onSubmit={(password) => answerPrompt(password)} onClose={() => answerPrompt(null)} />
+      )}
     </div>
+    </OpenBudgetContext.Provider>
     </DeleteArmContext.Provider>
     </ThemeContext.Provider>
   );

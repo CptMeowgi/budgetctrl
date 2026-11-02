@@ -3,7 +3,7 @@ import { parseAmount } from "../lib/importer.js";
 import { cleanSplit, isSplit, remainder } from "../lib/splits.js";
 import { currencyCode, fmt } from "../money.js";
 import { SPACE, TYPE, useThemed } from "../theme.js";
-import { CategoryPicker } from "./FormModal.jsx";
+import { AddingTo, CategoryPicker } from "./FormModal.jsx";
 import { Modal } from "./Modal.jsx";
 import { PaidByPicker } from "./PaidByPicker.jsx";
 import { t } from "../i18n.js";
@@ -16,7 +16,8 @@ const blankPart = () => ({ category: "", amount: "" });
 // must add up to the amount before it will save.
 // `payer` is null when the budget isn't shared; otherwise { data, defaultValue }
 // and the form asks who paid, handing back { paidBy, paidWith } as `payer`.
-export function ExpenseModal({ editing, categories, defaultDate, payer, onClose, onSave }) {
+// `addingTo` says which budget a new expense goes into, once there are profiles.
+export function ExpenseModal({ editing, categories, defaultDate, payer, onClose, onSave, addingTo }) {
   const { theme, s } = useThemed();
   const [name, setName] = useState(editing?.name || "");
   const [amount, setAmount] = useState(editing ? String(editing.amount) : "");
@@ -72,6 +73,7 @@ export function ExpenseModal({ editing, categories, defaultDate, payer, onClose,
   const label = { fontSize: 11, color: theme.textMuted, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 6, display: "block", fontWeight: 600 };
   return (
     <Modal title={editing ? t("Edit Expense") : t("Add Expense")} onClose={onClose}>
+      <AddingTo text={editing ? null : addingTo} />
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, padding: "20px 0" }}>
         <div>
           <label style={label}>{t("Name")}</label>

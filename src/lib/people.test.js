@@ -3,6 +3,7 @@ import {
   JOINT, PERSON_COLORS, LAST_PAYER_KEY,
   peopleOf, isShared, addPerson, renamePerson, removePerson, personById,
   waysToPay, cleanPayer, payerForAccount, payerParts, spendingByPerson, payerRows, anyoneNamed, readLastPayer, rememberPayer,
+  hasProfiles, markAllJoint,
 } from "./people.js";
 
 // Paid on the 1st; today is 20 Oct 2026.
@@ -367,5 +368,85 @@ describe("the payer chosen last", () => {
     expect(readLastPayer()).toEqual({});
     memory('"text"');
     expect(readLastPayer()).toEqual({});
+  });
+});
+
+describe("hasProfiles", () => {
+  it("is on from two current people, or one with a budget of their own", () => {
+    expect(hasProfiles({})).toBe(false);
+    expect(hasProfiles(null)).toBe(false);
+    expect(hasProfiles({ people: [anna] })).toBe(false);
+    expect(hasProfiles({ people: [anna, tom] })).toBe(true);
+    expect(hasProfiles({ people: [{ ...anna, hasOwn: true }] })).toBe(true);
+  });
+
+  it("doesn't count anyone removed", () => {
+    expect(hasProfiles(removePerson({ people: [anna, tom] }, "t"))).toBe(false);
+    expect(hasProfiles({ people: [anna, { ...tom, removed: true, hasOwn: true }] })).toBe(false);
+  });
+});
+
+describe("markAllJoint", () => {
+  const shared = () => ({
+    ...base(),
+    months: {
+      "2026-09": emptyMonth({
+        expenses: [{ id: "e0", name: "Deposit", amount: 900, date: "2026-09-02", category: "Home" }],
+        credits: [{ id: "c0", name: "Refund", amount: 40, date: "2026-09-08", category: "Refund", paidBy: "t" }],
+      }),
+      "2026-10": {
+        ...month,
+        recurring: [...month.recurring, { id: "r2", name: "Gym", amount: 35, dayOfMonth: 5, category: "Health", templateId: "rt2" }],
+        upcoming: [...month.upcoming, { id: "u2", name: "Insurance", amount: 300, dueDate: "2026-10-25", category: "Bills", paid: false }],
+        credits: [{ id: "c1", name: "Gift", amount: 50, date: "2026-10-09", category: "Gift" }],
+      },
+    },
+    recurringTemplate: [
+      { id: "rt1", name: "Rent", amount: 900, dayOfMonth: 2, category: "Home", paidBy: JOINT },
+      { id: "rt2", name: "Gym", amount: 35, dayOfMonth: 5, category: "Health" },
+    ],
+    creditTemplate: [
+      { id: "ct1", name: "Allowance", amount: 200, dayOfMonth: 10, category: "Salary" },
+      { id: "ct2", name: "Tom's share", amount: 1500, dayOfMonth: 1, category: "Salary", paidBy: "t", contribution: true },
+    ],
+  });
+  const payers = (list) => Object.fromEntries(list.map((e) => [e.id, e.paidBy]));
+
+  it("marks every expense, credit, upcoming payment, copy and template nobody was marked for as paid jointly", () => {
+    const out = markAllJoint(shared());
+    expect(payers(out.months["2026-09"].expenses)).toEqual({ e0: JOINT });
+    expect(payers(out.months["2026-10"].expenses)).toEqual({ e1: "a", e2: JOINT });
+    expect(payers(out.months["2026-10"].recurring)).toEqual({ r1: JOINT, r2: JOINT });
+    expect(payers(out.months["2026-10"].upcoming)).toEqual({ u1: "t", u2: JOINT });
+    expect(payers(out.months["2026-10"].credits)).toEqual({ c1: JOINT });
+    expect(payers(out.recurringTemplate)).toEqual({ rt1: JOINT, rt2: JOINT });
+    expect(payers(out.creditTemplate)).toEqual({ ct1: JOINT, ct2: "t" });
+  });
+
+  it("leaves marked ones alone, account and all", () => {
+    const before = shared();
+    before.months["2026-10"].expenses[0] = { ...before.months["2026-10"].expenses[0], paidWith: "visa" };
+    const out = markAllJoint(before);
+    expect(out.months["2026-10"].expenses[0]).toEqual(before.months["2026-10"].expenses[0]);
+    expect(out.months["2026-09"].credits[0]).toEqual(before.months["2026-09"].credits[0]);
+    expect(out.creditTemplate[1]).toEqual(before.creditTemplate[1]);
+  });
+
+  it("changes nothing else, and leaves the budget it was given as it was", () => {
+    const before = shared();
+    const copy = structuredClone(before);
+    const out = markAllJoint(before);
+    expect(before).toEqual(copy);
+    expect(out.people).toBe(before.people);
+    expect(out.accounts).toBe(before.accounts);
+    expect(out.months["2026-10"].income).toBe(3000);
+    expect(out.months["2026-10"].expenses[1]).toEqual({ ...before.months["2026-10"].expenses[1], paidBy: JOINT });
+  });
+
+  it("copes with a budget that has no templates, and a period missing a list", () => {
+    const out = markAllJoint({ months: { "2026-10": { income: 0, expenses: [{ id: "e1", amount: 5 }] } } });
+    expect(out.months["2026-10"]).toEqual({ income: 0, expenses: [{ id: "e1", amount: 5, paidBy: JOINT }] });
+    expect(out.recurringTemplate).toBeUndefined();
+    expect(markAllJoint({})).toEqual({});
   });
 });

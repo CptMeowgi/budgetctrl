@@ -8,16 +8,25 @@ import { SPACE, useThemed } from "../theme.js";
 // The people who share this budget, in Settings. `onChange(nextData)` saves.
 // Names are edited in place and written back when the field loses focus or
 // Enter is pressed; Escape puts the old name back.
-export function PeopleManager({ data, onChange }) {
+//
+// Adding and removing someone can be more than a change to the budget (the
+// second person asks first how to share; with profiles, a removal goes
+// through the budget store), so `onAdd(name)` and `onRemove(personId)` take
+// them over when given. The app builds the budget then, from what is saved.
+export function PeopleManager({ data, onChange, onAdd, onRemove }) {
   const { theme, s } = useThemed();
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const people = peopleOf(data);
 
   const add = () => {
-    const next = addPerson(data, name, uid);
-    if (next === data) return;
-    onChange(next);
+    if (!name.trim()) return;
+    if (onAdd) onAdd(name);
+    else {
+      const next = addPerson(data, name, uid);
+      if (next === data) return;
+      onChange(next);
+    }
     setName("");
     setAdding(false);
   };
@@ -28,7 +37,7 @@ export function PeopleManager({ data, onChange }) {
       {people.map((p) => (
         <PersonRow key={`${p.id}:${p.name}`} person={p}
           onRename={(next) => onChange(renamePerson(data, p.id, next))}
-          onRemove={() => onChange(removePerson(data, p.id))} />
+          onRemove={() => (onRemove ? onRemove(p.id) : onChange(removePerson(data, p.id)))} />
       ))}
       {adding ? (
         <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm, padding: `${SPACE.xs}px 0` }}>

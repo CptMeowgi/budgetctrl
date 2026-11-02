@@ -40,7 +40,16 @@ export function CategoryPicker({ value, onChange, categories }) {
   );
 }
 
-export function FormModal({ title, fields, onClose, onSave }) {
+// The line under a form's title saying which budget a new entry goes into,
+// once there are profiles. ExpenseModal shows it too.
+export function AddingTo({ text }) {
+  const { theme } = useThemed();
+  if (!text) return null;
+  return <div style={{ ...TYPE.caption, color: theme.textMuted, marginTop: -2 }}>{text}</div>;
+}
+
+// `addingTo` is that line's text, given only for a new entry.
+export function FormModal({ title, fields, onClose, onSave, addingTo }) {
   const { theme, s } = useThemed();
   const [vals, setVals] = useState(() => {
     const init = {};
@@ -54,6 +63,7 @@ export function FormModal({ title, fields, onClose, onSave }) {
   const shown = fields.filter((f) => !f.when || f.when(vals));
   return (
     <Modal title={title} onClose={onClose}>
+      <AddingTo text={addingTo} />
       <div style={{ display: "grid", gridTemplateColumns: shown.length > 3 ? "1fr 1fr" : "1fr", gap: 16, padding: "20px 0" }}>
         {shown.map((f) => (
           <div key={f.key} style={f.type === "checkbox" || f.type === "textarea" || f.type === "payer" ? { gridColumn: "1 / -1" } : undefined}>

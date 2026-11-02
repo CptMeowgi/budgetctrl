@@ -22,10 +22,16 @@ export const NOTE_FIELD = (editing) => ({ key: "note", label: t("Note"), type: "
 // and nothing new should be spent against them without the user choosing so.
 // The account chosen with a removed person goes with them: with no payer left
 // it would be offered as anyone's.
-export function startingPayer(data, entry) {
+//
+// `me` is the person whose profile is open. Their new entry starts as theirs,
+// with the account last chosen only if it could be theirs: the last payer may
+// have been someone else, at this same computer.
+export function startingPayer(data, entry, me) {
   if (entry) return cleanPayer({ paidBy: entry.paidBy, paidWith: entry.paidWith }, data);
   const last = readLastPayer();
-  if (personById(data, last.paidBy)?.removed) {
+  if (me) {
+    last.paidBy = me;
+  } else if (personById(data, last.paidBy)?.removed) {
     delete last.paidBy;
     delete last.paidWith;
   }
@@ -35,8 +41,8 @@ export function startingPayer(data, entry) {
 }
 
 // The form field, for FormModal's `fields`; `incoming` is for money coming in.
-export const payerField = (data, entry, { incoming } = {}) => (
-  isShared(data) ? [{ key: "payer", type: "payer", data, incoming, defaultValue: startingPayer(data, entry) }] : []
+export const payerField = (data, entry, { incoming, me } = {}) => (
+  isShared(data) ? [{ key: "payer", type: "payer", data, incoming, defaultValue: startingPayer(data, entry, me) }] : []
 );
 
 // What a save puts into the entry from the form's payer. Both keys are always

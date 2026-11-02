@@ -142,7 +142,45 @@ describe("startingPayer, a new entry", () => {
   });
 });
 
+describe("startingPayer, a new entry in someone's profile", () => {
+  it("starts on the person whose profile is open, not on the last payer and their card", () => {
+    memory({ paidBy: "a", paidWith: "visa" });
+    expect(startingPayer(SHARED, undefined, "t")).toEqual({ paidBy: "t" });
+    expect(startingPayer(SHARED, null, "t")).toEqual({ paidBy: "t" });
+  });
+
+  it("keeps a remembered account that is theirs, or anyone's", () => {
+    memory({ paidBy: "t", paidWith: "debit" });
+    expect(startingPayer(SHARED, undefined, "t")).toEqual({ paidBy: "t", paidWith: "debit" });
+    memory({ paidBy: JOINT, paidWith: "savings" });
+    expect(startingPayer(SHARED, undefined, "t")).toEqual({ paidBy: "t", paidWith: "savings" });
+  });
+
+  it("never starts on a closed account, even their own", () => {
+    memory({ paidBy: "a", paidWith: "old" });
+    expect(startingPayer(SHARED, undefined, "a")).toEqual({ paidBy: "a" });
+  });
+
+  it("starts on the person with nothing remembered", () => {
+    memory();
+    expect(startingPayer(SHARED, undefined, "a")).toEqual({ paidBy: "a" });
+  });
+
+  it("leaves an edited entry's own payer as it is", () => {
+    memory({ paidBy: "t" });
+    expect(startingPayer(SHARED, { paidBy: "a", paidWith: "visa" }, "t")).toEqual({ paidBy: "a", paidWith: "visa" });
+    expect(startingPayer(SHARED, { name: "Old entry" }, "t")).toEqual({});
+  });
+});
+
 describe("payerField", () => {
+  it("starts a new entry on the person whose profile is open", () => {
+    memory({ paidBy: "a", paidWith: "visa" });
+    const [field] = payerField(SHARED, null, { me: "t" });
+    expect(field.defaultValue).toEqual({ paidBy: "t" });
+    expect(payerField(ALONE, null, { me: "a" })).toEqual([]);
+  });
+
   it("is nothing when the budget isn't shared", () => {
     memory({ paidBy: "a" });
     expect(payerField(ALONE, null)).toEqual([]);

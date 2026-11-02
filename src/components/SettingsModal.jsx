@@ -15,10 +15,12 @@ import { calendarFor, readSchedule } from "../lib/calendar.js";
 import { PAY_KINDS, payKindChosen } from "../lib/paySchedule.js";
 
 // `language` and `autoUpdate` are this computer's settings (lib/device.js),
-// not the budget's. `loadBackups` lists the open budget's backups.
+// not the budget's. `loadBackups` lists the open budget's backups. People
+// belong to the household, so `showPeople` is false while Mine is open;
+// `onAddPerson` and `onRemovePerson` are PeopleManager's `onAdd` and `onRemove`.
 export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onChangeLocale, onRestore, onManageCategories, updater, autoUpdate, onChangeAutoUpdate, onInstallUpdate,
   onChangeCutoff, onChangePay, onWhatsNew, onCheckup, onChangeLockPast, sample, today, onExport, onExportCsv, onImport, onImportStatement, onReset, onManageRules, lockCfg, onPinAction, onChangeLock, language, onChangeLanguage, onChangePeople,
-  loadBackups = listBackups }) {
+  onAddPerson, onRemovePerson, showPeople = true, loadBackups = listBackups }) {
   const { theme, s } = useThemed();
   const [openedAt] = useState(() => Date.now());
   const rem = data.reminders || { enabled: true, leadDays: 3 };
@@ -145,9 +147,11 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
         <button style={{ ...s.linkBtn, padding: 0 }} onClick={onManageCategories}>{t("Manage…")}</button>
       </SettingRow>
 
+      {showPeople && (<>
       <div style={divider} />
       <div style={group}>{t("People")}</div>
-      <PeopleManager data={data} onChange={onChangePeople} />
+      <PeopleManager data={data} onChange={onChangePeople} onAdd={onAddPerson} onRemove={onRemovePerson} />
+      </>)}
 
       <div style={divider} />
       <div style={group}>{t("Keyboard")}</div>

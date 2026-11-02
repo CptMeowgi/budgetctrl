@@ -235,6 +235,8 @@ pub fn run() {
         if QUITTING.load(Ordering::SeqCst) {
           return;
         }
+        // The page closes the open profile: anyone could open a tray app.
+        let _ = window.emit("closed-to-tray", ());
         let _ = window.hide();
         api.prevent_close();
       }

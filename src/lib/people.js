@@ -30,6 +30,30 @@ export function isShared(data) {
   return peopleOf(data).length >= 2;
 }
 
+// Whether the budget has profiles ("Who's budgeting?", Household and Mine):
+// from two current people, or one who has a budget of their own.
+export function hasProfiles(data) {
+  const current = peopleOf(data);
+  return current.length >= 2 || current.some((p) => p.hasOwn);
+}
+
+// Everything so far as paid jointly, when a budget becomes the household's:
+// every entry and template nobody was marked for. Joint entries stay in the
+// household, so this is offered, never done for you.
+export function markAllJoint(data) {
+  const mark = (list) => (Array.isArray(list) ? list.map((e) => (e.paidBy ? e : { ...e, paidBy: JOINT })) : list);
+  const out = { ...data };
+  if (data?.months) {
+    out.months = Object.fromEntries(Object.entries(data.months).map(([key, m]) => {
+      const next = { ...m };
+      for (const list of ["expenses", "recurring", "upcoming", "credits"]) if (list in m) next[list] = mark(m[list]);
+      return [key, next];
+    }));
+  }
+  for (const list of ["recurringTemplate", "creditTemplate"]) if (data && list in data) out[list] = mark(data[list]);
+  return out;
+}
+
 // A person by id, removed ones included, so an old entry can still say who paid.
 export function personById(data, id) {
   return (data?.people || []).find((p) => p.id === id) || null;

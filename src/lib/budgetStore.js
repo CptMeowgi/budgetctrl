@@ -52,7 +52,7 @@
 import { defaultData, hydrate, migrate } from "../model.js";
 import { serial } from "./backups.js";
 import { calendarFor } from "./calendar.js";
-import { peopleOf, personById, PERSON_COLORS, removePerson as markRemoved } from "./people.js";
+import { hasProfiles, peopleOf, personById, PERSON_COLORS, removePerson as markRemoved } from "./people.js";
 import { deleteTemplate } from "./recurringEdits.js";
 import {
   ITERATIONS, RECOVERY_ITERATIONS, newBudgetKey, normalizePassword, normalizeRecoveryCode,
@@ -496,10 +496,7 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
 
     household: () => hh,
     householdText: () => textOf(hh),
-    profilesOn: () => {
-      const current = peopleOf(hh);
-      return current.length >= 2 || current.some((p) => p.hasOwn);
-    },
+    profilesOn: () => hasProfiles(hh),
     people: () => peopleOf(hh),
     hasOwn: (pid) => !!personById(hh, pid)?.hasOwn,
     session: () => session,
@@ -530,6 +527,19 @@ export async function createStore(raw, { io, iterations = ITERATIONS, recoveryIt
         return true;
       }
       return openWithKey(pid, file, await unwrapKey(file.password, normalizePassword(password)));
+    }),
+
+    // The household's only current person has nobody to pick between, so
+    // their profile opens without the picker and without a password. The
+    // password still guards Mine: a sealed one stays locked, as after
+    // lockMine, until unlockMine. With anyone else to choose from, a sealed
+    // profile opens only through openProfile, with its password.
+    openSoleProfile: (pid) => queue(async () => {
+      closeNow();
+      mustBeCurrent(pid);
+      if (peopleOf(hh).length !== 1) throw new Error("This opens only for the only person in the household");
+      session = pid;
+      return true;
     }),
 
     openWithRecovery: (pid, code) => queue(async () => {

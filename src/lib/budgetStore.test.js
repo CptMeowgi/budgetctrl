@@ -732,6 +732,37 @@ describe("a sealed Mine", () => {
     expect(JSON.stringify(await store.openMine())).toContain("CANARY-7Q");
   });
 
+  it("opens for the only person in the household without the password, with Mine locked", async () => {
+    const { disk, store } = await sealedAnna();
+    await store.closeProfile();
+    // With Tom there, it takes the picker and the password.
+    await expect(store.openSoleProfile("a")).rejects.toThrow("only person");
+    expect(store.session()).toBeNull();
+
+    await store.removePerson("t");
+    expect(store.people().map((p) => p.id)).toEqual(["a"]);
+    expect(await store.openSoleProfile("a")).toBe(true);
+    expect(store.session()).toBe("a");
+    expect(store.mineOpen()).toBe(false);
+    await expect(store.openMine()).rejects.toThrow("Mine is locked");
+    expect(await store.unlockMine("wrong horse")).toBe(false);
+    expect(await store.unlockMine("correct horse")).toBe(true);
+    expect(JSON.stringify(store.own())).toContain("CANARY-7Q");
+    expect(disk.ownText("a")).not.toContain("CANARY-7Q");
+  });
+
+  it("opens the only person's plain Mine as openProfile does, and nobody else's", async () => {
+    const disk = memoryDisk();
+    disk.files.set("own-a.json", plainOwn(annasMine()));
+    const store = await open(household([{ ...anna, hasOwn: true }, { ...tom, removed: true }]), disk);
+    await expect(store.openSoleProfile("t")).rejects.toThrow("isn't in the household");
+    expect(await store.openSoleProfile("a")).toBe(true);
+    expect(JSON.stringify(await store.openMine())).toContain("CANARY-7Q");
+    // Opening again starts over, as openProfile does.
+    expect(await store.openSoleProfile("a")).toBe(true);
+    expect(store.mineOpen()).toBe(false);
+  });
+
   it("rejects openMine while locked, and unlocks with the password", async () => {
     const { store } = await sealedAnna();
     await store.lockMine();
@@ -1289,6 +1320,26 @@ describe("keep it as mine", () => {
     expect(store.people().map((p) => p.name)).toEqual(["Anna", "Tom"]);
     await store.openProfile("a");
     expect(JSON.stringify(await store.openMine())).toContain("CANARY-7Q");
+  });
+
+  // What the People list does when the second person is added: the doc it
+  // built before "Keep it as mine" still holds the old budget, so only one
+  // built from the store's household afterwards is saved.
+  it("refuses the doc the People list built before, and the household keeps no canary", async () => {
+    const raw = onePerson();
+    const disk = withBackups(raw);
+    const store = await open(raw, disk);
+    const builtBefore = addPerson(store.household(), "Tom", () => "t");
+    await store.keepAsMine("a");
+    expect(await store.save(builtBefore)).toBe(false);
+    expect(await store.save(builtBefore, { replace: true })).toBe(false);
+    expect(disk.files.get(BUDGET_FILE)).not.toContain("CANARY-7Q");
+
+    const saved = await store.save(addPerson(store.household(), "Tom", () => "t"));
+    expect(saved.people.map((p) => p.name)).toEqual(["Anna", "Tom"]);
+    expect(JSON.stringify(saved)).not.toContain("CANARY-7Q");
+    expect(disk.files.get(BUDGET_FILE)).not.toContain("CANARY-7Q");
+    expect(store.profilesOn()).toBe(true);
   });
 
   it("stops before the household changes when the backups can't be moved, and can be tried again", async () => {
