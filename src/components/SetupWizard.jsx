@@ -13,7 +13,8 @@ const STEPS = [tk("Money"), tk("Your pay"), tk("Categories")];
 
 // Three short screens for a brand-new budget. Everything here can be changed
 // later in Settings, and Skip leaves the defaults.
-export function SetupWizard({ data, onFinish, onRestore, onSample, onSkip, onChangeLanguage }) {
+// `language` is this computer's (lib/device.js), not the budget's.
+export function SetupWizard({ data, onFinish, onRestore, onSample, onSkip, language, onChangeLanguage }) {
   const { theme, s } = useThemed();
   const [step, setStep] = useState(0);
   const [currency, setCurrency] = useState(data.currency || "PLN");
@@ -64,7 +65,7 @@ export function SetupWizard({ data, onFinish, onRestore, onSample, onSkip, onCha
             <div style={{ ...TYPE.caption, color: theme.textMuted, margin: `${SPACE.xs}px 0 ${SPACE.lg}px`, lineHeight: 1.5 }}>{t("Your budget stays on this computer; nothing is sent anywhere. Three quick questions and you're set. All of it can be changed later in Settings.")}</div>
             {/* First, so everything after it is already in the chosen language. */}
             <label style={label}>{t("Language")}</label>
-            <select value={data.language || ""} onChange={(e) => onChangeLanguage(e.target.value)} style={s.input}>
+            <select value={language || ""} onChange={(e) => onChangeLanguage(e.target.value)} style={s.input}>
               {LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.value === "" ? t("System default") : l.label}</option>)}
             </select>
             <label style={{ ...label, marginTop: SPACE.md }}>{t("Currency")}</label>

@@ -144,3 +144,38 @@ export function fortnightlyDemo(today, language = "en") {
   }
   return { ...base, months, paySchedule };
 }
+
+// What `?demo`'s budget store is given in place of storage.js: it reaches no
+// disk and no localStorage, so trying things in the demo never touches the
+// budget it stands in for. An own budget made in the demo lives here, in
+// memory, until the page closes; the household's writes go nowhere.
+export function demoIo() {
+  const files = new Map();
+  const aside = new Map();
+  return {
+    readOwnFile: async (pid) => (files.has(pid) ? { status: "ok", text: files.get(pid) } : { status: "missing" }),
+    keepOwnUnreadable: async () => null,
+    writeOwnFile: async (pid, text) => { files.set(pid, text); },
+    setAsideOwnFile: async (pid) => {
+      if (!files.has(pid)) return null;
+      aside.set(pid, files.get(pid));
+      files.delete(pid);
+      return `own-${pid}-removed.json`;
+    },
+    restoreSetAsideOwnFile: async (pid) => {
+      if (files.has(pid) || !aside.has(pid)) return false;
+      files.set(pid, aside.get(pid));
+      aside.delete(pid);
+      return true;
+    },
+    listOwnBackups: async () => [],
+    readOwnBackup: async () => { throw new Error("The demo has no backups"); },
+    replaceOwnBackup: async () => {},
+    moveHouseholdBackupsTo: async () => {},
+    ensureDailyBackup: async () => {},
+    listOwnFiles: async () => [...files.keys()].sort(),
+    writeHousehold: async () => {},
+    rememberPrivateDue: () => {},
+    forgetPrivateDue: () => {},
+  };
+}

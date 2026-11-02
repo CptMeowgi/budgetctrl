@@ -14,8 +14,11 @@ import { fmtDate, LANGUAGES, t, tk, tn } from "../i18n.js";
 import { calendarFor, readSchedule } from "../lib/calendar.js";
 import { PAY_KINDS, payKindChosen } from "../lib/paySchedule.js";
 
-export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onChangeLocale, onRestore, onManageCategories, updater, onChangeUpdates, onInstallUpdate,
-  onChangeCutoff, onChangePay, onWhatsNew, onCheckup, onChangeLockPast, sample, today, onExport, onExportCsv, onImport, onImportStatement, onReset, onManageRules, lockCfg, onPinAction, onChangeLock, onChangeLanguage, onChangePeople }) {
+// `language` and `autoUpdate` are this computer's settings (lib/device.js),
+// not the budget's. `loadBackups` lists the open budget's backups.
+export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onChangeLocale, onRestore, onManageCategories, updater, autoUpdate, onChangeAutoUpdate, onInstallUpdate,
+  onChangeCutoff, onChangePay, onWhatsNew, onCheckup, onChangeLockPast, sample, today, onExport, onExportCsv, onImport, onImportStatement, onReset, onManageRules, lockCfg, onPinAction, onChangeLock, language, onChangeLanguage, onChangePeople,
+  loadBackups = listBackups }) {
   const { theme, s } = useThemed();
   const [openedAt] = useState(() => Date.now());
   const rem = data.reminders || { enabled: true, leadDays: 3 };
@@ -40,7 +43,7 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
     if (!isTauri) return;
     let alive = true;
     (async () => {
-      const names = await listBackups();
+      const names = await loadBackups();
       if (alive) setBackups(names);
       try {
         const { appDataDir } = await import("@tauri-apps/api/path");
@@ -49,7 +52,7 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
       } catch { /* path API unavailable; the list alone is still useful */ }
     })();
     return () => { alive = false; };
-  }, []);
+  }, [loadBackups]);
 
   useEffect(() => {
     if (!isTauri) return;
@@ -83,7 +86,7 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
     <Modal title={t("Settings")} onClose={onClose}>
       <div style={group}>{t("Budget")}</div>
       <SettingRow label={t("Language")} hint={t("For the app's words and dates.")}>
-        <select value={data.language || ""} onChange={(e) => onChangeLanguage(e.target.value)} style={{ ...s.input, width: 200 }}>
+        <select value={language || ""} onChange={(e) => onChangeLanguage(e.target.value)} style={{ ...s.input, width: 200 }}>
           {LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.value === "" ? t("System default") : l.label}</option>)}
         </select>
       </SettingRow>
@@ -306,7 +309,7 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
           <div style={divider} />
           <div style={group}>{t("Updates")}</div>
           <SettingRow label={t("Check for updates automatically")} hint={t("Once a day. Nothing installs until you say so.")}>
-            <Switch checked={data.updates?.auto !== false} onChange={(v) => onChangeUpdates({ ...(data.updates || {}), auto: v })} />
+            <Switch checked={autoUpdate} onChange={onChangeAutoUpdate} />
           </SettingRow>
           {(() => {
             const { status, update, lastChecked } = updater;

@@ -947,4 +947,6 @@ export default {
   "Joint: {amount}": "Gemeinsam: {amount}",
   "Joint accounts are offered when paying jointly. Accounts for everyone are offered to anyone.": "Gemeinsame Konten erscheinen bei gemeinsamen Zahlungen. Konten für alle stehen jedem zur Auswahl.",
   "Paid by {who}": "Bezahlt von {who}",
+  "That change couldn't be saved.": "Diese Änderung konnte nicht gespeichert werden.",
+  "That backup of your own budget doesn't open with your password.": "Diese Sicherung deines eigenen Budgets lässt sich mit deinem Passwort nicht öffnen.",
 };

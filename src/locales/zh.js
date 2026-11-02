@@ -947,4 +947,6 @@ export default {
   "Joint: {amount}": "共同：{amount}",
   "Joint accounts are offered when paying jointly. Accounts for everyone are offered to anyone.": "共同账户用于共同付款。所有人的账户任何人都可以选择。",
   "Paid by {who}": "付款人：{who}",
+  "That change couldn't be saved.": "无法保存该更改。",
+  "That backup of your own budget doesn't open with your password.": "无法用你的密码打开你自己预算的这个备份。",
 };

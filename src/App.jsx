@@ -42,7 +42,7 @@ import { StatementImport } from "./components/StatementImport.jsx";
 import { UpdateBanner } from "./components/UpdateBanner.jsx";
 import { WindowControls } from "./components/WindowControls.jsx";
 import { DeleteArmContext } from "./contexts.js";
-import { exportCsv, exportData } from "./exportFiles.js";
+import { budgetFromFile, exportCsv, exportData } from "./exportFiles.js";
 import { cleanNote, NOTE_FIELD, payerField, payerToSave, startingPayer } from "./forms.js";
 import { useReminders } from "./hooks/useReminders.js";
 import { useUpdater } from "./hooks/useUpdater.js";
@@ -51,7 +51,9 @@ import { countRebucketMoves, CREDIT_UNCATEGORIZED, defaultData, emptyMonth, ensu
 import { currencyCode, fmt, setMoneyFormat } from "./money.js";
 import { isLinux, isTauri } from "./platform.js";
 import { catName, due, ordinal, shortDate } from "./text.js";
-import { readBackup, readLock, setAsideUnreadable, writeBackup, writeLock } from "./storage.js";
+import { listBackups, listOwnBackups, ownIo, readBackup, readLock, setAsideUnreadable, writeBackup, writeLock } from "./storage.js";
+import { createStore, HOUSEHOLD, newOwnBudget } from "./lib/budgetStore.js";
+import { deviceAutoUpdate, deviceLanguage, setDeviceAutoUpdate, setDeviceLanguage } from "./lib/device.js";
 import { RecoveryScreen } from "./components/RecoveryScreen.jsx";
 import { DARK_THEME, FOCUS_RING, FONT, LIGHT_THEME, makeStyles, RADIUS, SPACE, ThemeContext, TYPE } from "./theme.js";
 import { BrandMark, Icon } from "./components/Icon.jsx";
@@ -63,12 +65,10 @@ const THEME_KEY = "budget-ctrl-theme";
 
 // Development only: ?demo opens a made-up budget instead of yours (for
 // screenshots and trying things), and &tab=, &theme=, &lang= choose what it
-// shows. The installed app never reads these.
+// shows. The installed app never reads these. Its store writes nothing (see
+// demoIo in demo.js), so trying things in it never overwrites the budget it
+// stands in for.
 const DEMO = import.meta.env.DEV ? new URLSearchParams(window.location.search) : null;
-
-// Saves the budget, unless it's the demo: that one lives only in memory, so
-// trying things in it never overwrites the budget it stands in for.
-const persist = (value) => (DEMO?.has("demo") ? Promise.resolve() : window.storage.set(STORAGE_KEY, JSON.stringify(value)));
 
 // The Dashboard greets rather than names the tab.
 function greeting(now) {
@@ -119,6 +119,14 @@ export default function App() {
   dataRef.current = data;
   const historyRef = useRef({ past: [], future: [], lastPushAt: 0 });
   const [historySize, setHistorySize] = useState({ past: 0, future: 0 });
+  // The budget store (lib/budgetStore.js) holds every budget and writes it;
+  // the app holds only the one that's open. That's the household's, until
+  // there are profiles.
+  const storeRef = useRef(null);
+  const openRef = useRef(HOUSEHOLD);
+  // This computer's settings (lib/device.js) are read at each render, so a
+  // change to one just renders again.
+  const [, setDeviceTick] = useState(0);
   const [toast, setToast] = useState(null);
   const [tab, setTab] = useState(() => DEMO?.get("tab") || "dashboard");
   const [modal, setModalState] = useState(null);
@@ -187,15 +195,23 @@ export default function App() {
   const [upcomingView, setUpcomingView] = useState({ search: "", sorts: [] });
   const [creditsView, setCreditsView] = useState({ search: "", sorts: [] });
   const triggerImport = () => importInputRef.current?.click();
+  // A backup of the file a whole-budget change replaces, as it is now: the
+  // budget file, while the household is open. An own budget's backups are its
+  // own, and nothing of it ever goes among the budget file's. The sample
+  // replaces no file.
+  const backupBefore = async (tag) => {
+    if (!isTauri || sampleRef.current || openRef.current !== HOUSEHOLD) return;
+    try {
+      const current = await window.storage.get(STORAGE_KEY);
+      if (current?.value) await writeBackup(current.value, tag);
+    } catch { /* never block the change on a failed snapshot; the undo step still holds it */ }
+  };
   const resetAll = async () => {
     if (!confirm(t("Delete your whole budget and start again?\n\nWhat you have now is backed up first, and Ctrl+Z undoes it."))) return;
-    if (isTauri) {
-      try {
-        const current = await window.storage.get(STORAGE_KEY);
-        if (current?.value) await writeBackup(current.value, "before-reset");
-      } catch { /* the undo step still holds it */ }
-    }
-    await save(hydrate(defaultData()));
+    await backupBefore("before-reset");
+    // A fresh budget of the kind that's open.
+    const fresh = openRef.current === HOUSEHOLD ? hydrate(defaultData()) : newOwnBudget(storeRef.current.household());
+    await save(fresh, { replace: true });
     setSettingsOpen(false);
   };
   const onImportFile = (e) => {
@@ -211,14 +227,10 @@ export default function App() {
         }
         if (!confirm(t("Replace all your current data with this backup?\n\nWhat you have now is backed up first, and Ctrl+Z undoes it."))) return;
         // Snapshot what is about to be overwritten, as well as the undo step.
-        if (isTauri) {
-          try {
-            const current = await window.storage.get(STORAGE_KEY);
-            if (current?.value) await writeBackup(current.value, "before-import");
-          } catch { /* never block the import on a failed snapshot */ }
-        }
-        const migrated = hydrate(migrate(parsed));
-        save(migrated);
+        await backupBefore("before-import");
+        // The budget alone: who had an own budget where it came from isn't so
+        // here, and the store keeps everyone who has one here.
+        await save(hydrate(migrate(budgetFromFile(parsed, { imported: true }))), { replace: true });
       } catch {
         alert(t("Could not read backup file. Make sure it's a valid budget-ctrl JSON export."));
       } finally {
@@ -228,10 +240,76 @@ export default function App() {
     reader.readAsText(file);
   };
 
+  // Shows a doc straight away: a save in flight checks dataRef.current to
+  // tell whether a newer edit has been shown since, render or not.
+  const show = useCallback((doc) => {
+    dataRef.current = doc;
+    setData(doc);
+  }, []);
+  const clearHistory = useCallback(() => {
+    historyRef.current = { past: [], future: [], lastPushAt: 0 };
+    setHistorySize({ past: 0, future: 0 });
+  }, []);
+  // The open budget's backups: the budget file's, or an own budget's own.
+  const loadBackups = useCallback(() => (openRef.current === HOUSEHOLD ? listBackups() : listOwnBackups(openRef.current)), []);
+
+  // Hands a doc to the store, then shows what the store holds. A doc the
+  // store takes comes back carrying its budget's generation, which every
+  // later edit must carry too, so it is shown in place of the one sent,
+  // unless a newer edit has been shown since (made from it, that carries the
+  // generation already). A whole budget (`replace`) is always shown: nothing
+  // made while it was on its way can be saved over it. `orReplace` is for
+  // undo and redo: a snapshot from before a whole budget was replaced has the
+  // generation the budget had then, so the store takes it back only as a
+  // whole budget, and never one from before a privacy step.
+  //
+  // A doc the store refuses leaves the open budget as the store holds it,
+  // and says so. A write that fails is caught as it always was: the store
+  // keeps the doc as the app does, the next save that works writes it, and
+  // Settings shows the fault. Resolves to the doc as stored, false when it
+  // was refused, or null when the write failed.
+  const persist = useCallback(async (doc, { replace = false, orReplace = false } = {}) => {
+    const store = storeRef.current;
+    let stored = false;
+    let failed = false;
+    let replaced = replace;
+    try {
+      if (store) {
+        stored = await store.save(doc, { replace });
+        if (stored === false && orReplace && !replace) {
+          replaced = true;
+          stored = await store.save(doc, { replace: true });
+        }
+      }
+    } catch {
+      failed = true;
+    }
+    // Another budget (or the sample) is showing now, and stays.
+    if (doc.budgetOf !== openRef.current || sampleRef.current) return failed ? null : stored;
+    const latest = replaced || dataRef.current === doc;
+    if (stored) {
+      if (latest && stored !== dataRef.current) show(stored);
+      return stored;
+    }
+    const held = store?.doc(openRef.current);
+    if (latest && held && held !== dataRef.current) show(held);
+    if (failed) return null;
+    setToast(t("That change couldn't be saved."));
+    return false;
+  }, [show]);
+
   // Every user change goes through here and becomes undoable. System writes -
   // first-launch defaults, the period rollover - pass { undoable: false }, so
-  // Ctrl+Z can never undo something the user did not do.
+  // Ctrl+Z can never undo something the user did not do. A whole budget made
+  // on purpose (the first one, a reset, an import, a restore) passes
+  // { replace: true }, and is shown once the store has it, so no edit of
+  // what was there before can land after it.
   const save = useCallback(async (next, opts = {}) => {
+    // A doc made fresh is the open budget's. An edit keeps the stamp of the
+    // doc it was made from, through every spread.
+    const doc = next.budgetOf ? next : { ...next, budgetOf: openRef.current };
+    // An edit of a budget that isn't open any more: nothing to show or save.
+    if (doc.budgetOf !== openRef.current) return false;
     if (opts.undoable !== false) {
       const h = historyRef.current;
       const now = Date.now();
@@ -245,19 +323,23 @@ export default function App() {
       h.future = [];
       setHistorySize({ past: h.past.length, future: 0 });
     }
-    setData(next);
-    if (sampleRef.current) return;
-    try { await persist(next); } catch { /* in-memory state still updated; surfaced on next load */ }
-  }, []);
+    // The sample is never saved.
+    if (sampleRef.current) { show(doc); return doc; }
+    if (opts.replace) return persist(doc, { replace: true });
+    show(doc);
+    return persist(doc);
+  }, [show, persist]);
 
   useEffect(() => {
     (async () => {
       // import.meta.env.DEV first, so the release build drops this - demo.js
       // included - instead of shipping it unused.
       if (import.meta.env.DEV && DEMO.has("demo")) {
-        const { demoData, fortnightlyDemo } = await import("./demo.js");
+        const { demoData, demoIo, fortnightlyDemo } = await import("./demo.js");
         const lang = DEMO.get("lang") || "en";
-        setData(hydrate(DEMO.get("pay") === "fortnightly" ? fortnightlyDemo(new Date(), lang) : demoData(new Date(), lang)));
+        const demo = DEMO.get("pay") === "fortnightly" ? fortnightlyDemo(new Date(), lang) : demoData(new Date(), lang);
+        storeRef.current = await createStore(demo, { io: demoIo() });
+        show(storeRef.current.household());
         setLoaded(true);
         // &whatsnew: the launch notes as the next release will show them.
         if (DEMO.has("whatsnew")) loadChangelog().then((all) => setWhatsNew({ entries: allNotes(all, true).slice(0, 1), launch: true }));
@@ -268,20 +350,26 @@ export default function App() {
       try {
         const r = await window.storage.get(STORAGE_KEY);
         stored = r?.value ?? null;
+        // The store migrates what it reads, and marks everyone with an own
+        // file. A listing of those that failed (store.listFault) doesn't stop
+        // the app: the budget's own marks still guard every file they name,
+        // and storage has noted the fault for Settings.
+        const store = await createStore(stored ? JSON.parse(stored) : null, { io: ownIo });
+        storeRef.current = store;
+        clearHistory();
+        const opened = store.household();
         if (stored) {
-          const raw = JSON.parse(stored);
-          const migrated = hydrate(migrate(raw));
-          setData(migrated);
-          if (migrated !== raw) {
-            try { await window.storage.set(STORAGE_KEY, JSON.stringify(migrated)); } catch { /* migration re-runs next load if this fails */ }
-          }
+          show(opened);
+          // Migrated, or someone newly marked: written back as the store
+          // holds it. If the write fails, the migration runs again next load.
+          if (store.householdText() !== stored) await save(opened, { undoable: false });
           // Left halfway through the welcome screens (or for the sample budget): back to them.
-          unfinished = needsSetup(migrated);
+          unfinished = needsSetup(opened);
           if (unfinished) setSetupOpen(true);
         } else {
           // Persist immediately rather than holding defaults in memory, so the
           // data file exists from first launch instead of first edit.
-          await save(hydrate(defaultData()), { undoable: false });
+          await save(opened, { undoable: false, replace: true });
           setSetupOpen(true);
         }
       } catch (err) {
@@ -295,8 +383,8 @@ export default function App() {
       setLoaded(true);
       whatsNewAtLaunch(!!stored && !unfinished).then((entries) => { if (entries.length) setWhatsNew({ entries, launch: true }); }).catch(() => { /* notes are a courtesy */ });
     })();
-    // `save` has no deps of its own, so this still runs exactly once.
-  }, [save]);
+    // `save`, `show` and `clearHistory` never change, so this still runs exactly once.
+  }, [save, show, clearHistory]);
 
   // Not unlocking after all: back to where the entry was opened from.
   const cancelLockAsk = () => {
@@ -357,8 +445,15 @@ export default function App() {
   // chosen currency and language, including the ones inside helpers called
   // from the JSX.
   setMoneyFormat(data.currency, data.locale || navigator.language || "en-US");
-  setLanguage(data.language);
+  // The language is this computer's (lib/device.js), the household's until
+  // one is chosen here. ?demo&lang= shows the demo in that one.
+  const household = storeRef.current?.household() ?? data;
+  const language = DEMO?.get("lang") || deviceLanguage(household);
+  setLanguage(language);
   setLabelLocale(dateLocale());
+  const changeLanguage = (code) => { setDeviceLanguage(code); setDeviceTick((n) => n + 1); };
+  const autoUpdate = deviceAutoUpdate(household);
+  const changeAutoUpdate = (on) => { setDeviceAutoUpdate(on); setDeviceTick((n) => n + 1); };
 
   const deleteArm = useMemo(() => ({ armedId: pendingDelete, arm: setPendingDelete }), [pendingDelete]);
 
@@ -377,7 +472,7 @@ export default function App() {
   // What's due now sits at the top of Upcoming; a clicked reminder lands there.
   const openDueSoon = useCallback(() => setTab("upcoming"), []);
   useReminders(data, loaded && !sample, setTodayKey, openDueSoon);
-  const updater = useUpdater(data.updates?.auto !== false, loaded);
+  const updater = useUpdater(autoUpdate, loaded);
 
   // "Start with Windows" is a login entry holding the app's path, and that path
   // moves when the installer does (0.5.0 moved from a per-machine .msi to a
@@ -405,12 +500,11 @@ export default function App() {
     h[to].push(dataRef.current);
     h.lastPushAt = 0; // the next edit starts a fresh undo step
     setHistorySize({ past: h.past.length, future: h.future.length });
-    setData(target);
-    if (!sampleRef.current) {
-      try { await persist(target); } catch { /* in-memory state still updated */ }
-    }
+    show(target);
+    // Refused, it has said so, and the open budget shows as the store has it.
+    if (!sampleRef.current && (await persist(target, { orReplace: true })) === false) return;
     setToast(label === "Undo" ? t("Undone") : t("Redone"));
-  }, []);
+  }, [show, persist]);
   const undo = useCallback(() => restore("past", "future", "Undo"), [restore]);
   const redo = useCallback(() => restore("future", "past", "Redo"), [restore]);
 
@@ -498,8 +592,12 @@ export default function App() {
 
   if (loadError) {
     // A chosen budget replaces the unreadable one; only now is anything saved.
-    const adopt = async (next) => {
-      await save(next, { undoable: false });
+    // A store made again over it, as at launch: it marks everyone with an own
+    // file, and a backup's own marks stay. Nothing from before can be undone.
+    const adopt = async (raw) => {
+      storeRef.current = await createStore(raw, { io: ownIo });
+      clearHistory();
+      await save(storeRef.current.household(), { undoable: false, replace: true });
       setLoadError(null);
       setLoaded(true);
     };
@@ -507,7 +605,7 @@ export default function App() {
       try {
         const parsed = JSON.parse(text);
         if (!parsed || typeof parsed !== "object" || !parsed.months || typeof parsed.months !== "object") throw new Error("not a budget");
-        await adopt(hydrate(migrate(parsed)));
+        await adopt(budgetFromFile(parsed));
       } catch {
         alert(t("That backup could not be read."));
       }
@@ -526,7 +624,7 @@ export default function App() {
           onOpenFile={adoptText}
           onStartNew={async () => {
             if (!confirm(t("Start a new, empty budget? The unreadable budget and your backups are kept."))) return;
-            await adopt(hydrate(defaultData()));
+            await adopt(defaultData());
             setSetupOpen(true);
           }} />
       </ThemeContext.Provider>
@@ -651,12 +749,7 @@ export default function App() {
   // save, so Ctrl+Z undoes it.
   const onSwitchSchedule = async (next) => {
     // Backups are of the real budget; the sample isn't it.
-    if (isTauri && !sampleRef.current) {
-      try {
-        const current = await window.storage.get(STORAGE_KEY);
-        if (current?.value) await writeBackup(current.value, "before-pay-schedule");
-      } catch { /* never block the switch on a failed snapshot */ }
-    }
+    await backupBefore("before-pay-schedule");
     save(next);
     setPayDialog(null);
   };
@@ -1639,12 +1732,12 @@ export default function App() {
             sampleRef.current = true;
             setSample(true);
             setSetupOpen(false);
-            historyRef.current = { past: [], future: [], lastPushAt: 0 };
-            setHistorySize({ past: 0, future: 0 });
-            setData(hydrate(demoData(new Date(), getLanguage())));
+            clearHistory();
+            show(hydrate(demoData(new Date(), getLanguage())));
           }}
           onSkip={() => { save({ ...data, setupDone: true }, { undoable: false }); setSetupOpen(false); }}
-          onChangeLanguage={(language) => save({ ...data, language }, { undoable: false })} />
+          language={language}
+          onChangeLanguage={changeLanguage} />
       )}
 
       {searchOpen && (
@@ -1663,12 +1756,7 @@ export default function App() {
           onImport={async (next, counts) => {
             // A statement can add hundreds of rows at once. Snapshot first, so a
             // wrong column guess is one restore away rather than an afternoon.
-            if (isTauri && !sampleRef.current) {
-              try {
-                const current = await window.storage.get(STORAGE_KEY);
-                if (current?.value) await writeBackup(current.value, "before-statement-import");
-              } catch { /* never block the import on a failed snapshot */ }
-            }
+            await backupBefore("before-statement-import");
             await save(next);
             setStatementOpen(false);
             const parts = [];
@@ -1760,7 +1848,8 @@ export default function App() {
           onClose={() => setSettingsOpen(false)}
           onChangeReminders={(reminders) => save({ ...data, reminders })}
           updater={updater}
-          onChangeUpdates={(updates) => save({ ...data, updates })}
+          autoUpdate={autoUpdate}
+          onChangeAutoUpdate={changeAutoUpdate}
           onInstallUpdate={installUpdate}
           onChangeCutoff={onChangeCutoff}
           onChangePay={(opts) => { setSettingsOpen(false); setPayDialog(opts); }}
@@ -1776,15 +1865,28 @@ export default function App() {
           onReset={resetAll}
           onChangeCurrency={(currency) => save({ ...data, currency })}
           onChangeLocale={(locale) => save({ ...data, locale })}
-          onChangeLanguage={(language) => save({ ...data, language })}
+          language={language}
+          onChangeLanguage={changeLanguage}
           onChangePeople={save}
           onManageCategories={() => { setSettingsOpen(false); setCategoriesOpen(true); }}
           onManageRules={() => { setSettingsOpen(false); setRulesOpen(true); }}
           lockCfg={lockCfg}
           onPinAction={(mode) => { setSettingsOpen(false); setPinDialog(mode); }}
           onChangeLock={(cfg) => { writeLock(cfg).then(() => setLockCfg(cfg)).catch((err) => alert(t("Couldn't save the lock: {error}", { error: String(err) }))); }}
+          loadBackups={loadBackups}
           onRestore={async (name) => {
             if (!confirm(t("Replace all current data with the backup \"{name}\"?\n\nWhat you have now is backed up first.", { name }))) return;
+            if (openRef.current !== HOUSEHOLD) {
+              // An own budget's backup, opened with the key it holds now. Its
+              // budget is replaced, so nothing from before can be undone into it.
+              let mine;
+              try { mine = await storeRef.current.restoreMine(name); } catch { alert(t("That backup could not be read.")); return; }
+              if (!mine) { alert(t("That backup of your own budget doesn't open with your password.")); return; }
+              clearHistory();
+              show(mine);
+              setSettingsOpen(false);
+              return;
+            }
             try {
               const text = await readBackup(name);
               const parsed = JSON.parse(text);
@@ -1794,11 +1896,8 @@ export default function App() {
               }
               // Snapshot the current state before replacing it, so restoring to
               // the wrong point is itself recoverable.
-              try {
-                const current = await window.storage.get(STORAGE_KEY);
-                if (current?.value) await writeBackup(current.value, "before-restore");
-              } catch { /* never block the restore */ }
-              await save(hydrate(migrate(parsed)));
+              await backupBefore("before-restore");
+              await save(hydrate(migrate(budgetFromFile(parsed))), { replace: true });
               setSettingsOpen(false);
             } catch {
               alert(t("That backup could not be read."));

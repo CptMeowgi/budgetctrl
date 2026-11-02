@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { fortnightlyDemo } from "./demo.js";
+import { afterEach, describe, it, expect, vi } from "vitest";
+import { demoData, demoIo, fortnightlyDemo } from "./demo.js";
+import { createStore, HOUSEHOLD } from "./lib/budgetStore.js";
 import { calendarFor } from "./lib/calendar.js";
 import { copiesFor } from "./lib/occurrences.js";
 
@@ -26,5 +27,27 @@ describe("the fortnightly demo", () => {
       for (const e of m.expenses) expect(cal.keyFor(e.date)).toBe(k);
       expect(m.recurring.map((r) => r.templateId)).toEqual(data.recurringTemplate.flatMap((t) => copiesFor(t, cal, k, () => "").map(() => t.id)));
     }
+  });
+});
+
+describe("the demo's store", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("saves, makes own budgets in memory, and touches no storage", async () => {
+    const touched = [];
+    vi.stubGlobal("localStorage", new Proxy({}, { get: (_, k) => { touched.push(k); return () => null; } }));
+    const store = await createStore(demoData(new Date(2026, 9, 15, 12)), { io: demoIo() });
+    const hh = store.household();
+    expect(hh.budgetOf).toBe(HOUSEHOLD);
+    const saved = await store.save({ ...hh, currency: "EUR" });
+    expect(saved.currency).toBe("EUR");
+    const people = [{ id: "a", name: "Anna" }, { id: "b", name: "Bo" }];
+    await store.save({ ...saved, people });
+    await store.openProfile("a");
+    const mine = await store.openMine();
+    await store.save({ ...mine, currency: "PLN" });
+    expect(await store.ownStatus("a")).toBe("plain");
+    expect(store.hasOwn("a")).toBe(true);
+    expect(touched).toEqual([]);
   });
 });
