@@ -18,9 +18,10 @@ import { PAY_KINDS, payKindChosen } from "../lib/paySchedule.js";
 // not the budget's. `loadBackups` lists the open budget's backups. People
 // belong to the household, so `showPeople` is false while Mine is open;
 // `onAddPerson` and `onRemovePerson` are PeopleManager's `onAdd` and `onRemove`.
+// `own` says an own budget is open, whose file isn't backed up first.
 export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onChangeLocale, onRestore, onManageCategories, updater, autoUpdate, onChangeAutoUpdate, onInstallUpdate,
   onChangeCutoff, onChangePay, onWhatsNew, onCheckup, onChangeLockPast, sample, today, onExport, onExportCsv, onImport, onImportStatement, onReset, onManageRules, lockCfg, onPinAction, onChangeLock, language, onChangeLanguage, onChangePeople,
-  onAddPerson, onRemovePerson, showPeople = true, loadBackups = listBackups }) {
+  onAddPerson, onRemovePerson, showPeople = true, own = false, loadBackups = listBackups }) {
   const { theme, s } = useThemed();
   const [openedAt] = useState(() => Date.now());
   const rem = data.reminders || { enabled: true, leadDays: 3 };
@@ -304,7 +305,10 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
         </>
       )}
       {!sample && (
-        <SettingRow label={t("Start again")} hint={t("Deletes your whole budget. It's backed up first, and Ctrl+Z brings it back.")}>
+        <SettingRow label={t("Start again")} hint={own
+          // Only the household's budget file is backed up first.
+          ? t("Deletes your own budget. Ctrl+Z brings it back until you switch or lock.")
+          : t("Deletes your whole budget. It's backed up first, and Ctrl+Z brings it back.")}>
           <button style={{ ...s.linkBtn, padding: 0, color: theme.danger }} onClick={onReset}>{t("Reset…")}</button>
         </SettingRow>
       )}

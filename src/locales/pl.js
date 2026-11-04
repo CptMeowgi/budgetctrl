@@ -980,4 +980,11 @@ export default {
   "Recurring bills that belong to the household can be moved there one at a time.": "Stałe opłaty, które należą do budżetu domowego, możesz przenosić tam pojedynczo.",
   "Adding to the household": "Dodajesz do budżetu domowego",
   "Adding to Mine": "Dodajesz do swojego budżetu",
+  "Start your own budget again?\n\nCtrl+Z undoes it until you switch or lock.": "Zacząć swój własny budżet od nowa?\n\nCtrl+Z cofnie to, dopóki nie przełączysz budżetu ani nie zablokujesz aplikacji.",
+  "Replace your own budget with this file?\n\nCtrl+Z undoes it until you switch or lock.": "Zastąpić Twój własny budżet tym plikiem?\n\nCtrl+Z cofnie to, dopóki nie przełączysz budżetu ani nie zablokujesz aplikacji.",
+  "Deletes your own budget. Ctrl+Z brings it back until you switch or lock.": "Usuwa Twój własny budżet. Ctrl+Z go przywróci, dopóki nie przełączysz budżetu ani nie zablokujesz aplikacji.",
+  "Your own budget's file opens again, so nothing was written over it. Open Mine again.": "Plik Twojego własnego budżetu znów się otwiera, więc nic go nie nadpisało. Otwórz „Mój” jeszcze raz.",
+  "No copy of the damaged file could be kept, so nothing was written over it.": "Nie udało się zachować kopii uszkodzonego pliku, więc nic go nie nadpisało.",
+  "This person already has a budget of their own.": "Ta osoba ma już własny budżet.",
+  "That person isn't in the household any more.": "Tej osoby nie ma już w budżecie domowym.",
 };

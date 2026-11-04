@@ -980,4 +980,11 @@ export default {
   "Recurring bills that belong to the household can be moved there one at a time.": "Los gastos fijos que son del hogar se pueden mover allí uno a uno.",
   "Adding to the household": "Se añade al hogar",
   "Adding to Mine": "Se añade a tu propio presupuesto",
+  "Start your own budget again?\n\nCtrl+Z undoes it until you switch or lock.": "¿Empezar de nuevo tu propio presupuesto?\n\nCtrl+Z lo deshace hasta que cambies o bloquees.",
+  "Replace your own budget with this file?\n\nCtrl+Z undoes it until you switch or lock.": "¿Sustituir tu propio presupuesto por este archivo?\n\nCtrl+Z lo deshace hasta que cambies o bloquees.",
+  "Deletes your own budget. Ctrl+Z brings it back until you switch or lock.": "Borra tu propio presupuesto. Ctrl+Z lo recupera hasta que cambies o bloquees.",
+  "Your own budget's file opens again, so nothing was written over it. Open Mine again.": "El archivo de tu propio presupuesto vuelve a abrirse, así que no se ha sobrescrito nada. Abre «Mío» otra vez.",
+  "No copy of the damaged file could be kept, so nothing was written over it.": "No se pudo guardar una copia del archivo dañado, así que no se ha sobrescrito nada.",
+  "This person already has a budget of their own.": "Esta persona ya tiene un presupuesto propio.",
+  "That person isn't in the household any more.": "Esa persona ya no está en el hogar.",
 };

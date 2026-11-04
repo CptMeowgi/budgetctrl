@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import { createStore, HOUSEHOLD, newOwnBudget, OwnUnreadableError } from "./budgetStore.js";
+import { asOwnBudget, createStore, HOUSEHOLD, newOwnBudget, OwnUnreadableError } from "./budgetStore.js";
+import { createEpoch } from "./epoch.js";
+import { faultText } from "../text.js";
 import { hydrate, migrate } from "../model.js";
 import { addPerson } from "./people.js";
 import { calendarFor } from "./calendar.js";
@@ -1045,6 +1047,74 @@ describe("a sealed file whose key unwraps but whose data won't open", () => {
     const changed = await breakSeal(other.disk);
     await expect(other.store.startMineAgain()).rejects.toThrow("file opens");
     expect(other.disk.ownText("a")).toBe(changed);
+  });
+});
+
+// The app's side of a close that comes while a profile is still opening: the
+// store's queue lands the open first, and the code awaiting the open carries
+// on before the close has run, so store.session() can't say it is stale. The
+// app's epoch (lib/epoch.js) can, and the store ends closed.
+describe("closing while a profile opens", () => {
+  it("ends closed, and only the epoch tells the open's caller it came too late", async () => {
+    const { store } = await sealedAnna();
+    await store.closeProfile();
+    const epoch = createEpoch();
+    const still = epoch.check();
+    const opening = store.openProfile("a", "correct horse").then((ok) => ({ ok, session: store.session(), current: still() }));
+    // Closed to the tray while the password is being checked.
+    epoch.bump();
+    const closing = store.closeProfile();
+    const heard = await opening;
+    expect(heard.ok).toBe(true);
+    expect(heard.session).toBe("a");
+    expect(heard.current).toBe(false);
+    await closing;
+    expect(store.session()).toBeNull();
+    expect(store.mineOpen()).toBe(false);
+    expect(store.own()).toBeNull();
+  });
+
+  it("does the same for an unlock of Mine", async () => {
+    const { store } = await sealedAnna();
+    await store.lockMine();
+    const epoch = createEpoch();
+    const still = epoch.check();
+    const unlocking = store.unlockMine("correct horse").then((ok) => ({ ok, mineOpen: store.mineOpen(), current: still() }));
+    epoch.bump();
+    const closing = store.closeProfile();
+    const heard = await unlocking;
+    expect(heard).toEqual({ ok: true, mineOpen: true, current: false });
+    await closing;
+    expect(store.session()).toBeNull();
+    expect(store.own()).toBeNull();
+  });
+});
+
+describe("refusals the app words", () => {
+  it("says the store's refusals a person can meet in words, and anything else as a fault", async () => {
+    const { store } = await annaWithMine();
+    expect(faultText(await caught(store.startMineAgain()))).toBe("Your own budget's file opens again, so nothing was written over it. Open Mine again.");
+    expect(faultText(await caught(store.keepAsMine("a")))).toBe("This person already has a budget of their own.");
+
+    const disk = memoryDisk();
+    disk.files.set("own-a.json", "not a budget");
+    disk.locked.add("a");
+    const locked = await open(household([{ ...anna, hasOwn: true }, { ...tom, removed: true }]), disk);
+    expect(faultText(await caught(locked.openProfile("t")))).toBe("That person isn't in the household any more.");
+    expect(await locked.openProfile("a")).toBe(true);
+    expect(faultText(await caught(locked.startMineAgain()))).toBe("No copy of the damaged file could be kept, so nothing was written over it.");
+
+    expect(faultText(new Error("disk full"))).toBe("Something went wrong: disk full");
+  });
+});
+
+describe("asOwnBudget", () => {
+  it("drops the people, who paid and the stamps, so a file brought into Mine carries none of them", () => {
+    const own = asOwnBudget({ ...household(), budgetOf: HOUSEHOLD, budgetGen: 3, own: { x: 1 } });
+    expect(own.people).toBeUndefined();
+    expect(JSON.stringify(own)).not.toMatch(/paidBy|paidWith|budgetOf|budgetGen|"own"/);
+    expect(own.months["2026-10"].expenses.map((e) => e.id)).toEqual(["e1"]);
+    expect(own.categories).toEqual(household().categories);
   });
 });
 

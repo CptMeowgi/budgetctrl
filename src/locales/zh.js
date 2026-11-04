@@ -980,4 +980,11 @@ export default {
   "Recurring bills that belong to the household can be moved there one at a time.": "属于家庭的固定支出可以逐一移到那里。",
   "Adding to the household": "添加到家庭预算",
   "Adding to Mine": "添加到我的预算",
+  "Start your own budget again?\n\nCtrl+Z undoes it until you switch or lock.": "重新开始你自己的预算？\n\n在你切换或锁定之前，按 Ctrl+Z 可以撤销。",
+  "Replace your own budget with this file?\n\nCtrl+Z undoes it until you switch or lock.": "用这个文件替换你自己的预算？\n\n在你切换或锁定之前，按 Ctrl+Z 可以撤销。",
+  "Deletes your own budget. Ctrl+Z brings it back until you switch or lock.": "删除你自己的预算。在你切换或锁定之前，按 Ctrl+Z 可以恢复。",
+  "Your own budget's file opens again, so nothing was written over it. Open Mine again.": "你自己预算的文件又能打开了，所以没有覆盖任何内容。请再次打开“我的”。",
+  "No copy of the damaged file could be kept, so nothing was written over it.": "无法保留损坏文件的副本，所以没有覆盖任何内容。",
+  "This person already has a budget of their own.": "此人已经有自己的预算。",
+  "That person isn't in the household any more.": "此人已不在家庭中。",
 };

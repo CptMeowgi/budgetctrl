@@ -50,9 +50,10 @@ import { ENTRY_COLUMNS, filterAndSort, toggleSort } from "./listView.js";
 import { countRebucketMoves, CREDIT_UNCATEGORIZED, defaultData, emptyMonth, ensureCategory, ensureCreditCategory, ensureCurrentMonth, hydrate, migrate, rebucketData, STORAGE_KEY, uid } from "./model.js";
 import { currencyCode, fmt, setMoneyFormat } from "./money.js";
 import { isLinux, isTauri } from "./platform.js";
-import { catName, due, ordinal, shortDate } from "./text.js";
+import { catName, due, faultText, ordinal, shortDate } from "./text.js";
 import { listBackups, listOwnBackups, ownIo, readBackup, readLock, setAsideUnreadable, writeBackup, writeLock } from "./storage.js";
-import { createStore, HOUSEHOLD, newOwnBudget, OwnUnreadableError } from "./lib/budgetStore.js";
+import { asOwnBudget, createStore, HOUSEHOLD, newOwnBudget, OwnUnreadableError } from "./lib/budgetStore.js";
+import { createEpoch } from "./lib/epoch.js";
 import { PasswordAsk, ProfilePicker } from "./components/ProfilePicker.jsx";
 import { BudgetSwitch, OwnUnreadableDialog } from "./components/BudgetSwitch.jsx";
 import { SecondPersonDialog } from "./components/SecondPersonDialog.jsx";
@@ -70,8 +71,8 @@ const THEME_KEY = "budget-ctrl-theme";
 // A sealed Mine locks after this long without using the app.
 const MINE_IDLE_MS = 10 * 60 * 1000;
 
-// A store or vault fault, said as one: never "wrong password".
-const fault = (err) => t("Something went wrong: {error}", { error: String(err?.message || err) });
+// A store or vault fault, said as one: never "wrong password" (text.js).
+const fault = faultText;
 // Who has an own budget, to tell when a save brought someone's back.
 const ownersOf = (doc) => peopleOf(doc).filter((p) => p.hasOwn).map((p) => p.id).join(",");
 
@@ -136,6 +137,10 @@ export default function App() {
   // there are profiles.
   const storeRef = useRef(null);
   const openRef = useRef(HOUSEHOLD);
+  // Counts the profile's closes (lib/epoch.js): what awaited the store across
+  // one doesn't show anything. `closes` redraws the picker afresh on each.
+  const [epoch] = useState(createEpoch);
+  const [closes, setCloses] = useState(0);
   // With profiles: the budget showing (openRef's value, for drawing; saves
   // and switching read openRef, which changes first), and the open profile's
   // person id as the store has it (store.session()).
@@ -235,7 +240,11 @@ export default function App() {
     } catch { /* never block the change on a failed snapshot; the undo step still holds it */ }
   };
   const resetAll = async () => {
-    if (!confirm(t("Delete your whole budget and start again?\n\nWhat you have now is backed up first, and Ctrl+Z undoes it."))) return;
+    // Only the budget file is backed up first (backupBefore): Mine says so.
+    const question = openRef.current === HOUSEHOLD
+      ? t("Delete your whole budget and start again?\n\nWhat you have now is backed up first, and Ctrl+Z undoes it.")
+      : t("Start your own budget again?\n\nCtrl+Z undoes it until you switch or lock.");
+    if (!confirm(question)) return;
     await backupBefore("before-reset");
     // A fresh budget of the kind that's open.
     const fresh = openRef.current === HOUSEHOLD ? hydrate(defaultData()) : newOwnBudget(storeRef.current.household());
@@ -253,12 +262,18 @@ export default function App() {
           alert(t("Could not read backup file. Make sure it's a valid budget-ctrl JSON export."));
           return;
         }
-        if (!confirm(t("Replace all your current data with this backup?\n\nWhat you have now is backed up first, and Ctrl+Z undoes it."))) return;
+        const intoMine = openRef.current !== HOUSEHOLD;
+        if (!confirm(intoMine
+          ? t("Replace your own budget with this file?\n\nCtrl+Z undoes it until you switch or lock.")
+          : t("Replace all your current data with this backup?\n\nWhat you have now is backed up first, and Ctrl+Z undoes it."))) return;
         // Snapshot what is about to be overwritten, as well as the undo step.
         await backupBefore("before-import");
         // The budget alone: who had an own budget where it came from isn't so
-        // here, and the store keeps everyone who has one here.
-        const doc = hydrate(migrate(budgetFromFile(parsed, { imported: true })));
+        // here, and the store keeps everyone who has one here. A file brought
+        // into Mine brings no people and nobody marked as having paid, as
+        // "Keep it as mine" makes it: Mine has nobody else.
+        const fromFile = budgetFromFile(parsed, { imported: true });
+        const doc = hydrate(migrate(intoMine ? asOwnBudget(fromFile) : fromFile));
         await replaced(save(doc, { replace: true }));
       } catch {
         alert(t("Could not read backup file. Make sure it's a valid budget-ctrl JSON export."));
@@ -336,14 +351,33 @@ export default function App() {
   // Closes the profile: the household first, so Mine is off the screen before
   // anything else, then the store forgets who is open once the saves already
   // on their way have landed. The picker follows, or the only person's
-  // profile opens again. A budget without profiles has nothing to close.
-  const closeProfileNow = useCallback(async () => {
+  // profile opens again.
+  //
+  // An open, an unlock or a restore still on its way when this is called
+  // comes back after it, and store.session() can't tell (lib/epoch.js), so
+  // the epoch moves first: none of them shows anything. The store's close is
+  // queued behind them whatever the session says now (an open clears it
+  // while it checks the password), so it is the last word.
+  //
+  // `quietly` is for profiles turning off while the household shows: it
+  // stays as it is, Settings included. A budget without profiles has
+  // nothing to close, so nothing changes in it.
+  const closeProfileNow = useCallback(async ({ quietly = false } = {}) => {
     const store = storeRef.current;
+    setCloses(epoch.bump());
     setSession(null);
-    if (!store || (!store.session() && openRef.current === HOUSEHOLD)) return;
-    switchTo(HOUSEHOLD);
+    if (!store || (!store.profilesOn() && !store.session() && openRef.current === HOUSEHOLD)) return;
+    if (!quietly || openRef.current !== HOUSEHOLD) {
+      switchTo(HOUSEHOLD);
+    } else {
+      setUnlockAsk(false);
+      setOwnTrouble(null);
+      if (promptRef.current) { promptRef.current(null); promptRef.current = null; }
+      setPasswordPrompt(null);
+    }
     await store.closeProfile();
-  }, [switchTo]);
+    if (openRef.current !== HOUSEHOLD) switchTo(HOUSEHOLD);
+  }, [switchTo, epoch]);
 
   // Locks Mine and forgets its key; the household shows if Mine was showing.
   const lockMineNow = useCallback(async () => {
@@ -424,7 +458,8 @@ export default function App() {
     if (sampleRef.current) { step(); show(doc); return doc; }
     if (opts.replace) {
       const stored = await persist(doc, { replace: true });
-      if (stored) step();
+      // Another budget opened meanwhile: its history is its own.
+      if (stored && doc.budgetOf === openRef.current) step();
       return stored;
     }
     step();
@@ -709,9 +744,10 @@ export default function App() {
 
   // The PIN locking closes the profile: the lock is for the whole app, and
   // whoever unlocks it picks who they are again.
+  // Also while one is still opening, before there is a session to see.
   useEffect(() => {
-    if (lockCfg && locked && session) closeProfileNow();
-  }, [lockCfg, locked, session, closeProfileNow]);
+    if (lockCfg && locked) closeProfileNow();
+  }, [lockCfg, locked, closeProfileNow]);
 
   // So does closing the window to the tray (Rust says so before hiding it).
   // Minimising does nothing.
@@ -722,7 +758,7 @@ export default function App() {
     (async () => {
       try {
         const { listen } = await import("@tauri-apps/api/event");
-        const off = await listen("closed-to-tray", () => { if (storeRef.current?.session()) closeProfileNow(); });
+        const off = await listen("closed-to-tray", () => { closeProfileNow(); });
         if (alive) unlisten = off; else off();
       } catch { /* Tauri API unavailable (browser dev server) */ }
     })();
@@ -756,7 +792,7 @@ export default function App() {
   // Profiles turned off (the second person removed, nobody with an own
   // budget): back to a budget without them.
   useEffect(() => {
-    if (session && !profiles) closeProfileNow();
+    if (session && !profiles) closeProfileNow({ quietly: true });
   }, [session, profiles, closeProfileNow]);
 
   // The only person there is opens their profile without the picker; a
@@ -764,13 +800,14 @@ export default function App() {
   useEffect(() => {
     if (!loaded || !soleId || session || settingsOpen || lockCfg === undefined || (lockCfg && locked)) return;
     const store = storeRef.current;
+    const still = epoch.check();
     let alive = true;
     store.openSoleProfile(soleId).then(
-      () => { if (alive && store.session() === soleId) { setSession(soleId); switchTo(HOUSEHOLD); } },
-      (err) => { if (alive) alert(fault(err)); },
+      () => { if (alive && still() && store.session() === soleId) { setSession(soleId); switchTo(HOUSEHOLD); } },
+      (err) => { if (alive && still()) alert(fault(err)); },
     );
     return () => { alive = false; };
-  }, [loaded, soleId, session, settingsOpen, lockCfg, locked, switchTo]);
+  }, [loaded, soleId, session, settingsOpen, lockCfg, locked, switchTo, epoch]);
 
   // Which profiles ask for a password, for the picker.
   const pickIds = picking ? currentPeople.map((p) => p.id).join(",") : "";
@@ -801,17 +838,27 @@ export default function App() {
   // else rejects (the picker says so), never as a wrong password, except a
   // sealed file whose data won't open: the profile is open for the household
   // then, and opening Mine says what is wrong.
+  //
+  // Closed while it was opening (to the tray, the PIN): it resolves to null
+  // and shows nothing, and the profile is closed again behind the close that
+  // is already queued.
   const pickProfile = async (pid, password) => {
     const store = storeRef.current;
+    const still = epoch.check();
     let ok;
     try {
       ok = await store.openProfile(pid, password);
     } catch (err) {
       if (!(err instanceof OwnUnreadableError && store.session() === pid)) {
         if (store.session()) await store.closeProfile().catch(() => {});
+        if (!still()) return null;
         throw err;
       }
       ok = true;
+    }
+    if (!still()) {
+      store.closeProfile().catch(() => {});
+      return ok ? null : false;
     }
     if (!ok) return false;
     setSession(pid);
@@ -823,42 +870,52 @@ export default function App() {
 
   // The switch's "Mine". A sealed Mine that is locked asks for its password
   // first; one that won't open says why and offers what can be done.
+  // Nothing shows once the profile closed while Mine was opening.
   const showMine = async () => {
     const store = storeRef.current;
     const pid = store?.session();
     if (!pid) return;
+    const still = epoch.check();
     if (!store.mineOpen()) {
       try {
         await store.openMine();
       } catch (err) {
+        if (!still()) return;
         if (err instanceof OwnUnreadableError) { ownUnreadable(err); return; }
         let status = null;
         try {
           status = await store.ownStatus(pid);
         } catch (again) {
+          if (!still()) return;
           if (again instanceof OwnUnreadableError) { ownUnreadable(again); return; }
         }
+        if (!still()) return;
         if (status === "sealed") setUnlockAsk(true);
         else alert(fault(err));
         return;
       }
     }
-    if (store.session() === pid) switchTo(pid);
+    if (still() && store.session() === pid) switchTo(pid);
   };
 
   // The unlock dialog's password: false is a wrong one; a rejection is a fault.
+  // Closed while it was checking: nothing shows, and the answer is passed
+  // on as it was, so a wrong try still counts.
   const unlockMine = async (password) => {
     const store = storeRef.current;
     const pid = store.session();
+    const still = epoch.check();
     let ok;
     try {
       ok = await store.unlockMine(password);
     } catch (err) {
+      if (!still()) return true;
       if (!(err instanceof OwnUnreadableError)) throw err;
       setUnlockAsk(false);
       ownUnreadable(err);
       return true;
     }
+    if (!still()) return ok;
     if (!ok) return false;
     if (store.session() === pid) switchTo(pid);
     return true;
@@ -877,18 +934,27 @@ export default function App() {
   };
 
   // One of Mine's backups in place of Mine, or of its file that won't open.
-  // A backup sealed under another password (or another key) needs that
-  // password: it is asked for once, then the restore is tried again.
-  // Resolves to whether Mine was restored; a fault rejects. Mine is shown
-  // once restored, which leaves nothing from before to undo.
+  // When Mine is sealed, a backup sealed under another password (or another
+  // key) needs that password: it is asked for once, then the restore is
+  // tried again. A file that won't open can't say whether it was sealed, so
+  // that counts as sealed. Resolves to whether Mine was restored; a fault
+  // rejects. Mine is shown once restored, which leaves nothing from before to
+  // undo. The profile closed meanwhile: nothing is shown or said.
   const restoreMineBackup = async (name) => {
     const store = storeRef.current;
     const pid = store.session();
+    const still = epoch.check();
     let mine = await store.restoreMine(name);
+    if (!still()) return false;
     if (!mine) {
-      const password = await askPassword({ title: t("Restore a backup"), text: t("Enter the password this backup was saved with.") });
-      if (password === null) return false;
-      mine = await store.restoreMine(name, password);
+      const sealed = await store.ownStatus(pid).then((kind) => kind === "sealed", () => true);
+      if (!still()) return false;
+      if (sealed) {
+        const password = await askPassword({ title: t("Restore a backup"), text: t("Enter the password this backup was saved with.") });
+        if (password === null || !still()) return false;
+        mine = await store.restoreMine(name, password);
+        if (!still()) return false;
+      }
       if (!mine) {
         alert(t("That backup of your own budget doesn't open with your password."));
         return false;
@@ -934,11 +1000,17 @@ export default function App() {
   // store's household as it is now, never to the budget the People list
   // built before the dialog: after "Keep it as mine" that still holds
   // everything that is now someone's own.
+  // As onAddPerson: someone added back gets their own budget back.
+  const addSecond = async (base, name, opts) => {
+    const next = addPerson(base, name, uid);
+    const stored = await save(next, opts);
+    if (stored && ownersOf(stored) !== ownersOf(next)) householdChanged();
+  };
   const shareWithSecond = async ({ markJoint }) => {
     const { name } = secondPerson;
     const base = storeRef.current.household();
     setSecondPerson(null);
-    await save(addPerson(markJoint ? markAllJoint(base) : base, name, uid));
+    await addSecond(markJoint ? markAllJoint(base) : base, name);
   };
   const keepAsMineForSecond = async (pid) => {
     const store = storeRef.current;
@@ -952,7 +1024,7 @@ export default function App() {
     }
     householdChanged();
     setSecondPerson(null);
-    await save(addPerson(store.household(), name, uid), { undoable: false });
+    await addSecond(store.household(), name, { undoable: false });
     alert(t("Recurring bills that belong to the household can be moved there one at a time."));
   };
 
@@ -1021,7 +1093,7 @@ export default function App() {
         <div data-tauri-drag-region style={{ position: "fixed", top: 0, left: 0, right: 0, height: 40, zIndex: 2 }}>
           <WindowControls />
         </div>
-        <ProfilePicker people={currentPeople} sealed={sealedPeople} onOpen={pickProfile} />
+        <ProfilePicker key={closes} people={currentPeople} sealed={sealedPeople} onOpen={pickProfile} />
       </ThemeContext.Provider>
     );
   }
@@ -1278,8 +1350,8 @@ export default function App() {
           })}
         </nav>
         <div style={{ display: "flex", flexDirection: "column", gap: 6, borderTop: `1px solid ${theme.outerBorder}`, paddingTop: SPACE.sm, marginTop: SPACE.md }}>
-          {profiles && (
-            <button className="nav-item" style={s.navItem} onClick={closeProfileNow} title={me?.name}>
+          {profiles && session && (
+            <button className="nav-item" style={s.navItem} onClick={() => closeProfileNow()} title={me?.name}>
               <span aria-hidden="true" style={{ width: 18, height: 18, borderRadius: "50%", background: me?.color || theme.outerTextMuted, color: "#fff",
                 fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
                 {me ? [...String(me.name)][0]?.toUpperCase() : null}
@@ -2290,6 +2362,7 @@ export default function App() {
           onAddPerson={onAddPerson}
           onRemovePerson={onRemovePerson}
           showPeople={openId === HOUSEHOLD}
+          own={openId !== HOUSEHOLD}
           onManageCategories={() => { setSettingsOpen(false); setCategoriesOpen(true); }}
           onManageRules={() => { setSettingsOpen(false); setRulesOpen(true); }}
           lockCfg={lockCfg}
@@ -2304,7 +2377,8 @@ export default function App() {
               // can be undone into it.
               if (!confirm(t("Replace your own budget with the backup \"{name}\"?", { name }))) return;
               setSettingsOpen(false);
-              try { await restoreMineBackup(name); } catch { alert(t("That backup could not be read.")); }
+              const still = epoch.check();
+              try { await restoreMineBackup(name); } catch { if (still()) alert(t("That backup could not be read.")); }
               return;
             }
             if (!confirm(t("Replace all current data with the backup \"{name}\"?\n\nWhat you have now is backed up first.", { name }))) return;
@@ -2337,16 +2411,17 @@ export default function App() {
         <PasswordAsk title={t("Mine")} text={t("Enter your password to open your own budget.")} person={me}
           onSubmit={unlockMine} onClose={() => setUnlockAsk(false)} />
       )}
-      {/* Hidden while a backup's password is asked for, and back if the
-          restore didn't happen. */}
-      {ownTrouble && !passwordPrompt && (
-        <OwnUnreadableDialog reason={ownTrouble.reason} keptAs={ownTrouble.keptAs} loadBackups={loadMineBackups}
+      {/* Hidden, not gone, while a backup's password is asked for: it stays
+          busy, and says what went wrong if the restore then fails. */}
+      {ownTrouble && (
+        <OwnUnreadableDialog hidden={!!passwordPrompt} reason={ownTrouble.reason} keptAs={ownTrouble.keptAs} loadBackups={loadMineBackups}
           onRestore={restoreMineBackup}
           onStartEmpty={async () => {
             const store = storeRef.current;
             const pid = store.session();
+            const still = epoch.check();
             await store.startMineAgain();
-            if (store.session() === pid) switchTo(pid);
+            if (still() && store.session() === pid) switchTo(pid);
           }}
           onClose={() => setOwnTrouble(null)} />
       )}

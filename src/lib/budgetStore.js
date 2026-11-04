@@ -120,8 +120,9 @@ export function newOwnBudget(household) {
 
 // The household as one person's own budget, for "Keep it as mine" and for a
 // backup of the budget file that it moved into theirs: everything but the
-// people, and nobody marked as having paid, since there is nobody else.
-function asOwnBudget(household) {
+// people, and nobody marked as having paid, since there is nobody else. The
+// app makes any budget file imported into Mine one the same way.
+export function asOwnBudget(household) {
   const doc = without(bare(household), "people");
   const unpaid = (list) => (Array.isArray(list) ? list.map((e) => without(e, "paidBy", "paidWith")) : list);
   const months = {};

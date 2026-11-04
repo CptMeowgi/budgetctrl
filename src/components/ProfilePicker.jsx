@@ -4,6 +4,7 @@ import { ELEVATION, FONT, RADIUS, SPACE, TYPE, useThemed } from "../theme.js";
 import { BrandMark, Icon } from "./Icon.jsx";
 import { Modal } from "./Modal.jsx";
 import { t } from "../i18n.js";
+import { faultText as fault } from "../text.js";
 
 const FAILS_KEY = "budget-ctrl-profile-fails";
 
@@ -55,7 +56,6 @@ function useProfileTries(pid) {
   };
 }
 
-const fault = (err) => t("Something went wrong: {error}", { error: String(err?.message || err) });
 
 function Initial({ person, size }) {
   return (
@@ -98,9 +98,10 @@ function PasswordEntry({ tries, busy, error, onSubmit }) {
 // "Who's budgeting?": shown in place of the app once a budget has profiles,
 // so nothing of any budget is drawn behind it. `sealed` holds the people
 // whose own budget has a password: choosing one asks for it first.
-// `onOpen(pid, password?)` resolves to true once the profile is open and to
-// false for a wrong password; it rejects for anything else, which is never
-// called a wrong password. `onRecover(pid)`, when given, offers "Forgot your
+// `onOpen(pid, password?)` resolves to true once the profile is open, to
+// false for a wrong password, and to null when the app closed the profile
+// while it was opening (nothing is said then, and nothing typed is kept); it
+// rejects for anything else, which is never called a wrong password. `onRecover(pid)`, when given, offers "Forgot your
 // password?".
 export function ProfilePicker({ people, sealed, onOpen, onRecover }) {
   const { theme, s } = useThemed();
@@ -126,6 +127,10 @@ export function ProfilePicker({ people, sealed, onOpen, onRecover }) {
       return true;
     }
     setBusy(false);
+    if (ok === null) {
+      setChosen(null);
+      return false;
+    }
     if (ok) {
       if (password !== undefined) tries.succeeded();
       return true;

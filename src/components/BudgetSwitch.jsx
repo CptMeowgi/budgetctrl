@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { FONT, SPACE, TYPE, useThemed } from "../theme.js";
 import { Modal } from "./Modal.jsx";
-import { backupLabel } from "../text.js";
+import { backupLabel, faultText } from "../text.js";
 import { t } from "../i18n.js";
 
 // Household or Mine, at the top of the sidebar while a profile is open. The
@@ -32,8 +32,10 @@ export function BudgetSwitch({ value, onChange }) {
 // password if it needs one), `onStartEmpty()` starts Mine again empty. Each
 // resolves once done and rejects with what went wrong, said here.
 // `loadBackups()` lists Mine's backups. With no copy of a damaged file kept,
-// the store refuses to write over it, and says so.
-export function OwnUnreadableDialog({ reason, keptAs, loadBackups, onRestore, onStartEmpty, onClose }) {
+// the store refuses to write over it, and says so. `hidden` takes it off the
+// screen while a backup's password is asked for, still waiting on the
+// restore, so a fault in it is said here once it is back.
+export function OwnUnreadableDialog({ reason, keptAs, loadBackups, onRestore, onStartEmpty, onClose, hidden = false }) {
   const { theme, s } = useThemed();
   const [backups, setBackups] = useState(null);
   const [choosing, setChoosing] = useState(false);
@@ -55,11 +57,13 @@ export function OwnUnreadableDialog({ reason, keptAs, loadBackups, onRestore, on
     try {
       await job();
     } catch (err) {
-      setError(t("Something went wrong: {error}", { error: String(err?.message || err) }));
+      setError(faultText(err));
     } finally {
       setBusy(false);
     }
   };
+
+  if (hidden) return null;
 
   const why = !damaged ? t("Its file isn't on this computer.")
     : keptAs ? t("A copy of the damaged file was kept.")

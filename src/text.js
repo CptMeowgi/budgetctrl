@@ -84,3 +84,18 @@ export function ordinal(n) {
   const teen = n % 100 >= 11 && n % 100 <= 13;
   return `${n}${teen ? "th" : ({ 1: "st", 2: "nd", 3: "rd" }[n % 10] || "th")}`;
 }
+
+// What went wrong, for the screen. The budget store's few refusals that a
+// person can meet are said in their language. Anything else is a fault and
+// says so, with what it said: never "wrong password".
+const STORE_REFUSALS = {
+  "This own budget's file opens, so it isn't written over": tk("Your own budget's file opens again, so nothing was written over it. Open Mine again."),
+  "The damaged file couldn't be kept, so it isn't written over": tk("No copy of the damaged file could be kept, so nothing was written over it."),
+  "This person already has a budget of their own": tk("This person already has a budget of their own."),
+  "That person isn't in the household": tk("That person isn't in the household any more."),
+};
+export function faultText(err) {
+  const message = String(err?.message || err);
+  const known = STORE_REFUSALS[message];
+  return known ? t(known) : t("Something went wrong: {error}", { error: message });
+}
