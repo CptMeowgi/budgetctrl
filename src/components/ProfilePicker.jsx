@@ -38,10 +38,14 @@ function useProfileTries(pid) {
   const record = (next) => {
     // Read again: the other place that counts may have since.
     const stored = readFails();
+    if (!next && !(pid in stored)) return;
     if (next) stored[pid] = next; else delete stored[pid];
     setAll(stored);
     setNow(Date.now());
-    try { localStorage.setItem(FAILS_KEY, JSON.stringify(stored)); } catch { /* the wait still applies this session */ }
+    try {
+      if (Object.keys(stored).length) localStorage.setItem(FAILS_KEY, JSON.stringify(stored));
+      else localStorage.removeItem(FAILS_KEY);
+    } catch { /* the wait still applies this session */ }
   };
   return {
     waiting,
