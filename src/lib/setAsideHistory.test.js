@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { calendarFor } from "./calendar.js";
+import { perMonthOf } from "./setAside.js";
 import { setAsideAt, withSetAside } from "./setAsideHistory.js";
 
 const month = (extra = {}) => ({ income: 0, expenses: [], recurring: [], upcoming: [], credits: [], ...extra });
@@ -53,7 +54,7 @@ describe("setAsideAt", () => {
     const d = base({ paySchedule: [{ kind: "weeks", every: 2, from: "2026-10-02" }] });
     const key = calendarFor(d).keyFor(new Date(2026, 9, 5));
     d.months[key] = month({ setAside: 100 });
-    expect(setAsideAt(d, key)).toBeGreaterThan(100);
+    expect(setAsideAt(d, key)).toBe(perMonthOf(100, calendarFor(d), key));
   });
 
   it("gives savingsGoal.monthly with no history at all", () => {

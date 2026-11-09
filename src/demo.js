@@ -75,6 +75,8 @@ export function demoData(today, language = "en") {
 
   return {
     months,
+    // Carried money shows the feature off; the notice is for real budgets.
+    carry: { on: true, from: Object.keys(months).sort()[0], noticed: true },
     language,
     currency: "EUR",
     locale: "en-GB",
@@ -142,5 +144,5 @@ export function fortnightlyDemo(today, language = "en") {
   for (let k = Object.keys(months).sort()[0]; k <= running; k = cal.next(k)) {
     period(k).recurring = base.recurringTemplate.flatMap((t) => copiesFor(t, cal, k, () => `fr-${++n}`));
   }
-  return { ...base, months, paySchedule };
+  return { ...base, months, paySchedule, carry: { ...base.carry, from: Object.keys(months).sort()[0] } };
 }

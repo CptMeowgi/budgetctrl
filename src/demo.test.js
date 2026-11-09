@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { fortnightlyDemo } from "./demo.js";
+import { demoData, fortnightlyDemo } from "./demo.js";
 import { calendarFor } from "./lib/calendar.js";
 import { copiesFor } from "./lib/occurrences.js";
 
@@ -26,5 +26,13 @@ describe("the fortnightly demo", () => {
       for (const e of m.expenses) expect(cal.keyFor(e.date)).toBe(k);
       expect(m.recurring.map((r) => r.templateId)).toEqual(data.recurringTemplate.flatMap((t) => copiesFor(t, cal, k, () => "").map(() => t.id)));
     }
+  });
+});
+
+describe("the sample budgets and carrying", () => {
+  const today = new Date(2026, 9, 15, 12);
+  it.each([["monthly", demoData], ["fortnightly", fortnightlyDemo]])("the %s one carries from its earliest month without the notice", (_, build) => {
+    const d = build(today);
+    expect(d.carry).toEqual({ on: true, from: Object.keys(d.months).sort()[0], noticed: true });
   });
 });

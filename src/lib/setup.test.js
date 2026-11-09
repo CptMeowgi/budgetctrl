@@ -48,6 +48,11 @@ describe("applySetup", () => {
 describe("applySetup for pay every week or two", () => {
   const OCT_15 = new Date(2026, 9, 15, 12);
 
+  it("carries from the running fortnight when paid every two weeks", () => {
+    const out = applySetup(fresh, { pay: "weeks:2", nextPayday: "2026-10-23", income: 1900 }, OCT_15);
+    expect(out.carry).toEqual({ on: true, from: "2026-10-09", noticed: true });
+  });
+
   it("a budget paid every two weeks starts on its fortnight", () => {
     const out = applySetup(fresh, { pay: "weeks:2", nextPayday: "2026-10-23", income: 1900, setAside: 185 }, OCT_15);
     expect(out.paySchedule).toEqual([{ kind: "weeks", every: 2, from: "2026-10-23" }]);
