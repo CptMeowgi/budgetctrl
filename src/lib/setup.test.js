@@ -91,3 +91,9 @@ describe("needsSetup", () => {
     expect(needsSetup({ ...fresh, paySchedule: [{ kind: "weeks", every: 2, from: "2026-10-09" }] })).toBe(false);
   });
 });
+
+describe("applySetup and carrying", () => {
+  it("starts carrying from the running period, with the notice already seen", () => {
+    expect(applySetup(fresh, { cutoffDay: 1 }, TODAY).carry).toEqual({ on: true, from: "2026-10", noticed: true });
+  });
+});

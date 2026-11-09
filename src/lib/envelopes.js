@@ -17,7 +17,7 @@
 import { periodSpending } from "./totals.js";
 import { calendarFor } from "./calendar.js";
 
-const EARLIEST = "0000-00";
+export const EARLIEST = "0000-00";
 
 // A budget of zero or less is no budget, as it always has been on screen.
 const asBudget = (v) => (typeof v === "number" && v > 0 ? v : null);

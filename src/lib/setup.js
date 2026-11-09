@@ -58,6 +58,8 @@ export function applySetup(data, answers, today) {
     months: { [cur]: { income: Math.max(0, Number(income) || 0), expenses: [], recurring: [], upcoming: [], credits: [] } },
     categories: [fallback, ...(categories || []).map(({ name, icon, color }) => ({ name, icon, color }))],
     savingsGoal: { monthly: paySchedule ? Math.round(aside * cal.periodsPerMonth(cur) * 100) / 100 : aside },
+    // A new budget has no past to carry from, and nothing to announce.
+    carry: { on: true, from: cur, noticed: true },
     setupDone: true,
   };
 }

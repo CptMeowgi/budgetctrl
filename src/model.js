@@ -2,6 +2,7 @@ import { currentMonthKey, monthKey, periodKeyFor } from "./lib/periods.js";
 import { calendarFor } from "./lib/calendar.js";
 import { isRecurringItem, isWeekly, missingCopies } from "./lib/occurrences.js";
 import { migrateGoals } from "./lib/goals.js";
+import { EARLIEST } from "./lib/envelopes.js";
 import { DEFAULT_CREDIT_CATEGORIES } from "./lib/setup.js";
 import { detectCurrency } from "./money.js";
 import { storedCatName } from "./text.js";
@@ -180,7 +181,10 @@ function migrateSavingsGoal(data) {
   // converted to a month has cents.
   const clean = (n) => (Number.isFinite(+n) && +n > 0 ? Math.round(+n * 100) / 100 : 0);
   if (g && typeof g === "object") {
-    return { ...data, savingsGoal: { monthly: clean(g.monthly), target: clean(g.target) } };
+    const savingsGoal = { monthly: clean(g.monthly), target: clean(g.target) };
+    // The dated set-aside survives a reload.
+    if (Array.isArray(g.history)) savingsGoal.history = g.history;
+    return { ...data, savingsGoal };
   }
   const pct = Number(data.savingsGoalPercent) || 0;
   const income = data.months?.[calendarFor(data).current()]?.income || 0;
@@ -323,8 +327,28 @@ function migrateAccounts(data) {
   return Array.isArray(data.accounts) ? data : { ...data, accounts: [] };
 }
 
+// Carrying leftovers on is the default for everyone, starting with the period
+// that just ended: money left at the end of it is the first thing to carry in.
+// Earlier periods keep counting as they always did. A budget with no earlier
+// month has nothing to carry from, so it starts with the running period.
+// `months` is never touched, so no figure from before changes.
+function migrateCarry(data) {
+  let out = data;
+  if (!data.carry) {
+    const cal = calendarFor(data);
+    const cur = cal.current();
+    const earlier = Object.keys(data.months || {}).some((k) => k < cur);
+    out = { ...out, carry: { on: true, from: earlier ? cal.prev(cur) : cur } };
+  }
+  if (!Array.isArray(out.savingsGoal?.history)) {
+    const monthly = Number(out.savingsGoal?.monthly) || 0;
+    out = { ...out, savingsGoal: { ...out.savingsGoal, history: [{ from: EARLIEST, monthly }] } };
+  }
+  return out;
+}
+
 export function hydrate(data) {
-  return migrateAccounts(
+  return migrateCarry(migrateAccounts(
     migrateCurrency(
     migrateGoals(migrateSavingsGoal(
     migrateReminders(
@@ -333,7 +357,7 @@ export function hydrate(data) {
         migrateCredits(
           migrateCategories(
             ensureCurrentMonth(
-              migrateCutoff(data)))))))), uid)));
+              migrateCutoff(data)))))))), uid))));
 }
 
 export function ensureCurrentMonth(data) {

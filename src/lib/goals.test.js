@@ -198,3 +198,11 @@ describe("goals in a budget paid every two weeks", () => {
     expect(st.perPeriod.needed).toBe(st.neededPerMonth);
   });
 });
+
+describe("migrateGoals and the set-aside history", () => {
+  it("keeps savingsGoal.history", () => {
+    const history = [{ from: "0000-00", monthly: 300 }];
+    const out = migrateGoals({ savingsGoal: { monthly: 500, history }, goals: [] }, () => "x");
+    expect(out.savingsGoal).toEqual({ monthly: 500, history });
+  });
+});

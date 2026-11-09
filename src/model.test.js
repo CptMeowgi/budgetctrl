@@ -107,7 +107,7 @@ describe("opening a budget saved by 0.4.2", () => {
 
   it("turns the savings target and starting balance into a goal, keeping what is set aside", () => {
     const d = open();
-    expect(d.savingsGoal).toEqual({ monthly: 500 });
+    expect(d.savingsGoal).toEqual({ monthly: 500, history: [{ from: "0000-00", monthly: 500 }] });
     expect(d.goals).toEqual([expect.objectContaining({ name: "Savings", target: 20000, startAmount: 3500, source: "budget" })]);
     expect(d).not.toHaveProperty("startingBalance");
   });
@@ -158,7 +158,12 @@ describe("opening a budget saved by 0.5.2", () => {
   const today = () => new Date(2026, 9, 12, 12);
 
   it("changes nothing at all", () => {
-    expect(open()).toEqual(SAVED_BY_0_5_2);
+    // Only the new carry and set-aside history are added; every figure stays.
+    const { carry, savingsGoal, ...rest } = open();
+    const { savingsGoal: was, ...restWas } = SAVED_BY_0_5_2;
+    expect(rest).toEqual(restWas);
+    expect(carry).toEqual({ on: true, from: "2026-08" });
+    expect(savingsGoal).toEqual({ ...was, history: [{ from: "0000-00", monthly: was.monthly }] });
   });
 
   it("counts a finished period the same way, split receipt included", () => {
@@ -323,7 +328,11 @@ describe("opening a budget saved after switching to fortnights", () => {
   const today = () => new Date(2026, 9, 12, 12);
 
   it("changes nothing at all", () => {
-    expect(open()).toEqual(SAVED_FORTNIGHTLY);
+    const { carry, savingsGoal, ...rest } = open();
+    const { savingsGoal: was, ...restWas } = SAVED_FORTNIGHTLY;
+    expect(rest).toEqual(restWas);
+    expect(carry).toEqual({ on: true, from: "2026-09" });
+    expect(savingsGoal).toEqual({ ...was, history: [{ from: "0000-00", monthly: was.monthly }] });
   });
 
   it("shows the same periods and figures", () => {
@@ -358,5 +367,45 @@ describe("changing the payday with periods locked", () => {
     expect(out.months["2026-04"].expenses.map((e) => e.id)).toEqual(["b"]);
     expect(out.months["2026-08"].expenses.map((e) => e.id)).toEqual(["c"]);
     expect(countRebucketMoves(data, 10, TODAY, { isLocked })).toBe(1);
+  });
+});
+
+describe("carry and the set-aside history on loading", () => {
+  const m = (extra = {}) => ({ income: 0, expenses: [], recurring: [], upcoming: [], credits: [], ...extra });
+  const saved = (cutoffDay, months) => ({ cutoffDay, months, savingsGoal: { monthly: 500, target: 0 }, categories: [], currency: "PLN", locale: "pl-PL" });
+  beforeAll(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 10, 10, 12)); });
+  afterAll(() => vi.useRealTimers());
+
+  it("starts carrying with the period that just ended, leaving months alone", () => {
+    const months = { "2026-09": m({ income: 100 }), "2026-10": m({ income: 200 }) };
+    const input = saved(1, months);
+    const out = hydrate(JSON.parse(JSON.stringify(input)));
+    expect(out.carry).toEqual({ on: true, from: "2026-10" });
+    expect(out.months["2026-09"]).toEqual(months["2026-09"]);
+    expect(out.months["2026-10"]).toEqual(months["2026-10"]);
+    expect(out.savingsGoal.history).toEqual([{ from: "0000-00", monthly: 500 }]);
+  });
+
+  it("goes by the budget's own calendar: payday on the 25th, on 10 Nov", () => {
+    const out = hydrate(saved(25, { "2026-09": m(), "2026-10": m() }));
+    expect(out.carry.from).toBe("2026-09");
+  });
+
+  it("starts at the running period when there are no earlier months", () => {
+    const out = hydrate(saved(1, { "2026-11": m() }));
+    expect(out.carry).toEqual({ on: true, from: "2026-11" });
+  });
+
+  it("leaves an existing carry and history alone", () => {
+    const input = { ...saved(1, { "2026-09": m() }), carry: { on: false, from: "2026-05" } };
+    input.savingsGoal.history = [{ from: "0000-00", monthly: 300 }];
+    const out = hydrate(input);
+    expect(out.carry).toEqual({ on: false, from: "2026-05" });
+    expect(out.savingsGoal.history).toEqual([{ from: "0000-00", monthly: 300 }]);
+  });
+
+  it("keeps the history through a second load", () => {
+    const once = hydrate(saved(1, { "2026-09": m() }));
+    expect(hydrate(once).savingsGoal.history).toEqual(once.savingsGoal.history);
   });
 });

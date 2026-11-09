@@ -147,6 +147,8 @@ export function migrateGoals(data, newId) {
       : [];
   }
   out.savingsGoal = { monthly: Number(out.savingsGoal?.monthly) || 0 };
+  // The dated set-aside is kept; rebuilding the object must not drop it.
+  if (Array.isArray(data.savingsGoal?.history)) out.savingsGoal.history = data.savingsGoal.history;
   delete out.startingBalance;
   return out;
 }
