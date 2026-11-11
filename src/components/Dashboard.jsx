@@ -15,6 +15,8 @@ import { Icon } from "./Icon.jsx";
 import { fmtDate, t, tk, tn } from "../i18n.js";
 import { useReflowAnimation } from "../hooks/useReflowAnimation.js";
 import { perMonthOf } from "../lib/paySchedule.js";
+import { withSetAside } from "../lib/setAsideHistory.js";
+import { barWidths } from "../lib/carryover.js";
 
 const money = { fontFamily: FONT, fontVariantNumeric: "tabular-nums" };
 const shortDay = (iso) => fmtDate(iso, { day: "numeric", month: "short" });
@@ -31,7 +33,7 @@ function Chip({ tone, children, title }) {
 }
 
 // Money left this period: the actual line so far, then the forecast to payday.
-function MoneyLeftCard({ data, curKey, today, cal, fc, remaining, sub, stillToPay, goalsLine, needsIncome, onAddIncome }) {
+function MoneyLeftCard({ data, curKey, today, cal, fc, remaining, carriedIn, sub, stillToPay, goalsLine, needsIncome, onAddIncome }) {
   const { theme, s } = useThemed();
   const history = balanceHistory(data, curKey, today);
   const ahead = new Map(fc.series.map((p) => [p.date, p.withEveryday]));
@@ -57,6 +59,13 @@ function MoneyLeftCard({ data, curKey, today, cal, fc, remaining, sub, stillToPa
               : <Chip tone="good"><Icon name="arrow-up" size={12} />{t("About {amount} left at the end", { amount: fmt(fc.endWithEveryday) })}</Chip>)}
           </div>
           <div style={{ fontSize: 12, color: theme.textFaint, marginTop: 6 }}>{sub}</div>
+          {carriedIn !== 0 && (
+            <div style={{ fontSize: 12, color: carriedIn < 0 ? theme.danger : theme.textFaint, marginTop: 4 }}>
+              {carriedIn < 0
+                ? t("Includes {amount} overspent in {period}", { amount: fmt(-carriedIn), period: cal.label(cal.prev(curKey)).primary })
+                : t("Includes {amount} carried over from {period}", { amount: fmt(carriedIn), period: cal.label(cal.prev(curKey)).primary })}
+            </div>
+          )}
           {/* With no income yet, Remaining is only what's spent: say what's missing. */}
           {needsIncome && (
             <button style={{ ...s.linkBtn, padding: 0, marginTop: 6, fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }} onClick={onAddIncome}>
@@ -294,7 +303,7 @@ function SavingUpCard({ funds, cal }) {
 
 export function Dashboard(props) {
   const {
-    data, cur, curKey, today, cal, fc, remaining, remainingSub, totalUpcoming, totalActuallySpent, goals, goalsSaved, goalsTarget,
+    data, cur, curKey, today, cal, fc, remaining, carriedIn = 0, remainingSub, totalUpcoming, totalActuallySpent, goals, goalsSaved, goalsTarget,
     dueBills, totalCredits, totalCreditsPending, savingsGoal, setAside, savingsShortfall, savingsTarget, leftToSpend, goalsNeed, effectiveIncome,
     totalStillScheduled, spentByCat, isReceived, onSetTab, onEdit, patchCur, save, onManageCategories, onSetBudget, onStartFresh,
     funds = [], fundsTarget = 0, paidFromFund = 0,
@@ -346,7 +355,7 @@ export function Dashboard(props) {
       )}
 
       <section className="dash-top" ref={topRef}>
-        <MoneyLeftCard data={data} curKey={curKey} today={today} cal={cal} fc={fc} remaining={remaining} sub={remainingSub}
+        <MoneyLeftCard data={data} curKey={curKey} today={today} cal={cal} fc={fc} remaining={remaining} carriedIn={carriedIn} sub={remainingSub}
           stillToPay={totalUpcoming} goalsLine={goalsLine} needsIncome={needsIncome} onAddIncome={addIncome} />
         <SpendingCard data={data} curKey={curKey} today={today} cal={cal} spent={totalActuallySpent}
           effectiveIncome={effectiveIncome} spentByCat={spentByCat} onReports={() => onSetTab("reports")} />
@@ -380,7 +389,7 @@ export function Dashboard(props) {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
               <input type="number" min={0} value={setAside || ""} placeholder="0"
-                onChange={(e) => save({ ...data, savingsGoal: { ...savingsGoal, monthly: perMonthOf(Math.max(0, Math.floor(+e.target.value) || 0), cal, curKey) } })}
+                onChange={(e) => save({ ...data, savingsGoal: withSetAside(savingsGoal, perMonthOf(Math.max(0, Math.floor(+e.target.value) || 0), cal, curKey), curKey) })}
                 style={{ ...s.input, width: 140, textAlign: "right", ...money, fontWeight: 700, fontSize: 18 }} />
               <span style={{ ...TYPE.caption, color: theme.textMuted, fontWeight: 600 }}>{data.currency}</span>
             </div>
@@ -400,27 +409,37 @@ export function Dashboard(props) {
                   ? t("Your dated goals need {amount} a paycheck.", { amount: fmt(goalsNeed / cal.periodsPerMonth(curKey)) })
                   : t("Your dated goals need {amount} a month.", { amount: fmt(goalsNeed) })}{" "}
                 <button style={{ ...s.linkBtn, padding: 0, ...TYPE.finePrint, fontWeight: 600 }}
-                  onClick={() => save({ ...data, savingsGoal: { ...savingsGoal, monthly: Math.round(goalsNeed) } })}>{t("Set aside that")}</button>
+                  onClick={() => save({ ...data, savingsGoal: withSetAside(savingsGoal, Math.round(goalsNeed), curKey) })}>{t("Set aside that")}</button>
               </div>
             )}
           </div>
           <div>
             <div style={s.cardTitle}>{t("Income Breakdown")}</div>
-            {effectiveIncome > 0 ? (
+            {effectiveIncome > 0 || carriedIn > 0 ? (
               <>
                 <div style={{ ...s.breakdownBar, gap: 3, background: "transparent" }}>
-                  {[
-                    { pct: (spentFromIncome / effectiveIncome) * 100, color: theme.danger },
-                    { pct: (totalStillScheduled / effectiveIncome) * 100, color: theme.warning },
-                    { pct: (savingsTarget / effectiveIncome) * 100, color: theme.accent },
-                    { pct: (fundsTarget / effectiveIncome) * 100, color: FUND_COLOR },
-                    { pct: (leftToSpend / effectiveIncome) * 100, color: theme.success },
-                  ].filter((x) => x.pct > 0 && isFinite(x.pct)).map((seg, i) => (
-                    <div key={i} style={{ height: "100%", borderRadius: 99, background: seg.color, width: `${Math.min(seg.pct, 100)}%`, transition: "width .3s" }} />
-                  ))}
+                  {(() => {
+                    // Carried money is something to spend, not income, so only
+                    // a plus carry makes the bar longer. A minus one is
+                    // covered first, out of the income.
+                    const parts = [
+                      { val: -carriedIn, color: theme.danger },
+                      { val: spentFromIncome, color: theme.danger },
+                      { val: totalStillScheduled, color: theme.warning },
+                      { val: savingsTarget, color: theme.accent },
+                      { val: fundsTarget, color: FUND_COLOR },
+                      { val: leftToSpend, color: theme.success },
+                    ];
+                    const widths = barWidths(parts.map((p) => p.val), effectiveIncome + Math.max(0, carriedIn));
+                    return parts.map((p, i) => ({ ...p, pct: widths[i] })).filter((x) => x.pct > 0 && isFinite(x.pct)).map((seg, i) => (
+                      <div key={i} style={{ height: "100%", borderRadius: 99, background: seg.color, width: `${seg.pct}%`, transition: "width .3s" }} />
+                    ));
+                  })()}
                 </div>
                 <div style={{ display: "flex", gap: 18, marginTop: 12, flexWrap: "wrap" }}>
                   {[
+                    ...(carriedIn > 0 ? [{ color: theme.textSoft, label: tk("Carried over"), val: carriedIn }] : []),
+                    ...(carriedIn < 0 ? [{ color: theme.danger, label: cal.calendarMonths ? tk("Overspent last month") : tk("Overspent last period"), val: -carriedIn }] : []),
                     { color: theme.danger, label: tk("Spent"), val: spentFromIncome },
                     { color: theme.warning, label: tk("Upcoming"), val: totalStillScheduled },
                     { color: theme.accent, label: tk("Savings"), val: savingsTarget },

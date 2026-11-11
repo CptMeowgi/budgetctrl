@@ -20,6 +20,8 @@ import { bulkCategory, bulkDelete } from "./lib/bulk.js";
 import { fixFinding } from "./lib/checkup.js";
 import { isPeriodLocked } from "./lib/pastLock.js";
 import { fundTotals, sinkingFunds } from "./lib/sinking.js";
+import { carriedInto, splitPeriod } from "./lib/carryover.js";
+import { setAsideAt } from "./lib/setAsideHistory.js";
 import { creditReceived, periodIncome, periodSpending } from "./lib/totals.js";
 import { AccountModal, AccountsView } from "./components/AccountsView.jsx";
 import { CategoryManager } from "./components/CategoryManager.jsx";
@@ -555,19 +557,24 @@ export default function App() {
   // due, the bill paid out of what was saved rather than this period's money.
   const funds = sinkingFunds(data, today);
   const fundsNow = fundTotals(funds);
-  const availableAfterCommitted = Math.max(0, effectiveIncome - totalCommitted + fundsNow.paidFromFund);
   const savingsGoal = data.savingsGoal || { monthly: 0 };
   // Kept per month, set aside per period: a fortnight sets aside 12/26 of it.
-  const setAside = perPeriodOf(savingsGoal.monthly, cal, curKey);
+  const setAside = perPeriodOf(setAsideAt(data, curKey), cal, curKey);
+  // What the last periods carried in (a minus too), and how this period's
+  // money is shared out. Nothing carried in: exactly the 0.8.0 figures.
+  const carriedIn = carriedInto(data, curKey, today);
+  const split = splitPeriod({ carriedIn, income: effectiveIncome, spent: totalCommitted, paidFromFund: fundsNow.paidFromFund,
+    setAside, billsWanted: fundsNow.setAside });
+  const availableAfterCommitted = Math.max(0, split.available);
   // Store what was typed, apply what the period can actually cover - the same
   // split the percentage version used, so a lean month cannot silently rewrite
   // the goal. The gap is surfaced rather than hidden.
-  const savingsTarget = Math.min(setAside, availableAfterCommitted);
+  const savingsTarget = split.setAsideApplied;
   const savingsShortfall = Math.max(0, setAside - availableAfterCommitted);
   // Saving up for bills comes after the set-aside, out of what's still free.
-  const fundsTarget = Math.min(fundsNow.setAside, availableAfterCommitted - savingsTarget);
-  const leftToSpend = Math.max(0, availableAfterCommitted - savingsTarget - fundsTarget);
-  const remaining = effectiveIncome - totalCommitted;
+  const fundsTarget = split.billsSaved;
+  const leftToSpend = Math.max(0, split.carriedOut);
+  const remaining = carriedIn + effectiveIncome - totalCommitted;
   // Only bills due THIS period can be missing from it. Without the cycle check a
   // yearly bill would be reported missing in the eleven periods it is not due.
   // A weekly one is missing any of its dates the period has no copy for.
@@ -865,7 +872,7 @@ export default function App() {
             <Dashboard
               funds={funds} fundsTarget={fundsTarget} paidFromFund={fundsNow.paidFromFund}
               data={data} cur={cur} curKey={curKey} today={today} cal={cal} fc={fc}
-              remaining={remaining}
+              remaining={remaining} carriedIn={carriedIn}
               remainingSub={fc.series.length < 2 || fc.lowestWithEveryday.date === fc.series[0].date
                 // Nothing ahead brings it lower than now: no dip worth naming.
                 ? (totalStillScheduled > 0 ? t("{amount} still scheduled", { amount: fmt(totalStillScheduled) }) : t("Everything's landed"))
@@ -1203,7 +1210,7 @@ export default function App() {
                       const inc = periodIncome(m, k, today, cal);
                       const credits = inc.credits;
                       const spent = periodSpending(m, k, today, cal).total;
-                      const rem = inc.total - spent;
+                      const rem = carriedInto(data, k, today) + inc.total - spent;
                       const color = rem >= 0 ? theme.success : theme.danger;
                       return (
                         <button key={k} onClick={() => setHistoryKey(k)} style={{
@@ -1250,7 +1257,7 @@ export default function App() {
             const inc = periodIncome(m, historyKey, today, cal);
             const credits = inc.credits;
             const effective = inc.total;
-            const rem = effective - spent;
+            const rem = carriedInto(data, historyKey, today) + effective - spent;
             return (
               <>
                 <button style={{ ...s.linkBtn, marginBottom: 16, fontSize: 14 }} onClick={() => setHistoryKey(null)}>{t("← Back to History")}</button>

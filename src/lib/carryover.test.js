@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { splitPeriod, carryChain, carriedInto } from "./carryover.js";
+import { splitPeriod, carryChain, carriedInto, barWidths } from "./carryover.js";
 import { leftOverHistory } from "./goals.js";
 import { fundHistory, fundTotals, sinkingFunds } from "./sinking.js";
 import { carryInto } from "./envelopes.js";
@@ -510,5 +510,22 @@ describe("with carrying off, everything is as in 0.8.0", () => {
     expect(dashboard(spending(4500), JAN_10)).toEqual({ remaining: 500, setAside: 300, shortfall: 0, bills: 200, leftToSpend: 0 });
     expect(dashboard(spending(4800), JAN_10)).toEqual({ remaining: 200, setAside: 200, shortfall: 100, bills: 0, leftToSpend: 0 });
     expect(dashboard(spending(1200), JAN_10)).toEqual({ remaining: 3800, setAside: 300, shortfall: 0, bills: 252.78, leftToSpend: 3247.22 });
+  });
+});
+
+describe("barWidths", () => {
+  it("shares the bar out by each part of the whole", () => {
+    expect(barWidths([250, 500, 0, 250], 1000)).toEqual([25, 50, 0, 25]);
+  });
+
+  it("never draws past 100% in all, however much there is", () => {
+    const w = barWidths([700, 600, 300], 1000);
+    expect(w).toEqual([70, 30, 0]);
+    expect(w.reduce((a, b) => a + b, 0)).toBe(100);
+  });
+
+  it("draws nothing with no whole, or for a minus", () => {
+    expect(barWidths([100], 0)).toEqual([]);
+    expect(barWidths([-50, 100], 200)).toEqual([0, 50]);
   });
 });

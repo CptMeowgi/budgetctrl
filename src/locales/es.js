@@ -930,4 +930,9 @@ export default {
   "Close out a period to start tracking savings.": "Cierra un periodo para empezar a seguir el ahorro.",
   "Come back next period to see trends.": "Vuelve el próximo periodo para ver tendencias.",
   "{amount} that period": "{amount} ese periodo",
+  "Carried over": "Arrastrado",
+  "Includes {amount} carried over from {period}": "Incluye {amount} arrastrados de {period}",
+  "Includes {amount} overspent in {period}": "Incluye {amount} de exceso de gasto en {period}",
+  "Overspent last month": "Exceso del mes pasado",
+  "Overspent last period": "Exceso del periodo pasado",
 };

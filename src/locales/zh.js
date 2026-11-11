@@ -930,4 +930,9 @@ export default {
   "Close out a period to start tracking savings.": "一个周期结束后即可开始追踪储蓄。",
   "Come back next period to see trends.": "下个周期再来看趋势。",
   "{amount} that period": "该周期 {amount}",
+  "Carried over": "结转",
+  "Includes {amount} carried over from {period}": "包含从{period}结转的{amount}",
+  "Includes {amount} overspent in {period}": "包含{period}超支的{amount}",
+  "Overspent last month": "上月超支",
+  "Overspent last period": "上期超支",
 };

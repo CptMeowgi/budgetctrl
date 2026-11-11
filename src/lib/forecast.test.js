@@ -149,3 +149,28 @@ describe("spendingByDay", () => {
     expect(s[29].total).toBe(900);
   });
 });
+
+describe("carried money", () => {
+  // Carrying from September: that month's 8000 less 900 spent, 7100, goes on.
+  const carrying = { ...data, carry: { on: true, from: "2026-09" } };
+  const base = forecast(data, "2026-10", TODAY);
+  const f = forecast(carrying, "2026-10", TODAY);
+
+  it("starts the forecast from what carried in plus today's figure", () => {
+    expect(f.now).toBe(base.now + 7100);
+    expect(f.end).toBe(base.end + 7100);
+    expect(f.series.find((p) => p.date === "2026-10-20").balance).toBe(base.series.find((p) => p.date === "2026-10-20").balance + 7100);
+  });
+
+  it("starts the line so far from it too, and still ends at the forecast's start", () => {
+    const h = balanceHistory(carrying, "2026-10", TODAY);
+    const plain = balanceHistory(data, "2026-10", TODAY);
+    expect(h.map((p) => p.balance)).toEqual(plain.map((p) => p.balance + 7100));
+    expect(h[h.length - 1].balance).toBe(f.now);
+  });
+
+  it("carries a minus too", () => {
+    const over = { ...carrying, months: { ...carrying.months, "2026-09": { ...carrying.months["2026-09"], income: 100 } } };
+    expect(forecast(over, "2026-10", TODAY).now).toBe(base.now - 800);
+  });
+});

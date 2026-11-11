@@ -2,8 +2,8 @@
 // on its day, and where the money left this period is heading - its lowest
 // point, and whether it runs out before payday.
 //
-// "Money left" starts as the Dashboard's Remaining (income received less
-// spending so far). From tomorrow it falls by each bill still to come, rises
+// "Money left" starts as the Dashboard's Remaining (what carried in, plus
+// income received, less spending so far). From tomorrow it falls by each bill still to come, rises
 // with each credit still expected, and - for the realistic line - falls by
 // your usual everyday spending: the average daily one-off spending of the
 // last three finished periods.
@@ -13,6 +13,7 @@ import { upcomingSettled } from "./reminders.js";
 import { creditReceived, periodIncome, periodSpending } from "./totals.js";
 import { asCalendar, calendarFor } from "./calendar.js";
 import { isRecurringItem } from "./occurrences.js";
+import { carriedInto } from "./carryover.js";
 
 // Every day of a period, by the calendar (never by adding 24 hours, which a
 // clock change turns into 23 or 25).
@@ -70,7 +71,7 @@ export function forecast(data, periodKey, today) {
   const cal = calendarFor(data);
   const m = data.months?.[periodKey];
   const todayIso = isoDay(today);
-  const now = periodIncome(m, periodKey, today, cal).total - periodSpending(m, periodKey, today, cal).total;
+  const now = carriedInto(data, periodKey, today) + periodIncome(m, periodKey, today, cal).total - periodSpending(m, periodKey, today, cal).total;
   const pending = scheduledItems(data, periodKey, today).filter((it) => it.status !== "done");
   const rate = everydayRate(data, periodKey);
   const ahead = cal.days(periodKey).filter((d) => d > todayIso);
@@ -126,14 +127,16 @@ function spentBy(m, periodKey, cal, d, todayIso) {
 }
 
 // Money left at the end of each day so far: what the forecast's line comes
-// from. Income counts from the first day; a credit from the day it arrived.
+// from. What carried in counts from the first day, and so does income; a
+// credit from the day it arrived.
 export function balanceHistory(data, periodKey, today) {
   const cal = calendarFor(data);
   const m = data.months?.[periodKey];
   const todayIso = isoDay(today);
+  const carried = carriedInto(data, periodKey, today);
   return daysSoFar(periodKey, cal, today).map((d) => {
     const income = periodIncome(m, periodKey, dayDate(d), cal).total;
-    return { date: d, balance: income - spentBy(m, periodKey, cal, d, todayIso) };
+    return { date: d, balance: carried + income - spentBy(m, periodKey, cal, d, todayIso) };
   });
 }
 
