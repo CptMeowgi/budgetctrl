@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { LOCK_CHOICES } from "../lib/pastLock.js";
 import { currencyOptions, LOCALE_OPTIONS } from "../money.js";
 import { isLinux, isTauri, isWindows, openExternal } from "../platform.js";
@@ -12,6 +12,7 @@ import { ago, backupLabel, ordinal } from "../text.js";
 import { fmtDate, LANGUAGES, t, tk, tn } from "../i18n.js";
 import { calendarFor, readSchedule } from "../lib/calendar.js";
 import { PAY_KINDS, payKindChosen } from "../lib/paySchedule.js";
+import { SETTINGS_SECTIONS, sectionAfterKey } from "../lib/settingsSections.js";
 
 export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onChangeLocale, onRestore, onManageCategories, updater, onChangeUpdates, onInstallUpdate,
   onChangeCutoff, onChangePay, onChangeCarry, onWhatsNew, onCheckup, onChangeLockPast, sample, today, onExport, onExportCsv, onImport, onImportStatement, onReset, onManageRules, lockCfg, onPinAction, onChangeLock, onChangeLanguage }) {
@@ -28,6 +29,8 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
   const [backups, setBackups] = useState([]);
   const [dataPath, setDataPath] = useState("");
   const [licensesOpen, setLicensesOpen] = useState(false);
+  const [section, setSection] = useState("budget");
+  const tabRefs = useRef({});
   // The address to show when the browser couldn't be opened.
   const [unopened, setUnopened] = useState(null);
   const feedback = async (kind) => {
@@ -71,6 +74,21 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
     } catch { /* Tauri API unavailable (browser dev server) */ }
   };
 
+  // Written out so the translation check can see each name is used.
+  const sectionName = (id) => ({
+    budget: t("Budget"), reminders: t("Reminders"), data: t("Bank and data"),
+    app: t("App"), privacy: t("Privacy"), about: t("About"),
+  })[id];
+
+  const tabKey = (e, i) => {
+    const next = sectionAfterKey(i, e.key);
+    if (next === null) return;
+    e.preventDefault();
+    const id = SETTINGS_SECTIONS[next].id;
+    setSection(id);
+    tabRefs.current[id]?.focus();
+  };
+
   const group = { fontSize: 10, textTransform: "uppercase", letterSpacing: 1.2, color: theme.textMuted, fontWeight: 600, marginBottom: 2 };
   const divider = { borderTop: `1px solid ${theme.border}`, margin: "6px 0" };
 
@@ -78,15 +96,8 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
   // dialog at a time.
   if (licensesOpen) return <LicensesModal onClose={() => setLicensesOpen(false)} />;
 
-  return (
-    <Modal title={t("Settings")} onClose={onClose}>
-      <div style={group}>{t("Budget")}</div>
-      <SettingRow label={t("Language")} hint={t("For the app's words and dates.")}>
-        <select value={data.language || ""} onChange={(e) => onChangeLanguage(e.target.value)} style={{ ...s.input, width: 200 }}>
-          {LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.value === "" ? t("System default") : l.label}</option>)}
-        </select>
-      </SettingRow>
-
+  const panels = {
+    budget: (<>
       <SettingRow label={t("Currency")} hint={t("Changes how every amount is displayed. It does not convert existing figures.")}>
         <select
           value={data.currency || "PLN"}
@@ -154,24 +165,8 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
       <SettingRow label={t("Categories")} hint={t("Rename, merge, recolour or remove spending categories and income sources.")}>
         <button style={{ ...s.linkBtn, padding: 0 }} onClick={onManageCategories}>{t("Manage…")}</button>
       </SettingRow>
-
-      <div style={divider} />
-      <div style={group}>{t("Keyboard")}</div>
-      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", columnGap: SPACE.md, rowGap: 6, padding: `${SPACE.xs}px 0`, ...TYPE.caption }}>
-        {[
-          ["Ctrl+Z", tk("Undo")], ["Ctrl+Shift+Z / Ctrl+Y", tk("Redo")], ["Ctrl+1 … 9", tk("Switch tab")], ["Ctrl+F", tk("Search everything")], ["Ctrl+L", tk("Lock, when a PIN is set")],
-          ["N", tk("New entry on this tab")], ["/", tk("Search this tab")], ["Esc", tk("Close a dialog")],
-        ].map(([k, v]) => (
-          <Fragment key={k}>
-            <kbd style={{ fontFamily: FONT, ...TYPE.finePrint, fontWeight: 600, color: theme.text, background: theme.bg,
-                          border: `1px solid ${theme.border}`, borderRadius: RADIUS.xs, padding: "3px 7px", justifySelf: "start" }}>{k}</kbd>
-            <span style={{ color: theme.textMuted, alignSelf: "center" }}>{t(v)}</span>
-          </Fragment>
-        ))}
-      </div>
-
-      <div style={divider} />
-      <div style={group}>{t("Reminders")}</div>
+    </>),
+    reminders: (<>
       <SettingRow
         label={t("Remind me about due bills")}
         hint={isTauri ? t("Closing the window keeps Budget Ctrl running in the tray.") : t("Desktop app only.")}
@@ -218,36 +213,8 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
           }}>{t("Send a test reminder")}</button>
         </SettingRow>
       )}
-
-      {/* The sample budget changes nothing outside itself: no PIN, no autostart. */}
-      {!sample && (<>
-      <div style={divider} />
-      <div style={group}>{t("Privacy")}</div>
-      <SettingRow label={t("Lock with a PIN")} hint={t("Keeps Budget Ctrl closed to anyone else using this computer. It doesn't encrypt your budget file.")}>
-        <Switch checked={!!lockCfg} onChange={(v) => onPinAction(v ? "set" : "disable")} />
-      </SettingRow>
-      {lockCfg && (
-        <>
-          <SettingRow label={t("Lock after")} hint={t("This long without using the app.")}>
-            <select value={lockCfg.idleMinutes ?? 5} onChange={(e) => onChangeLock({ ...lockCfg, idleMinutes: +e.target.value })}
-              style={{ ...s.input, width: 160 }}>
-              {[0, 1, 5, 15, 30, 60].map((v) => (
-                <option key={v} value={v}>{v === 0 ? t("Never") : v === 60 ? t("1 hour") : tn(v, "{n} minute", "{n} minutes")}</option>
-              ))}
-            </select>
-          </SettingRow>
-          <SettingRow label={t("Lock when hidden")} hint={t("When the window is minimised or closed to the tray.")}>
-            <Switch checked={lockCfg.lockWhenHidden !== false} onChange={(v) => onChangeLock({ ...lockCfg, lockWhenHidden: v })} />
-          </SettingRow>
-          <SettingRow label={t("PIN")} hint={t("Ctrl+L locks straight away.")}>
-            <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => onPinAction("change")}>{t("Change…")}</button>
-          </SettingRow>
-        </>
-      )}
-      </>)}
-
-      <div style={divider} />
-      <div style={group}>{t("Data")}</div>
+    </>),
+    data: (<>
       <SettingRow label={t("Bank statement")} hint={t("Add transactions from your bank's statement (CSV, MT940, OFX or CAMT.053), without counting anything twice.")}>
         <button style={{ ...s.linkBtn, padding: 0 }} onClick={onImportStatement}>{t("Import…")}</button>
       </SettingRow>
@@ -310,6 +277,27 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
           <button style={{ ...s.linkBtn, padding: 0, color: theme.danger }} onClick={onReset}>{t("Reset…")}</button>
         </SettingRow>
       )}
+    </>),
+    app: (<>
+      <SettingRow label={t("Language")} hint={t("For the app's words and dates.")}>
+        <select value={data.language || ""} onChange={(e) => onChangeLanguage(e.target.value)} style={{ ...s.input, width: 200 }}>
+          {LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.value === "" ? t("System default") : l.label}</option>)}
+        </select>
+      </SettingRow>
+      <div style={divider} />
+      <div style={group}>{t("Keyboard")}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", columnGap: SPACE.md, rowGap: 6, padding: `${SPACE.xs}px 0`, ...TYPE.caption }}>
+        {[
+          ["Ctrl+Z", tk("Undo")], ["Ctrl+Shift+Z / Ctrl+Y", tk("Redo")], ["Ctrl+1 … 9", tk("Switch tab")], ["Ctrl+F", tk("Search everything")], ["Ctrl+L", tk("Lock, when a PIN is set")],
+          ["N", tk("New entry on this tab")], ["/", tk("Search this tab")], ["Esc", tk("Close a dialog")],
+        ].map(([k, v]) => (
+          <Fragment key={k}>
+            <kbd style={{ fontFamily: FONT, ...TYPE.finePrint, fontWeight: 600, color: theme.text, background: theme.bg,
+                          border: `1px solid ${theme.border}`, borderRadius: RADIUS.xs, padding: "3px 7px", justifySelf: "start" }}>{k}</kbd>
+            <span style={{ color: theme.textMuted, alignSelf: "center" }}>{t(v)}</span>
+          </Fragment>
+        ))}
+      </div>
       {isTauri && (
         <>
           <div style={divider} />
@@ -339,7 +327,6 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
               </SettingRow>
             );
           })()}
-
           {!sample && (<>
           <div style={divider} />
           <div style={group}>{t("Startup")}</div>
@@ -349,9 +336,34 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
           </>)}
         </>
       )}
-
-      <div style={divider} />
-      <div style={group}>{t("About")}</div>
+    </>),
+    privacy: (<>
+      {/* The sample budget changes nothing outside itself: no PIN, no autostart. */}
+      {!sample && (<>
+      <SettingRow label={t("Lock with a PIN")} hint={t("Keeps Budget Ctrl closed to anyone else using this computer. It doesn't encrypt your budget file.")}>
+        <Switch checked={!!lockCfg} onChange={(v) => onPinAction(v ? "set" : "disable")} />
+      </SettingRow>
+      {lockCfg && (
+        <>
+          <SettingRow label={t("Lock after")} hint={t("This long without using the app.")}>
+            <select value={lockCfg.idleMinutes ?? 5} onChange={(e) => onChangeLock({ ...lockCfg, idleMinutes: +e.target.value })}
+              style={{ ...s.input, width: 160 }}>
+              {[0, 1, 5, 15, 30, 60].map((v) => (
+                <option key={v} value={v}>{v === 0 ? t("Never") : v === 60 ? t("1 hour") : tn(v, "{n} minute", "{n} minutes")}</option>
+              ))}
+            </select>
+          </SettingRow>
+          <SettingRow label={t("Lock when hidden")} hint={t("When the window is minimised or closed to the tray.")}>
+            <Switch checked={lockCfg.lockWhenHidden !== false} onChange={(v) => onChangeLock({ ...lockCfg, lockWhenHidden: v })} />
+          </SettingRow>
+          <SettingRow label={t("PIN")} hint={t("Ctrl+L locks straight away.")}>
+            <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => onPinAction("change")}>{t("Change…")}</button>
+          </SettingRow>
+        </>
+      )}
+      </>)}
+    </>),
+    about: (<>
       <SettingRow label={t("Feedback")} hint={t("Opens GitHub in your browser, with your app version filled in. You'll need a GitHub account. Nothing from your budget is sent.")}>
         <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: SPACE.xs }}>
           <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => feedback("problem")}>{t("Report a problem")}</button>
@@ -369,6 +381,36 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
       <SettingRow label={t("Open-source licences")} hint={t("The open-source software Budget Ctrl is built with, and its licences.")}>
         <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => setLicensesOpen(true)}>{t("Show")}</button>
       </SettingRow>
+    </>),
+  };
+
+  const current = SETTINGS_SECTIONS.findIndex((x) => x.id === section);
+
+  return (
+    <Modal title={t("Settings")} onClose={onClose} width={760}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: SPACE.lg, minHeight: 440 }}>
+        {/* Sticky, so the list stays put while a long section scrolls. */}
+        <div role="tablist" aria-orientation="vertical" aria-label={t("Settings")}
+          style={{ position: "sticky", top: 0, flex: "none", width: 168, display: "flex", flexDirection: "column", gap: 2, paddingTop: SPACE.xs }}>
+          {SETTINGS_SECTIONS.map((x, i) => {
+            const on = x.id === section;
+            return (
+              <button key={x.id} role="tab" id={`settings-tab-${x.id}`} aria-selected={on} aria-controls="settings-panel"
+                tabIndex={on ? 0 : -1} ref={(el) => { tabRefs.current[x.id] = el; }}
+                onClick={() => setSection(x.id)} onKeyDown={(e) => tabKey(e, i)}
+                style={{ textAlign: "left", fontFamily: FONT, ...TYPE.caption, fontWeight: on ? 600 : 500, cursor: "pointer",
+                  color: on ? theme.accent : theme.textMuted, background: on ? theme.bg : "none",
+                  border: `1px solid ${on ? theme.border : "transparent"}`, borderRadius: RADIUS.md, padding: `${SPACE.sm}px ${SPACE.md}px` }}>
+                {sectionName(x.id)}
+              </button>
+            );
+          })}
+        </div>
+        <div role="tabpanel" id="settings-panel" aria-labelledby={`settings-tab-${SETTINGS_SECTIONS[current].id}`} style={{ flex: 1, minWidth: 0 }}>
+          <div style={group}>{sectionName(section)}</div>
+          {panels[section]}
+        </div>
+      </div>
     </Modal>
   );
 }
