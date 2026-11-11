@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { calendarFor } from "./calendar.js";
 import { perMonthOf } from "./setAside.js";
-import { setAsideAt, withSetAside } from "./setAsideHistory.js";
+import { setAsideAt, setAsidePerPeriod, withSetAside } from "./setAsideHistory.js";
 
 const month = (extra = {}) => ({ income: 0, expenses: [], recurring: [], upcoming: [], credits: [], ...extra });
 
@@ -61,5 +61,23 @@ describe("setAsideAt", () => {
     const d = base();
     delete d.savingsGoal.history;
     expect(setAsideAt(d, "2026-10")).toBe(700);
+  });
+});
+
+describe("setAsidePerPeriod", () => {
+  const fortnights = (extra = {}) => ({
+    cutoffDay: 1,
+    paySchedule: [{ kind: "weeks", every: 2, from: "2026-11-06", after: "0000-00" }],
+    months: { "2026-11-06": month(), "2026-11-20": month(extra) },
+    savingsGoal: { monthly: 200 },
+  });
+
+  it("gives an override as it was typed, cents included, in a fortnight", () => {
+    expect(setAsidePerPeriod(fortnights({ setAside: 100.5 }), "2026-11-20")).toBe(100.5);
+  });
+
+  it("without an override, is the monthly figure per period", () => {
+    expect(setAsidePerPeriod(fortnights(), "2026-11-20")).toBe(92);
+    expect(setAsidePerPeriod({ ...fortnights(), months: { "2026-10": month() }, paySchedule: undefined }, "2026-10")).toBe(200);
   });
 });

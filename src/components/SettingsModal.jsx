@@ -14,7 +14,7 @@ import { calendarFor, readSchedule } from "../lib/calendar.js";
 import { PAY_KINDS, payKindChosen } from "../lib/paySchedule.js";
 
 export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurrency, onChangeLocale, onRestore, onManageCategories, updater, onChangeUpdates, onInstallUpdate,
-  onChangeCutoff, onChangePay, onWhatsNew, onCheckup, onChangeLockPast, sample, today, onExport, onExportCsv, onImport, onImportStatement, onReset, onManageRules, lockCfg, onPinAction, onChangeLock, onChangeLanguage }) {
+  onChangeCutoff, onChangePay, onChangeCarry, onWhatsNew, onCheckup, onChangeLockPast, sample, today, onExport, onExportCsv, onImport, onImportStatement, onReset, onManageRules, lockCfg, onPinAction, onChangeLock, onChangeLanguage }) {
   const { theme, s } = useThemed();
   const [openedAt] = useState(() => Date.now());
   const rem = data.reminders || { enabled: true, leadDays: 3 };
@@ -137,6 +137,20 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
           {LOCK_CHOICES.map((n) => <option key={n} value={n}>{n ? tn(n, "Older than {n} month", "Older than {n} months") : t("Off")}</option>)}
         </select>
       </SettingRow>
+      <SettingRow
+        label={cal.calendarMonths ? t("Carry leftover money into the next month") : t("Carry leftover money into the next period")}
+        hint={cal.calendarMonths
+          ? t("What's left after your set-aside carries over, and an overspent month carries as a minus. Category budgets that roll over are separate: they change a category's budget, not your money.")
+          : t("What's left after your set-aside carries over, and an overspent period carries as a minus. Category budgets that roll over are separate: they change a category's budget, not your money.")}>
+        <Switch checked={!!data.carry?.on} onChange={(v) => onChangeCarry(v ? "on" : "off")} />
+      </SettingRow>
+      {data.carry?.on && typeof data.carry.from === "string" && (
+        <SettingRow label={t("Carrying since {period}", { period: cal.label(data.carry.from).primary })}>
+          <button style={{ ...s.linkBtn, padding: 0 }} onClick={() => onChangeCarry("fresh")}>
+            {cal.calendarMonths ? t("Start fresh from this month") : t("Start fresh from this period")}
+          </button>
+        </SettingRow>
+      )}
       <SettingRow label={t("Categories")} hint={t("Rename, merge, recolour or remove spending categories and income sources.")}>
         <button style={{ ...s.linkBtn, padding: 0 }} onClick={onManageCategories}>{t("Manage…")}</button>
       </SettingRow>

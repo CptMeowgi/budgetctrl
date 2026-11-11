@@ -16,6 +16,7 @@ import { fmtDate, t, tk, tn } from "../i18n.js";
 import { useReflowAnimation } from "../hooks/useReflowAnimation.js";
 import { perMonthOf } from "../lib/paySchedule.js";
 import { withSetAside } from "../lib/setAsideHistory.js";
+import { showCarryNotice } from "../lib/carrySettings.js";
 import { barWidths } from "../lib/carryover.js";
 
 const money = { fontFamily: FONT, fontVariantNumeric: "tabular-nums" };
@@ -301,12 +302,37 @@ function SavingUpCard({ funds, cal }) {
   );
 }
 
+// Said once, to a budget that starts carrying money into the next period:
+// what carried into this one, and that goals count only the set-aside now.
+function CarryNotice({ data, curKey, cal, carriedIn, onAnswer }) {
+  const { theme, s } = useThemed();
+  const period = cal.label(cal.prev(curKey)).primary;
+  const next = cal.label(curKey).primary;
+  const goalsChanged = (data.goals || []).some((g) => g.source === "budget");
+  return (
+    <div role="status" style={{ ...s.card, borderRadius: 20, padding: "14px 18px", marginBottom: 18, display: "flex", alignItems: "center", gap: SPACE.md, flexWrap: "wrap" }}>
+      <div style={{ flex: "1 1 320px", fontSize: 13, lineHeight: 1.5, color: theme.text }}>
+        <div>
+          {cal.calendarMonths ? t("Money left at the end of a month now carries over.") : t("Money left at the end of a period now carries over.")}
+          {carriedIn > 0 && ` ${t("{period} left {amount} after your set-aside, and it's part of {next}'s money.", { period, amount: fmt(carriedIn), next })}`}
+          {carriedIn < 0 && ` ${t("{period} went over by {amount}, and {next} starts that much lower.", { period, amount: fmt(-carriedIn), next })}`}
+        </div>
+        {goalsChanged && <div style={{ color: theme.textMuted, marginTop: 2 }}>{t("Your goals now count only your set-aside.")}</div>}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: SPACE.md }}>
+        <button style={s.linkBtn} onClick={() => onAnswer("off")}>{t("Turn carrying off")}</button>
+        <button style={{ ...s.addBtn, padding: "7px 16px" }} onClick={() => onAnswer("noticed")}>{t("Got it")}</button>
+      </div>
+    </div>
+  );
+}
+
 export function Dashboard(props) {
   const {
     data, cur, curKey, today, cal, fc, remaining, carriedIn = 0, remainingSub, totalUpcoming, totalActuallySpent, goals, goalsSaved, goalsTarget,
     dueBills, totalCredits, totalCreditsPending, savingsGoal, setAside, savingsShortfall, savingsTarget, leftToSpend, goalsNeed, effectiveIncome,
     totalStillScheduled, spentByCat, isReceived, onSetTab, onEdit, patchCur, save, onManageCategories, onSetBudget, onStartFresh,
-    funds = [], fundsTarget = 0, paidFromFund = 0,
+    funds = [], fundsTarget = 0, paidFromFund = 0, onCarryNotice,
   } = props;
   // A bill paid from what was saved up for it didn't come out of this
   // period's money, so the breakdown leaves it out of Spent.
@@ -352,6 +378,10 @@ export function Dashboard(props) {
             {t("View all →").replace(/\s*→$/, "")} <Icon name="chevron" size={14} />
           </button>
         </div>
+      )}
+
+      {onCarryNotice && showCarryNotice(data, carriedIn) && (
+        <CarryNotice data={data} curKey={curKey} cal={cal} carriedIn={carriedIn} onAnswer={onCarryNotice} />
       )}
 
       <section className="dash-top" ref={topRef}>

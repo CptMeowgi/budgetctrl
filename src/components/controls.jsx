@@ -133,13 +133,14 @@ export function CategoryPill({ categoryName, categories, fallback }) {
 
 // A number that edits in place. Reads as plain text until hovered or focused,
 // so the table stays legible but the value is obviously reachable.
-export function InlineNumber({ value, onChange, title }) {
+export function InlineNumber({ value, onChange, title, autoFocus }) {
   const { theme } = useThemed();
   return (
     <input
       type="number"
       className="inline-edit"
       title={title}
+      autoFocus={autoFocus}
       value={value || ""}
       placeholder="0"
       onChange={(e) => onChange(+e.target.value || 0)}

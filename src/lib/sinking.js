@@ -15,8 +15,8 @@
 
 import { calendarFor } from "./calendar.js";
 import { isWeekly, nextPeriodOf, occursIn } from "./occurrences.js";
-import { perPeriodOf, splitPeriod } from "./setAside.js";
-import { setAsideAt } from "./setAsideHistory.js";
+import { splitPeriod } from "./setAside.js";
+import { setAsidePerPeriod } from "./setAsideHistory.js";
 import { isoDay } from "./periods.js";
 import { periodIncome, periodSpending } from "./totals.js";
 
@@ -120,7 +120,7 @@ export function walkPeriods(data, today = new Date()) {
     .reduce((a, r) => a + (r.amount || 0), 0);
   const share = (f, k) => cents(Math.max(0, f.tpl.amount - f.saved) / f.line.cycle.get(k).left);
   // The set-aside that applied then, so changing it today leaves the past be.
-  const setAsideIn = (k) => perPeriodOf(setAsideAt(data, k), cal, k);
+  const setAsideIn = (k) => setAsidePerPeriod(data, k);
 
   // Every period a fund was saving in, and, once carrying starts, every
   // period the budget has a record of: a period with no bills still carries.

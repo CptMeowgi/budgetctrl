@@ -8,7 +8,7 @@
 
 import { EARLIEST } from "./envelopes.js";
 import { calendarFor } from "./calendar.js";
-import { perMonthOf } from "./setAside.js";
+import { perMonthOf, perPeriodOf } from "./setAside.js";
 
 const byFrom = (a, b) => (a.from < b.from ? -1 : 1);
 
@@ -24,6 +24,16 @@ export function setAsideAt(data, periodKey) {
     if (h.from <= periodKey) value = Number(h.monthly) || 0;
   }
   return value;
+}
+
+// The set-aside a period actually sets aside, in that period's own money. An
+// override is read as it was entered: going through the monthly figure and
+// back would round a fortnight's cents away, and what was typed on the Savings
+// tab must be what the period used.
+export function setAsidePerPeriod(data, periodKey) {
+  const override = data.months?.[periodKey]?.setAside;
+  if (override != null) return Number(override) || 0;
+  return perPeriodOf(setAsideAt(data, periodKey), calendarFor(data), periodKey);
 }
 
 // Set the amount from `periodKey` on. The first change records the old amount

@@ -15,8 +15,7 @@ import { periodSpending, periodIncome } from "./totals.js";
 import { isoDay, monthKey } from "./periods.js";
 import { calendarFor } from "./calendar.js";
 import { walkPeriods } from "./sinking.js";
-import { perPeriodOf } from "./setAside.js";
-import { setAsideAt } from "./setAsideHistory.js";
+import { setAsidePerPeriod } from "./setAsideHistory.js";
 import { addMonths, monthsBetween } from "./schedule.js";
 import { balanceAsOf, isLiability, addDays, daysBetweenISO, sortedBalances } from "./accounts.js";
 
@@ -57,7 +56,7 @@ export function leftOverHistory(data, today) {
     const perMonth = cal.periodsPerMonth(k);
     series.push({ key: k, label: cal.shortLabel(k), balance: total, delta, income, spent, editedAt: m.editedAt || null,
                   ...(fund ? { forBills, bills: fund } : {}),
-                  ...(step ? { carried: step.carriedOut, setAsideWanted: perPeriodOf(setAsideAt(data, k), cal, k) } : {}),
+                  ...(step ? { carried: step.carriedOut, setAsideWanted: setAsidePerPeriod(data, k) } : {}),
                   ...(perMonth !== 1 ? { perMonth: delta * perMonth } : {}) });
   }
   return { total, series, monthsCounted: keys.length };

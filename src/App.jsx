@@ -21,7 +21,8 @@ import { fixFinding } from "./lib/checkup.js";
 import { isPeriodLocked } from "./lib/pastLock.js";
 import { fundTotals, sinkingFunds } from "./lib/sinking.js";
 import { carriedInto, splitPeriod } from "./lib/carryover.js";
-import { setAsideAt } from "./lib/setAsideHistory.js";
+import { carryNoticed, carryStartedFresh, carryTurnedOff, carryTurnedOn } from "./lib/carrySettings.js";
+import { setAsidePerPeriod } from "./lib/setAsideHistory.js";
 import { creditReceived, periodIncome, periodSpending } from "./lib/totals.js";
 import { AccountModal, AccountsView } from "./components/AccountsView.jsx";
 import { CategoryManager } from "./components/CategoryManager.jsx";
@@ -38,7 +39,6 @@ import { ReportsView } from "./components/ReportsView.jsx";
 import { EntryName, ExpenseRow, MissingFromTemplate, NotDueThisPeriod, RecurringRow, RowActions, SelectCell, UpcomingRow } from "./components/rows.jsx";
 import { SettingsModal } from "./components/SettingsModal.jsx";
 import { PayScheduleModal } from "./components/PayScheduleModal.jsx";
-import { perPeriodOf } from "./lib/paySchedule.js";
 import { StatementImport } from "./components/StatementImport.jsx";
 import { UpdateBanner } from "./components/UpdateBanner.jsx";
 import { WindowControls } from "./components/WindowControls.jsx";
@@ -559,7 +559,7 @@ export default function App() {
   const fundsNow = fundTotals(funds);
   const savingsGoal = data.savingsGoal || { monthly: 0 };
   // Kept per month, set aside per period: a fortnight sets aside 12/26 of it.
-  const setAside = perPeriodOf(setAsideAt(data, curKey), cal, curKey);
+  const setAside = setAsidePerPeriod(data, curKey);
   // What the last periods carried in (a minus too), and how this period's
   // money is shared out. Nothing carried in: exactly the 0.8.0 figures.
   const carriedIn = carriedInto(data, curKey, today);
@@ -637,6 +637,29 @@ export default function App() {
     }
     stopSelecting();
   };
+  // The carry switch and "Start fresh" in Settings. Each asks first, with the
+  // real figures; the notice's buttons answer for themselves.
+  const onChangeCarry = (action) => {
+    const label = (k) => cal.label(k).primary;
+    const now = label(curKey);
+    if (action === "on") {
+      const next = { ...data, carry: carryTurnedOn(data, today) };
+      const carried = carriedInto(next, curKey, today);
+      if (!confirm(t("Carrying starts with {period}. {now} will start with {carried}.", { period: label(next.carry.from), now, carried: fmt(carried) }))) return;
+      save(next);
+    } else if (action === "off") {
+      const next = { ...data, carry: carryTurnedOff(data) };
+      if (!confirm(t("{now} will start at {now_amount} instead of {carried}. Months from {period} go back to counting everything left over as saved, so your savings total may change.",
+        { now, now_amount: fmt(carriedInto(next, curKey, today)), carried: fmt(carriedIn), period: label(data.carry.from) }))) return;
+      save(next);
+    } else if (action === "fresh") {
+      const next = { ...data, carry: carryStartedFresh(data, today) };
+      if (!confirm(t("{now} will start at {now_amount} instead of {carried}. Past months stay as they are.",
+        { now, now_amount: fmt(carriedInto(next, curKey, today)), carried: fmt(carriedIn) }))) return;
+      save(next);
+    }
+  };
+
   const onChangeCutoff = (next) => {
     const clamped = Math.max(1, Math.min(28, next || 1));
     // A budget with a pay schedule changes payday by adding to the schedule,
@@ -882,6 +905,7 @@ export default function App() {
               dueBills={dueBills} totalCredits={totalCredits} totalCreditsPending={totalCreditsPending}
               savingsGoal={savingsGoal} setAside={setAside} savingsShortfall={savingsShortfall} savingsTarget={savingsTarget} leftToSpend={leftToSpend}
               effectiveIncome={effectiveIncome} spentByCat={spentByCat} isReceived={isReceived}
+              onCarryNotice={(answer) => save({ ...data, carry: answer === "off" ? carryTurnedOff(data) : carryNoticed(data) })}
               onSetTab={setTab} onEdit={setModal} patchCur={patchCur} save={save}
               onManageCategories={() => setCategoriesOpen(true)} onSetBudget={onSetBudget} onStartFresh={onStartFresh} />
           )}
@@ -1388,6 +1412,7 @@ export default function App() {
               onAddGoal={() => setModal({ type: "goal" })}
               onEditGoal={(g) => setModal({ type: "goal", editId: g.id })}
               onChangeIncome={(key, v) => patchMonth(key, { income: v })}
+              onChangeSetAside={(key, v) => patchMonth(key, { setAside: v })}
               onOpenPeriod={(key) => { setTab("history"); setHistoryKey(key); }} />
           )}
 
@@ -1765,6 +1790,7 @@ export default function App() {
           onChangePay={(opts) => { setSettingsOpen(false); setPayDialog(opts); }}
           onCheckup={() => { setSettingsOpen(false); setCheckupOpen(true); }}
           sample={sample}
+          onChangeCarry={onChangeCarry}
           onChangeLockPast={(n) => save({ ...data, lockPastMonths: n || undefined })}
           onWhatsNew={() => loadChangelog().then((all) => { setSettingsOpen(false); setWhatsNew({ entries: allNotes(all, import.meta.env.DEV), launch: false }); }).catch(() => { /* notes are a courtesy */ })}
           today={today}

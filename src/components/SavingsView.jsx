@@ -39,6 +39,16 @@ function planLine(goal, st, paycheck) {
 function sourceLine(goal, data, todayIso) {
   if (goal.source === "budget") {
     const monthly = calendarFor(data).calendarMonths;
+    // With carrying on, what a month leaves over beyond its set-aside carries
+    // forward instead of being saved, so a goal counts the set-aside only.
+    if (data.carry?.on) {
+      if (goal.startAmount) {
+        return monthly
+          ? t("Counts what you set aside each month, plus {amount} saved before", { amount: fmt(goal.startAmount) })
+          : t("Counts what you set aside each period, plus {amount} saved before", { amount: fmt(goal.startAmount) });
+      }
+      return monthly ? t("Counts what you set aside each month") : t("Counts what you set aside each period");
+    }
     if (goal.startAmount) {
       return monthly
         ? t("Counts what your budget leaves over each month, plus {amount} saved before", { amount: fmt(goal.startAmount) })
@@ -61,6 +71,34 @@ function billsNote({ saved, paid }) {
     saved ? t("{amount} put aside for bills", { amount: fmt(saved) }) : null,
     paid ? t("{amount} of bills paid from what was saved", { amount: fmt(paid) }) : null,
   ].filter(Boolean).join(" · ");
+}
+
+// A finished period's SAVED figure when carrying: what it set aside. It is
+// editable like Income. A set-aside that came up short (or not at all) reads
+// "x of y" and opens for editing when clicked, because the figure to change is
+// what was meant to be set aside.
+function SavedCell({ row, monthly, onChange }) {
+  const { theme, s } = useThemed();
+  const [editing, setEditing] = useState(false);
+  const applied = row.delta;
+  const wanted = row.setAsideWanted;
+  const short = wanted - applied > 0.004;
+  const title = monthly ? t("Changing this changes what the next month starts with.") : t("Changing this changes what the next period starts with.");
+  if (short && !editing) {
+    return (
+      <button style={{ ...s.linkBtn, padding: 0, width: "100%", textAlign: "right", ...TYPE.finePrint, lineHeight: 1.4, color: applied > 0.004 ? theme.textMuted : theme.warning }}
+        title={title} onClick={() => setEditing(true)}>
+        {applied > 0.004
+          ? t("{applied} of {wanted}", { applied: fmt(applied), wanted: fmt(wanted) })
+          : (monthly ? t("Nothing set aside: the month went over") : t("Nothing set aside: the period went over"))}
+      </button>
+    );
+  }
+  return (
+    <div style={{ fontWeight: 700 }} onFocus={() => setEditing(true)} onBlur={() => setEditing(false)}>
+      <InlineNumber value={wanted} title={title} autoFocus={editing} onChange={(v) => onChange(Math.max(0, v))} />
+    </div>
+  );
 }
 
 function GoalCard({ goal, status, data, todayIso, paycheck, onEdit }) {
@@ -97,7 +135,7 @@ function GoalCard({ goal, status, data, todayIso, paycheck, onEdit }) {
   );
 }
 
-export function SavingsView({ data, history, today, cal, onAddGoal, onEditGoal, onChangeIncome, onOpenPeriod }) {
+export function SavingsView({ data, history, today, cal, onAddGoal, onEditGoal, onChangeIncome, onChangeSetAside, onOpenPeriod }) {
   const { theme, s } = useThemed();
   const goals = data.goals || [];
   const todayIso = isoDay(today);
@@ -107,6 +145,13 @@ export function SavingsView({ data, history, today, cal, onAddGoal, onEditGoal, 
   const forBills = history.series.some((r) => r.bills);
   // The period gives up a little room for it, so amounts fit in a small window.
   const periodFlex = forBills ? 1.5 : 2;
+  // From where carrying starts, a period saves what it set aside, and the rest
+  // carries into the next period.
+  const carrying = history.series.some((r) => r.carried !== undefined);
+  const fromLabel = data.carry?.from ? cal.label(data.carry.from).primary : "";
+  const savedHint = monthly
+    ? t("Before {period}, what each month left over counts as saved. From {period} on, only what you set aside counts, and the rest carries into the next month.", { period: fromLabel })
+    : t("Before {period}, what each period left over counts as saved. From {period} on, only what you set aside counts, and the rest carries into the next period.", { period: fromLabel });
 
   return (
     <>
@@ -127,8 +172,8 @@ export function SavingsView({ data, history, today, cal, onAddGoal, onEditGoal, 
 
       <div style={{ ...s.card, marginTop: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <div style={s.cardTitle}>{monthly ? t("Left over each month") : t("Left over each period")}</div>
-          <InfoHint text={(monthly
+          <div style={s.cardTitle}>{monthly ? t("Saved each month") : t("Saved each period")}</div>
+          <InfoHint text={carrying ? savedHint : (monthly
             ? t("Income less spending for every finished month, and the running total. A goal set to count what your budget leaves over uses this.")
             : t("Income less spending for every finished period, and the running total. A goal set to count what your budget leaves over uses this."))
             + (forBills ? ` ${t("Money saved up for bills isn't counted: it's kept to pay them.")}` : "")} />
@@ -147,7 +192,8 @@ export function SavingsView({ data, history, today, cal, onAddGoal, onEditGoal, 
               { label: t("PERIOD"), flex: periodFlex }, { label: t("INCOME"), flex: 1, align: "right" },
               { label: t("SPENT"), flex: 1, align: "right" },
               ...(forBills ? [{ label: t("FOR BILLS"), flex: 1, align: "right" }] : []),
-              { label: t("LEFT OVER"), flex: 1, align: "right" },
+              { label: t("SAVED"), flex: carrying ? 1.8 : 1, align: "right" },
+              ...(carrying ? [{ label: t("CARRIED OVER"), flex: 1, align: "right" }] : []),
               { label: t("RUNNING TOTAL"), flex: 1, align: "right" }, { label: "", flex: 0.8, align: "right" },
             ]} />
             {history.series.slice(1).map((row) => (
@@ -171,9 +217,16 @@ export function SavingsView({ data, history, today, cal, onAddGoal, onEditGoal, 
                     {row.bills ? `${row.forBills > 0 ? "−" : row.forBills < 0 ? "+" : ""}${fmt(Math.abs(row.forBills))}` : ""}
                   </div>
                 )}
-                <div style={{ flex: 1, textAlign: "right", ...money, fontWeight: 700, color: row.delta >= 0 ? theme.success : theme.danger }}>
-                  {row.delta >= 0 ? "+" : ""}{fmt(row.delta)}
+                <div style={{ flex: carrying ? 1.8 : 1, textAlign: "right", ...money, fontWeight: 700, color: row.delta >= 0 ? theme.success : theme.danger }}>
+                  {row.carried !== undefined
+                    ? <SavedCell row={row} monthly={monthly} onChange={(v) => onChangeSetAside(row.key, v)} />
+                    : <>{row.delta >= 0 ? "+" : ""}{fmt(row.delta)}</>}
                 </div>
+                {carrying && (
+                  <div style={{ flex: 1, textAlign: "right", ...money, color: row.carried < 0 ? theme.danger : theme.textMuted }}>
+                    {row.carried !== undefined ? fmt(row.carried) : ""}
+                  </div>
+                )}
                 <div style={{ flex: 1, textAlign: "right", ...money, fontWeight: 700 }}>{fmt(row.balance)}</div>
                 <div style={{ flex: 0.8, textAlign: "right" }}>
                   <button style={{ ...s.linkBtn, padding: 0 }} title={t("Open this period to edit its expenses, recurring items and credits")}
