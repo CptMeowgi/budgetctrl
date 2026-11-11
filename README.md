@@ -80,7 +80,7 @@ Support* extension.
   still arrive. To quit, use the tray icon's menu.
 - For reminders after a restart, turn on **Start with Windows** in Settings.
 - The app updates itself. It checks GitHub once a day and asks before
-  installing anything. You can turn this off in **Settings → Updates**.
+  installing anything. You can turn this off in **Settings → App**.
 - Coming from 0.4.x? Uninstall it first (Windows Settings → Apps). That
   doesn't remove your budget, and the new version picks it up when it starts.
   If you install over 0.4.x instead, you'll have two separate copies.
@@ -89,7 +89,7 @@ What changed in each version is in the [changelog](CHANGELOG.md).
 
 ## Your data
 
-Your budget lives in one file in the app's data folder. **Settings → Data** has
+Your budget lives in one file in the app's data folder. **Settings → Bank and data** has
 backups, restoring, and export to a spreadsheet, and the app keeps daily
 backups of its own.
 
@@ -154,7 +154,7 @@ Everyone with commit or signing access must use multi-factor authentication.
 
 **Privacy.** Budget Ctrl sends none of your data anywhere. The only connection
 it makes is to GitHub, to check for updates (once a day, which you can turn
-off in **Settings → Updates**) and to download an update when you choose to
+off in **Settings → App**) and to download an update when you choose to
 install one. Those requests are covered by
 [GitHub's privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
 [SECURITY.md](SECURITY.md#how-budget-ctrl-handles-your-data) has the details.

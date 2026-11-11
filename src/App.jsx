@@ -645,17 +645,21 @@ export default function App() {
     if (action === "on") {
       const next = { ...data, carry: carryTurnedOn(data, today) };
       const carried = carriedInto(next, curKey, today);
-      if (!confirm(t("Carrying starts with {period}. {now} will start with {carried}.", { period: label(next.carry.from), now, carried: fmt(carried) }))) return;
+      if (!confirm(t("Carrying starts with {period}. {now} will start with {carried}. Your savings total may change.", { period: label(next.carry.from), now, carried: fmt(carried) }))) return;
       save(next);
     } else if (action === "off") {
       const next = { ...data, carry: carryTurnedOff(data) };
-      if (!confirm(t("{now} will start at {now_amount} instead of {carried}. Months from {period} go back to counting everything left over as saved, so your savings total may change.",
-        { now, now_amount: fmt(carriedInto(next, curKey, today)), carried: fmt(carriedIn), period: label(data.carry.from) }))) return;
+      const args = { now, now_amount: fmt(carriedInto(next, curKey, today)), carried: fmt(carriedIn), period: data.carry?.from ? label(data.carry.from) : now };
+      if (!confirm(cal.calendarMonths
+        ? t("{now} will start at {now_amount} instead of {carried}. Months from {period} go back to counting everything left over as saved, so your savings total may change.", args)
+        : t("{now} will start at {now_amount} instead of {carried}. Periods from {period} go back to counting everything left over as saved, so your savings total may change.", args))) return;
       save(next);
     } else if (action === "fresh") {
       const next = { ...data, carry: carryStartedFresh(data, today) };
-      if (!confirm(t("{now} will start at {now_amount} instead of {carried}. Past months stay as they are.",
-        { now, now_amount: fmt(carriedInto(next, curKey, today)), carried: fmt(carriedIn) }))) return;
+      const args = { now, now_amount: fmt(carriedInto(next, curKey, today)), carried: fmt(carriedIn) };
+      if (!confirm(cal.calendarMonths
+        ? t("{now} will start at {now_amount} instead of {carried}. Past months stay as they are.", args)
+        : t("{now} will start at {now_amount} instead of {carried}. Past periods stay as they are.", args))) return;
       save(next);
     }
   };
@@ -1703,7 +1707,7 @@ export default function App() {
             alert((parts.length ? t("Imported {what}.", { what: parts.join(", ") }) : t("Nothing was imported.")) +
               (counts.rules ? "\n\n" + tn(counts.rules, "{n} new import rule will file these for you next time.", "{n} new import rules will file these for you next time.") : "") +
               (spotted ? "\n\n" + tn(spotted, "{n} payment looks like a monthly bill. See the Recurring tab to make it recurring.", "{n} payments look like a monthly bill. See the Recurring tab to make them recurring.") : "") +
-              (isTauri ? "\n\n" + t("A backup was taken first — restore it from Settings → Data if anything looks wrong.") : ""));
+              (isTauri ? "\n\n" + t("A backup was taken first — restore it from Settings → Bank and data if anything looks wrong.") : ""));
           }} />
       )}
 

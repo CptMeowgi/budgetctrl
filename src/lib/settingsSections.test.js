@@ -15,4 +15,9 @@ describe("settings sections", () => {
     expect(sectionAfterKey(2, "End")).toBe(last);
     expect(sectionAfterKey(2, "a")).toBeNull();
   });
+  it("wraps within a shorter list", () => {
+    expect(sectionAfterKey(4, "ArrowDown", 5)).toBe(0);
+    expect(sectionAfterKey(0, "ArrowUp", 5)).toBe(4);
+    expect(sectionAfterKey(0, "End", 5)).toBe(4);
+  });
 });

@@ -80,11 +80,14 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
     app: t("App"), privacy: t("Privacy"), about: t("About"),
   })[id];
 
+  // The sample budget changes nothing outside itself, so Privacy has nothing to show.
+  const sections = sample ? SETTINGS_SECTIONS.filter((x) => x.id !== "privacy") : SETTINGS_SECTIONS;
+
   const tabKey = (e, i) => {
-    const next = sectionAfterKey(i, e.key);
+    const next = sectionAfterKey(i, e.key, sections.length);
     if (next === null) return;
     e.preventDefault();
-    const id = SETTINGS_SECTIONS[next].id;
+    const id = sections[next].id;
     setSection(id);
     tabRefs.current[id]?.focus();
   };
@@ -338,8 +341,6 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
       )}
     </>),
     privacy: (<>
-      {/* The sample budget changes nothing outside itself: no PIN, no autostart. */}
-      {!sample && (<>
       <SettingRow label={t("Lock with a PIN")} hint={t("Keeps Budget Ctrl closed to anyone else using this computer. It doesn't encrypt your budget file.")}>
         <Switch checked={!!lockCfg} onChange={(v) => onPinAction(v ? "set" : "disable")} />
       </SettingRow>
@@ -361,7 +362,6 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
           </SettingRow>
         </>
       )}
-      </>)}
     </>),
     about: (<>
       <SettingRow label={t("Feedback")} hint={t("Opens GitHub in your browser, with your app version filled in. You'll need a GitHub account. Nothing from your budget is sent.")}>
@@ -384,15 +384,15 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
     </>),
   };
 
-  const current = SETTINGS_SECTIONS.findIndex((x) => x.id === section);
+  const current = sections.findIndex((x) => x.id === section);
 
   return (
     <Modal title={t("Settings")} onClose={onClose} width={760}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: SPACE.lg, minHeight: 440 }}>
         {/* Sticky, so the list stays put while a long section scrolls. */}
-        <div role="tablist" aria-orientation="vertical" aria-label={t("Settings")}
+        <div role="tablist" aria-orientation="vertical" aria-label={t("Settings sections")}
           style={{ position: "sticky", top: 0, flex: "none", width: 168, display: "flex", flexDirection: "column", gap: 2, paddingTop: SPACE.xs }}>
-          {SETTINGS_SECTIONS.map((x, i) => {
+          {sections.map((x, i) => {
             const on = x.id === section;
             return (
               <button key={x.id} role="tab" id={`settings-tab-${x.id}`} aria-selected={on} aria-controls="settings-panel"
@@ -406,7 +406,7 @@ export function SettingsModal({ data, onClose, onChangeReminders, onChangeCurren
             );
           })}
         </div>
-        <div role="tabpanel" id="settings-panel" aria-labelledby={`settings-tab-${SETTINGS_SECTIONS[current].id}`} style={{ flex: 1, minWidth: 0 }}>
+        <div role="tabpanel" id="settings-panel" aria-labelledby={`settings-tab-${sections[current].id}`} tabIndex={0} style={{ flex: 1, minWidth: 0 }}>
           <div style={group}>{sectionName(section)}</div>
           {panels[section]}
         </div>

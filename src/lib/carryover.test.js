@@ -163,6 +163,23 @@ describe("carryChain", () => {
     expect(carriedInto(d, "2026-12-04", DEC_10)).toBe(436);
   });
 
+  it("takes a fortnight's own set-aside as typed, cents included", () => {
+    // 123.45 for the fortnight from 6 November, typed in the period itself:
+    // not scaled to the monthly 200, and not rounded.
+    const months = {
+      "2026-10": month(5000, 4100),
+      "2026-11-06": { ...month(2300, 2000), setAside: 123.45 },
+    };
+    const d = budget(months, {
+      paySchedule: [{ kind: "monthly", cutoffDay: 1 }, { kind: "weeks", every: 2, from: "2026-11-06", after: "2026-10-01" }],
+    });
+    const fortnight = row(d, D(2026, 11, 25), "2026-11-06");
+    expect(fortnight.setAsideWanted).toBe(123.45);
+    expect(carryChain(d, D(2026, 11, 25)).get("2026-11-06").setAsideApplied).toBe(123.45);
+    expect(fortnight.delta).toBe(123.45);
+    expect(fortnight.carried).toBe(876.55);
+  });
+
   it("carries past a month with no record", () => {
     // The app wasn't opened in November or December: no keys, no set-aside
     // taken from the carried money.

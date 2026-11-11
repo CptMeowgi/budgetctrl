@@ -38,6 +38,12 @@ export function carryChain(data, today = new Date()) {
 // `carriedIn`. Anything else - a period before the start, one with no
 // record, one still to come - gets 0, because the walk decides only for the
 // periods it records and the running one.
+export function carriedInto(data, periodKey, today = new Date()) {
+  const { chain, curKey, carryOn } = walkPeriods(data, today);
+  if (periodKey === curKey) return carryOn;
+  return chain.get(periodKey)?.carriedIn ?? 0;
+}
+
 // Widths, in percent of `whole`, for the Dashboard's Income Breakdown bar.
 // Each segment takes what is left of the bar at most, so nothing draws past
 // 100% however much was spent or overspent. Empty segments are dropped.
@@ -49,10 +55,4 @@ export function barWidths(values, whole) {
     room -= w;
     return w;
   });
-}
-
-export function carriedInto(data, periodKey, today = new Date()) {
-  const { chain, curKey, carryOn } = walkPeriods(data, today);
-  if (periodKey === curKey) return carryOn;
-  return chain.get(periodKey)?.carriedIn ?? 0;
 }

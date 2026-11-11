@@ -334,11 +334,12 @@ function migrateAccounts(data) {
 // `months` is never touched, so no figure from before changes.
 function migrateCarry(data) {
   let out = data;
-  if (!data.carry) {
+  // A carry that is on but has no start (an imported file, say) is repaired the same way.
+  if (!data.carry || (data.carry.on && typeof data.carry.from !== "string")) {
     const cal = calendarFor(data);
     const cur = cal.current();
     const earlier = Object.keys(data.months || {}).some((k) => k < cur);
-    out = { ...out, carry: { on: true, from: earlier ? cal.prev(cur) : cur } };
+    out = { ...out, carry: { ...(data.carry && typeof data.carry === "object" ? data.carry : null), on: true, from: earlier ? cal.prev(cur) : cur } };
   }
   if (!Array.isArray(out.savingsGoal?.history)) {
     const monthly = Number(out.savingsGoal?.monthly) || 0;

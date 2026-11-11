@@ -404,6 +404,13 @@ describe("carry and the set-aside history on loading", () => {
     expect(out.savingsGoal.history).toEqual([{ from: "0000-00", monthly: 300 }]);
   });
 
+  it("repairs a carry that is on but has no start", () => {
+    const out = hydrate({ ...saved(1, { "2026-09": m() }), carry: { on: true } });
+    expect(out.carry).toEqual({ on: true, from: "2026-10" });
+    const bad = hydrate({ ...saved(1, { "2026-09": m() }), carry: { on: true, from: 5 } });
+    expect(bad.carry).toEqual({ on: true, from: "2026-10" });
+  });
+
   it("keeps the history through a second load", () => {
     const once = hydrate(saved(1, { "2026-09": m() }));
     expect(hydrate(once).savingsGoal.history).toEqual(once.savingsGoal.history);

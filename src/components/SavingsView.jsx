@@ -173,10 +173,10 @@ export function SavingsView({ data, history, today, cal, onAddGoal, onEditGoal, 
       <div style={{ ...s.card, marginTop: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <div style={s.cardTitle}>{monthly ? t("Saved each month") : t("Saved each period")}</div>
-          <InfoHint text={carrying ? savedHint : (monthly
+          <InfoHint text={(carrying ? savedHint : monthly
             ? t("Income less spending for every finished month, and the running total. A goal set to count what your budget leaves over uses this.")
-            : t("Income less spending for every finished period, and the running total. A goal set to count what your budget leaves over uses this."))
-            + (forBills ? ` ${t("Money saved up for bills isn't counted: it's kept to pay them.")}` : "")} />
+            : t("Income less spending for every finished period, and the running total. A goal set to count what your budget leaves over uses this.")
+            ) + (forBills ? ` ${t("Money saved up for bills isn't counted: it's kept to pay them.")}` : "")} />
         </div>
         <SavingsChart series={history.series} monthly={monthly} />
       </div>
@@ -292,7 +292,9 @@ export function GoalModal({ goal, data, curKey, onDismiss, onSave, onDelete }) {
           <select value={source} onChange={(e) => setSource(e.target.value)} style={s.input}>
             {options.map((a) => <option key={a.id} value={`account:${a.id}`}>{t("The balance of {name}", { name: a.name })}</option>)}
             {currentMissing && <option value={`account:${goal.accountId}`}>{t("Its old account (removed)")}</option>}
-            <option value="budget">{calendarFor(data).calendarMonths ? t("What my budget leaves over each month") : t("What my budget leaves over each period")}</option>
+            <option value="budget">{calendarFor(data).calendarMonths
+              ? (data.carry?.on ? t("What I set aside each month") : t("What my budget leaves over each month"))
+              : (data.carry?.on ? t("What I set aside each period") : t("What my budget leaves over each period"))}</option>
           </select>
           {options.length === 0 && !currentMissing && (
             <div style={{ ...TYPE.finePrint, color: theme.textFaint, marginTop: 6 }}>{t("Keeping the money in a savings account? Add it on the Accounts tab and this goal can track its balance.")}</div>

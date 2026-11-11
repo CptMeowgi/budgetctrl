@@ -468,7 +468,6 @@ export function Dashboard(props) {
                 </div>
                 <div style={{ display: "flex", gap: 18, marginTop: 12, flexWrap: "wrap" }}>
                   {[
-                    ...(carriedIn > 0 ? [{ color: theme.textSoft, label: tk("Carried over"), val: carriedIn }] : []),
                     ...(carriedIn < 0 ? [{ color: theme.danger, label: cal.calendarMonths ? tk("Overspent last month") : tk("Overspent last period"), val: -carriedIn }] : []),
                     { color: theme.danger, label: tk("Spent"), val: spentFromIncome },
                     { color: theme.warning, label: tk("Upcoming"), val: totalStillScheduled },
