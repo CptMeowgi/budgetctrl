@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.1
+
+- Money left at the end of a month now carries into the next one, after your savings set-aside.
+- An overspent month carries into the next one too.
+- It starts with the month that just ended. There's nothing to do.
+- Goals and the Savings tab now count only what you set aside, from that month on.
+- If you typed last month's leftover in as income, delete it, or it counts twice.
+- Turn carrying off, or start fresh, in Settings.
+- Settings are now split into sections.
+
 ## 0.8.0
 
 - Save up for yearly or quarterly bills a little each period. Tick Save up for it on the bill.
