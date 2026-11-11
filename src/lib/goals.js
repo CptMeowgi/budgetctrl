@@ -4,7 +4,9 @@
 //   account  the balance of one of your accounts (a savings account, say)
 //   budget   what your budget has left over each month since you began, plus
 //            whatever you had saved before - how the single savings goal of
-//            0.4 worked, so it carries over unchanged
+//            0.4 worked, so it carries over unchanged. Once leftovers carry
+//            into the next month, only the set-aside counts from then on
+//            (see leftOverHistory)
 //
 // From that and the recent pace, a goal says what it needs per month to land
 // on its date, or when it will get there at the rate you are going.
@@ -12,23 +14,33 @@
 import { periodSpending, periodIncome } from "./totals.js";
 import { isoDay, monthKey } from "./periods.js";
 import { calendarFor } from "./calendar.js";
-import { fundHistory } from "./sinking.js";
+import { walkPeriods } from "./sinking.js";
+import { perPeriodOf } from "./setAside.js";
+import { setAsideAt } from "./setAsideHistory.js";
 import { addMonths, monthsBetween } from "./schedule.js";
 import { balanceAsOf, isLiability, addDays, daysBetweenISO, sortedBalances } from "./accounts.js";
 
 export const GOAL_SOURCES = ["account", "budget"];
 
-// What each closed period left over - income less spending - and the running
-// total. The period still in progress is left out: it has not finished
-// leaving anything over. Money saved up for bills isn't left over: a period
-// that put some aside counts that much less, and one that paid a bill from
-// it counts what was paid back in. `bills` has both; `forBills` is the
+// What each closed period saved, and the running total. The period still in
+// progress is left out: it has not finished leaving anything over.
+//
+// Before leftovers carry (see carryover.js), a period saved what it left
+// over - income less spending. Money saved up for bills isn't left over: a
+// period that put some aside counts that much less, and one that paid a bill
+// from it counts what was paid back in. `bills` has both; `forBills` is the
 // difference.
+//
+// From where carrying starts, a period saved only what it set aside; the
+// rest carried into the next one. Those rows also say what carried
+// (`carried`) and what the set-aside was meant to be (`setAsideWanted`), so a
+// lean month can show it set aside less.
 export function leftOverHistory(data, today) {
   const cal = calendarFor(data);
   const cur = cal.current(today);
   const keys = Object.keys(data.months || {}).filter((k) => k < cur).sort();
-  const funds = fundHistory(data, today);
+  // One walk gives both: what went to bills, and the carry.
+  const { history: funds, chain } = walkPeriods(data, today);
   let total = 0;
   const series = [{ key: "start", label: "Start", balance: 0, delta: 0, income: 0, spent: 0 }];
   for (const k of keys) {
@@ -37,13 +49,15 @@ export function leftOverHistory(data, today) {
     const spent = periodSpending(m, k, today, cal).total;
     const fund = funds.get(k);
     const forBills = fund ? Math.round((fund.saved - fund.paid) * 100) / 100 : 0;
-    const delta = income - spent - forBills;
+    const step = chain.get(k);
+    const delta = step ? step.setAsideApplied : income - spent - forBills;
     total += delta;
     // A week-based period also says what it left over per month; a month's
     // `delta` already is that.
     const perMonth = cal.periodsPerMonth(k);
     series.push({ key: k, label: cal.shortLabel(k), balance: total, delta, income, spent, editedAt: m.editedAt || null,
                   ...(fund ? { forBills, bills: fund } : {}),
+                  ...(step ? { carried: step.carriedOut, setAsideWanted: perPeriodOf(setAsideAt(data, k), cal, k) } : {}),
                   ...(perMonth !== 1 ? { perMonth: delta * perMonth } : {}) });
   }
   return { total, series, monthsCounted: keys.length };

@@ -8,15 +8,22 @@
 // only its own share.
 //
 // Nothing is stored but the setting: what's been saved is worked out from
-// what each past period had left over, after the savings set-aside.
+// what each past period had left over, after the savings set-aside. Once
+// leftovers carry (see carryover.js), that includes what a period was
+// carried into it, so the same walk that saves for bills also works out the
+// carry: the two can never disagree.
 
 import { calendarFor } from "./calendar.js";
 import { isWeekly, nextPeriodOf, occursIn } from "./occurrences.js";
-import { perPeriodOf } from "./setAside.js";
+import { perPeriodOf, splitPeriod } from "./setAside.js";
+import { setAsideAt } from "./setAsideHistory.js";
 import { isoDay } from "./periods.js";
 import { periodIncome, periodSpending } from "./totals.js";
 
 const cents = (n) => Math.round((Number(n) || 0) * 100) / 100;
+// The carry is kept to the cent, so float dust never reads as money carried
+// (and never as -0, which a number format would print with its sign).
+const money = (n) => cents(n) || 0;
 
 // Bills that come round every few months or yearly. A monthly or weekly bill
 // is simply paid each time.
@@ -56,9 +63,8 @@ function timeline(tpl, cal, curKey) {
 //                 it's due, nothing: the rest of the bill is in its spending
 //   paidFromFund  in the period it's due, once paid: what was saved before
 export function sinkingFunds(data, today = new Date()) {
-  const run = saveUp(data, today);
-  if (!run) return [];
-  const { funds, cal, curKey, paidIn, share } = run;
+  const { funds, cal, curKey, paidIn, share } = walkPeriods(data, today);
+  if (!funds.length) return [];
   return funds
     .map((f) => {
       const { dueKey, left } = f.line.cycle.get(curKey);
@@ -80,30 +86,54 @@ export function sinkingFunds(data, today = new Date()) {
 // (`saved`) and what bills it paid from what was saved before (`paid`).
 // Only periods with either are listed.
 export function fundHistory(data, today = new Date()) {
-  return saveUp(data, today)?.history || new Map();
+  return walkPeriods(data, today).history;
 }
 
-// Works through the finished periods, oldest first, saving up for each bill.
-function saveUp(data, today) {
-  const tmpls = (data.recurringTemplate || []).filter((t) => t.saveUp && canSaveUp(t));
-  if (!tmpls.length) return null;
+// Where carrying starts, or null when leftovers don't carry. A budget whose
+// carry has no start never carries, as in 0.8.0.
+function carryStart(data) {
+  const c = data.carry;
+  return c?.on && typeof c.from === "string" ? c.from : null;
+}
+
+// The one walk through the finished periods, oldest first, saving up for
+// each bill and, from where carrying starts, carrying what's left on.
+//
+//   history  each period's part in saving up for bills (see fundHistory)
+//   chain    from where carrying starts, each recorded period's split:
+//            { carriedIn, setAsideApplied, billsSaved, billsPaid, carriedOut }
+//
+// carryover.js reads the chain from here. It lives in this loop, not a loop
+// of its own, because what a period can save for bills depends on what was
+// carried into it, and what it carries depends on what it saved.
+export function walkPeriods(data, today = new Date()) {
   const cal = calendarFor(data);
   const curKey = cal.current(today);
+  const tmpls = (data.recurringTemplate || []).filter((t) => t.saveUp && canSaveUp(t));
   const funds = tmpls.map((tpl) => ({ tpl, line: timeline(tpl, cal, curKey), saved: 0 })).filter((f) => f.line);
-  if (!funds.length) return null;
 
   // What a bill's own copies in a period came to, once due.
   const paidIn = (f, k) => (data.months?.[k]?.recurring || [])
     .filter((r) => r.templateId === f.tpl.id && cal.isDue(r, k, today))
     .reduce((a, r) => a + (r.amount || 0), 0);
   const share = (f, k) => cents(Math.max(0, f.tpl.amount - f.saved) / f.line.cycle.get(k).left);
+  // The set-aside that applied then, so changing it today leaves the past be.
+  const setAsideIn = (k) => perPeriodOf(setAsideAt(data, k), cal, k);
 
-  // Past periods, oldest first. Each had what it took in, less what it
-  // spent and the savings set-aside, plus any bill a fund paid for it; the
-  // funds still saving then share that out, the one due soonest first.
-  const past = [...new Set(funds.flatMap((f) => f.line.keys.filter((k) => k < curKey)))].sort();
+  // Every period a fund was saving in, and, once carrying starts, every
+  // period the budget has a record of: a period with no bills still carries.
+  // Keys sort into date order as plain strings, a switch of pay schedule
+  // included.
+  const from = carryStart(data);
+  const resets = from && Array.isArray(data.carry.resets) ? data.carry.resets : [];
+  const keys = new Set(funds.flatMap((f) => f.line.keys.filter((k) => k < curKey)));
+  if (from) for (const k of Object.keys(data.months || {})) if (k >= from && k < curKey) keys.add(k);
+
   const history = new Map();
-  for (const k of past) {
+  const chain = new Map();
+  let carried = 0;
+  let lastKey = null;
+  for (const k of [...keys].sort()) {
     const m = data.months?.[k];
     const open = funds.filter((f) => f.line.cycle.has(k))
       .sort((a, b) => (a.line.cycle.get(k).dueKey < b.line.cycle.get(k).dueKey ? -1 : 1));
@@ -111,11 +141,42 @@ function saveUp(data, today) {
     let fromFunds = 0;
     const ending = open.filter((f) => f.line.due.has(k));
     for (const f of ending) fromFunds += Math.min(paidIn(f, k), f.saved);
-    let left = m ? Math.max(0, periodIncome(m, k, today, cal).total - periodSpending(m, k, today, cal).total
-      + fromFunds - perPeriodOf(data.savingsGoal?.monthly, cal, k)) : 0;
+    const saving = open.filter((f) => !f.line.due.has(k));
+
+    // What's left for bills after the set-aside. Before carrying starts (or
+    // with it off), 0.8.0's own figure: the period's money alone. From the
+    // start, the split, with what the period before carried in. A period
+    // with no record saves nothing and carries nothing: what came before
+    // passes on to the next one untouched.
+    let left;
+    if (from && k >= from && m) {
+      // "Start fresh" zeroes what came in at a listed period, or at the
+      // first recorded one after it when it has no record of its own.
+      const fresh = lastKey != null && resets.some((r) => r > lastKey && r <= k);
+      const carriedIn = fresh ? 0 : carried;
+      const income = periodIncome(m, k, today, cal).total;
+      const spent = periodSpending(m, k, today, cal).total;
+      const billsWanted = cents(saving.reduce((a, f) => a + share(f, k), 0));
+      const split = splitPeriod({ carriedIn, income, spent, paidFromFund: fromFunds, setAside: setAsideIn(k), billsWanted });
+      left = split.billsSaved;
+      const step = {
+        carriedIn,
+        setAsideApplied: money(split.setAsideApplied),
+        billsSaved: money(split.billsSaved),
+        billsPaid: money(fromFunds),
+        carriedOut: money(split.carriedOut),
+      };
+      chain.set(k, step);
+      carried = step.carriedOut;
+      lastKey = k;
+    } else {
+      left = m ? Math.max(0, periodIncome(m, k, today, cal).total - periodSpending(m, k, today, cal).total
+        + fromFunds - setAsideIn(k)) : 0;
+    }
+
+    // The funds still saving share that out, the one due soonest first.
     let took = 0;
-    for (const f of open) {
-      if (f.line.due.has(k)) continue;
+    for (const f of saving) {
       const take = Math.min(share(f, k), left);
       f.saved = cents(f.saved + take);
       took += take;
@@ -125,7 +186,7 @@ function saveUp(data, today) {
     if (took || fromFunds) history.set(k, { saved: cents(took), paid: cents(fromFunds) });
   }
 
-  return { funds, cal, curKey, paidIn, share, history };
+  return { funds, cal, curKey, paidIn, share, history, chain };
 }
 
 // This period, over all funds: what to set aside, and what they pay.

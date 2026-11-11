@@ -206,3 +206,39 @@ describe("migrateGoals and the set-aside history", () => {
     expect(out.savingsGoal).toEqual({ monthly: 500, history });
   });
 });
+
+describe("leftOverHistory once leftovers carry", () => {
+  // Carrying from September, with a set-aside of 500. July and August count
+  // what they left over, as before; September counts only its set-aside, and
+  // the other 1,500 carries into October.
+  const carrying = (extra = {}) => ({ ...data, savingsGoal: { monthly: 500 }, carry: { on: true, from: "2026-09" }, ...extra });
+
+  it("counts the set-aside from where carrying starts, and says what carried", () => {
+    const h = leftOverHistory(carrying(), TODAY);
+    expect(h.series.slice(1).map((r) => r.delta)).toEqual([1000, 1500, 500]);
+    expect(h.series[3]).toMatchObject({ key: "2026-09", delta: 500, carried: 1500, setAsideWanted: 500, balance: 3000 });
+    expect(h.total).toBe(3000);
+  });
+
+  it("leaves the rows before the start exactly as they were", () => {
+    const before = leftOverHistory(data, TODAY).series.slice(0, 3);
+    expect(leftOverHistory(carrying(), TODAY).series.slice(0, 3)).toEqual(before);
+  });
+
+  it("says when a month set aside less than it wanted", () => {
+    // September spends 7,700 of its 8,000: 300 of the 500 is set aside.
+    const lean = carrying({ months: { ...data.months, "2026-09": month(8000, 7700) } });
+    expect(leftOverHistory(lean, TODAY).series[3]).toMatchObject({ delta: 300, carried: 0, setAsideWanted: 500 });
+  });
+
+  it("goals and their pace count only the set-aside from then on", () => {
+    const goal = { target: 30000, source: "budget", startAmount: 5180 };
+    expect(goalSaved(goal, carrying(), TODAY)).toBe(5180 + 3000);
+    expect(budgetPace(leftOverHistory(carrying(), TODAY))).toBe(1000);
+  });
+
+  it("is as before with carrying off", () => {
+    const off = carrying({ carry: { on: false, from: "2026-09" } });
+    expect(leftOverHistory(off, TODAY)).toEqual(leftOverHistory(data, TODAY));
+  });
+});

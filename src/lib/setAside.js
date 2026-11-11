@@ -10,3 +10,15 @@ export function perMonthOf(perPeriod, cal, key) {
   const v = Number(perPeriod) || 0;
   return ppm === 1 ? v : Math.round(v * ppm * 100) / 100;
 }
+
+// How a period's money is shared out: the set-aside first, then the bills
+// being saved up for from what's left, and the rest (a minus too) carries
+// into the next period. With nothing carried in, it is exactly the split the
+// Dashboard made in 0.8.0. The bill walk in sinking.js uses it too, which is
+// why it lives here and not in carryover.js (that would import it back).
+export function splitPeriod({ carriedIn = 0, income = 0, spent = 0, paidFromFund = 0, setAside = 0, billsWanted = 0 }) {
+  const available = carriedIn + income - spent + paidFromFund;
+  const setAsideApplied = Math.min(setAside, Math.max(0, available));
+  const billsSaved = Math.min(billsWanted, Math.max(0, available - setAsideApplied));
+  return { available, setAsideApplied, billsSaved, carriedOut: available - setAsideApplied - billsSaved };
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { sinkingFunds, fundTotals, canSaveUp } from "./sinking.js";
+import { sinkingFunds, fundTotals, canSaveUp, fundHistory } from "./sinking.js";
 
 // Paid on the 1st; today is 20 Oct 2026. Car insurance, 1,200 a year, is due
 // on 10 March: last paid March 2026, next March 2027.
@@ -111,5 +111,41 @@ describe("sinkingFunds", () => {
     expect(sinkingFunds(budget(insurance(null)), TODAY)).toEqual([]);
     expect(sinkingFunds({ months: {} }, TODAY)).toEqual([]);
     expect(fundTotals([])).toEqual({ setAside: 0, paidFromFund: 0 });
+  });
+});
+
+describe("saving up for bills, with the set-aside as it was then", () => {
+  it("reads each period's set-aside from its history, not today's figure", () => {
+    // April to September set aside 2,950 of 3,000, leaving 50 a month for the
+    // insurance. Dropping the set-aside to 0 in October doesn't change that.
+    const d = { ...budget(), savingsGoal: { monthly: 0, history: [{ from: "0000-00", monthly: 2950 }, { from: "2026-10", monthly: 0 }] } };
+    const [f] = sinkingFunds(d, TODAY);
+    expect([f.saved, f.thisPeriod]).toEqual([300, 150]);
+  });
+});
+
+describe("saving up for bills once leftovers carry", () => {
+  // Carrying from August, which spends 2,000 and carries 900 after its 100
+  // for the insurance. September spends all it takes in.
+  const carrying = (on) => {
+    const d = budget(insurance(), {
+      "2026-08": month({ expenses: [{ id: "a", name: "Rent", amount: 2000, category: "Home" }] }),
+      "2026-09": month({ expenses: [{ id: "s", name: "Rent", amount: 3000, category: "Home" }] }),
+    });
+    return { ...d, carry: { on, from: "2026-08" } };
+  };
+
+  it("pays a period's share from money carried into it", () => {
+    const [f] = sinkingFunds(carrying(true), TODAY);
+    // September saved its 100 out of August's 900.
+    expect([f.saved, f.thisPeriod]).toEqual([600, 100]);
+    expect(fundHistory(carrying(true), TODAY).get("2026-09")).toEqual({ saved: 100, paid: 0 });
+  });
+
+  it("is as in 0.8.0 with carrying off", () => {
+    // September had nothing of its own, so October catches up: 700/6.
+    const [f] = sinkingFunds(carrying(false), TODAY);
+    expect([f.saved, f.thisPeriod]).toEqual([500, 116.67]);
+    expect(fundHistory(carrying(false), TODAY).has("2026-09")).toBe(false);
   });
 });
