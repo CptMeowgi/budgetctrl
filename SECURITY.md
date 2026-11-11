@@ -59,7 +59,7 @@ in the release notes unless you'd rather not be.
 - **The only network access is updates.** Once a day the app asks GitHub
   whether a new version exists, and it downloads one only when you click
   install. No budget data is sent. The daily check can be turned off in
-  **Settings → Updates**.
+  **Settings → App**.
 - **Updates are signed.** Every installer is signed with the project's private
   key, and the app refuses any update whose signature doesn't match the public
   key built into it.

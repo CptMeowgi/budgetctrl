@@ -942,6 +942,7 @@ export default {
   "{applied} of {wanted}": "{applied} / {wanted}",
   "Nothing set aside: the month went over": "未预留任何金额:本月超支",
   "Nothing set aside: the period went over": "未预留任何金额:本周期超支",
+  "Carried over": "结转",
   "Changing this changes what the next month starts with.": "修改此项会改变下个月的起始金额。",
   "Changing this changes what the next period starts with.": "修改此项会改变下个周期的起始金额。",
   "Before {period}, what each month left over counts as saved. From {period} on, only what you set aside counts, and the rest carries into the next month.": "在{period}之前,每月的结余都算作储蓄。从{period}起,只有你预留的金额才算储蓄,其余部分结转到下个月。",

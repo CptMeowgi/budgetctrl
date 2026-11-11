@@ -942,6 +942,7 @@ export default {
   "{applied} of {wanted}": "{applied} z {wanted}",
   "Nothing set aside: the month went over": "Nic nie odłożono: miesiąc zakończył się na minusie",
   "Nothing set aside: the period went over": "Nic nie odłożono: okres zakończył się na minusie",
+  "Carried over": "Przeniesione",
   "Changing this changes what the next month starts with.": "Zmiana tej kwoty zmienia, z czym zaczyna się następny miesiąc.",
   "Changing this changes what the next period starts with.": "Zmiana tej kwoty zmienia, z czym zaczyna się następny okres.",
   "Before {period}, what each month left over counts as saved. From {period} on, only what you set aside counts, and the rest carries into the next month.": "Przed okresem {period} za odłożone uznawane jest wszystko, co zostało w danym miesiącu. Od {period} liczy się tylko to, co odłożysz, a reszta przechodzi na następny miesiąc.",

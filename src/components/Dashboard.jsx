@@ -468,6 +468,8 @@ export function Dashboard(props) {
                 </div>
                 <div style={{ display: "flex", gap: 18, marginTop: 12, flexWrap: "wrap" }}>
                   {[
+                    // A hollow ring: carried money sits inside "Left to spend", so it has no bar segment of its own.
+                    ...(carriedIn > 0 ? [{ ring: true, label: tk("Carried over"), val: carriedIn }] : []),
                     ...(carriedIn < 0 ? [{ color: theme.danger, label: cal.calendarMonths ? tk("Overspent last month") : tk("Overspent last period"), val: -carriedIn }] : []),
                     { color: theme.danger, label: tk("Spent"), val: spentFromIncome },
                     { color: theme.warning, label: tk("Upcoming"), val: totalStillScheduled },
@@ -476,7 +478,7 @@ export function Dashboard(props) {
                     { color: theme.success, label: tk("Left to spend"), val: leftToSpend },
                   ].map((l) => (
                     <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12 }}>
-                      <div style={{ width: 7, height: 7, borderRadius: "50%", background: l.color }} />
+                      <div style={{ width: 7, height: 7, borderRadius: "50%", boxSizing: "border-box", ...(l.ring ? { border: `1px solid ${theme.textSoft}` } : { background: l.color }) }} />
                       <span style={{ color: theme.textFaint }}>{t(l.label)}</span>
                       <span style={{ ...money, fontWeight: 600, color: theme.text }}>{fmt(l.val)}</span>
                     </div>

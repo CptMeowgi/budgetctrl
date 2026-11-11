@@ -942,6 +942,7 @@ export default {
   "{applied} of {wanted}": "{applied} von {wanted}",
   "Nothing set aside: the month went over": "Nichts zurückgelegt: der Monat wurde überzogen",
   "Nothing set aside: the period went over": "Nichts zurückgelegt: der Zeitraum wurde überzogen",
+  "Carried over": "Übertrag",
   "Changing this changes what the next month starts with.": "Eine Änderung hier ändert, womit der nächste Monat beginnt.",
   "Changing this changes what the next period starts with.": "Eine Änderung hier ändert, womit der nächste Zeitraum beginnt.",
   "Before {period}, what each month left over counts as saved. From {period} on, only what you set aside counts, and the rest carries into the next month.": "Vor {period} zählt als gespart, was jeder Monat übrig ließ. Ab {period} zählt nur, was du zurücklegst; der Rest wird in den nächsten Monat übertragen.",
