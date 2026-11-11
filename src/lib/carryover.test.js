@@ -23,8 +23,8 @@ const budget = (months, extra = {}) => ({
   months,
   ...extra,
 });
-const entry = (carriedIn, setAsideApplied, billsSaved, billsPaid, carriedOut) =>
-  ({ carriedIn, setAsideApplied, billsSaved, billsPaid, carriedOut });
+const entry = (carriedIn, setAsideApplied, billsSaved, billsPaid, carriedOut, billsReleased = 0) =>
+  ({ carriedIn, setAsideApplied, billsSaved, billsPaid, billsReleased, carriedOut });
 const row = (data, today, key) => leftOverHistory(data, today).series.find((r) => r.key === key);
 
 // A TV licence, 600 a year, due 10 March: saving from October is 100 a month.
@@ -34,17 +34,18 @@ const tv = (from = "2026-10") => ({
 // Water, 300 a quarter on the 15th (September, December, March): saving
 // from October is 100 a month.
 const water = { id: "wat", name: "Water", amount: 300, dayOfMonth: 15, every: 3, anchor: "2026-09", category: "Bills", saveUp: { from: "2026-10" } };
-const waterBill = () => ({ id: `w${++n}`, name: "Water", amount: 300, dayOfMonth: 15, every: 3, anchor: "2026-09", category: "Bills", templateId: "wat" });
+const waterBill = (amount = 300) => ({ id: `w${++n}`, name: "Water", amount, dayOfMonth: 15, every: 3, anchor: "2026-09", category: "Bills", templateId: "wat" });
 
-// Income less spending, plus bills paid from savings, less the set-aside and
-// the bill savings, over the chain: what the last period carried out.
+// Income less spending, plus bills paid from savings and bill savings let go,
+// less the set-aside and the bill savings, over the chain: what the last
+// period carried out.
 const sums = (data, today) => {
   const cal = calendarFor(data);
   let total = 0;
   for (const [k, e] of carryChain(data, today)) {
     const m = data.months[k];
     total += periodIncome(m, k, today, cal).total - periodSpending(m, k, today, cal).total
-      + e.billsPaid - e.setAsideApplied - e.billsSaved;
+      + e.billsPaid + e.billsReleased - e.setAsideApplied - e.billsSaved;
   }
   return Math.round(total * 100) / 100;
 };
@@ -58,6 +59,11 @@ describe("splitPeriod", () => {
   it("counts money carried in and bills paid from savings", () => {
     expect(splitPeriod({ carriedIn: 700, income: 5000, spent: 5300, paidFromFund: 100, setAside: 200, billsWanted: 50 }))
       .toEqual({ available: 500, setAsideApplied: 200, billsSaved: 50, carriedOut: 250 });
+  });
+
+  it("counts bill savings let go", () => {
+    expect(splitPeriod({ carriedIn: 0, income: 5000, spent: 4250, paidFromFund: 150, billsReleased: 50, setAside: 200, billsWanted: 0 }))
+      .toEqual({ available: 950, setAsideApplied: 200, billsSaved: 0, carriedOut: 750 });
   });
 
   it("sets nothing aside from a minus, and carries it", () => {
@@ -163,7 +169,6 @@ describe("carryChain", () => {
     const d = budget({ "2026-10": month(5000, 4100), "2027-01": month(5000) });
     const JAN_10 = D(2027, 1, 10);
     expect([...carryChain(d, JAN_10).keys()]).toEqual(["2026-10"]);
-    expect(carriedInto(d, "2026-12", JAN_10)).toBe(700);
     expect(carriedInto(d, "2027-01", JAN_10)).toBe(700);
   });
 
@@ -243,6 +248,64 @@ describe("carrying and bill savings", () => {
   });
 });
 
+describe("a bill's leftover savings", () => {
+  // Water saves 100 in October and November; each month nets 900 and sets
+  // aside 200.
+  const saving = (dec, extra = {}) => {
+    const months = { "2026-10": month(5000, 4100), "2026-11": month(5000, 4100), "2027-01": month(5000), ...extra };
+    if (dec) months["2026-12"] = dec;
+    return budget(months, { recurringTemplate: [water] });
+  };
+  const JAN_10 = D(2027, 1, 10);
+
+  it("go into the period the bill was due in when it costs less", () => {
+    // December's bill is 150 of the 200 saved: 150 paid from savings, 50 let
+    // go. 1200 + 900 - 150 + 150 + 50 - 200 = 1950.
+    const dec = month(5000, 4100);
+    dec.recurring = [waterBill(150)];
+    const d = saving(dec);
+    expect([...carryChain(d, JAN_10)]).toEqual([
+      ["2026-10", entry(0, 200, 100, 0, 600)],
+      ["2026-11", entry(600, 200, 100, 0, 1200)],
+      ["2026-12", entry(1200, 200, 0, 150, 1950, 50)],
+    ]);
+    expect(carriedInto(d, "2027-01", JAN_10)).toBe(1950);
+    expect(sums(d, JAN_10)).toBe(1950);
+    // What was paid from savings keeps its meaning.
+    expect(fundHistory(d, JAN_10).get("2026-12")).toEqual({ saved: 0, paid: 150 });
+  });
+
+  it("all go into that period when the bill isn't paid in it", () => {
+    const d = saving(month(5000, 4100));
+    expect(carryChain(d, JAN_10).get("2026-12")).toEqual(entry(1200, 200, 0, 0, 2100, 200));
+    expect(carriedInto(d, "2027-01", JAN_10)).toBe(2100);
+  });
+
+  it("go on to the next period when the one it was due in has no record", () => {
+    expect(carriedInto(saving(null), "2027-01", JAN_10)).toBe(1400);
+    // With January closed, it takes them in, and saves 100 towards March.
+    const d = saving(null, { "2027-01": month(5000, 4100), "2027-02": month(5000) });
+    const FEB_10 = D(2027, 2, 10);
+    expect(carryChain(d, FEB_10).get("2027-01")).toEqual(entry(1200, 200, 100, 0, 2000, 200));
+    expect(carriedInto(d, "2027-02", FEB_10)).toBe(2000);
+    expect(sums(d, FEB_10)).toBe(2000);
+  });
+
+  it("go as in 0.8.0 before carrying starts", () => {
+    // Carrying from January: December's 50 isn't let go, and its Savings row
+    // is 0.8.0's 5000 - 4250 + 150 = 900.
+    const dec = month(5000, 4100);
+    dec.recurring = [waterBill(150)];
+    const d = { ...saving(dec, { "2027-01": month(5000, 4100), "2027-02": month(5000) }), carry: { on: true, from: "2027-01" } };
+    const FEB_10 = D(2027, 2, 10);
+    expect(row(d, FEB_10, "2026-12")).toEqual({
+      key: "2026-12", label: "Dec", balance: 2500, delta: 900, income: 5000, spent: 4250, editedAt: null,
+      forBills: -150, bills: { saved: 0, paid: 150 },
+    });
+    expect(carryChain(d, FEB_10).get("2027-01")).toEqual(entry(0, 200, 100, 0, 600));
+  });
+});
+
 describe("starting fresh", () => {
   const fresh = (resets, last) => {
     const months = {};
@@ -273,7 +336,7 @@ describe("starting fresh", () => {
     delete d.months["2026-12"];
     const FEB_10 = D(2027, 2, 10);
     expect(carryChain(d, FEB_10).get("2027-01")).toEqual(entry(0, 200, 0, 0, 700));
-    expect(carriedInto(d, "2026-12", FEB_10)).toBe(0);
+    expect(carriedInto(d, "2027-01", FEB_10)).toBe(0);
     expect(carriedInto(d, "2027-02", FEB_10)).toBe(700);
   });
 

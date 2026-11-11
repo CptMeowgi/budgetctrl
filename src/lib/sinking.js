@@ -101,7 +101,9 @@ function carryStart(data) {
 //
 //   history  each period's part in saving up for bills (see fundHistory)
 //   chain    from where carrying starts, each recorded period's split:
-//            { carriedIn, setAsideApplied, billsSaved, billsPaid, carriedOut }
+//            { carriedIn, setAsideApplied, billsSaved, billsPaid,
+//              billsReleased, carriedOut }
+//   carryOn  what the running period starts with
 //
 // carryover.js reads the chain from here. It lives in this loop, not a loop
 // of its own, because what a period can save for bills depends on what was
@@ -131,17 +133,49 @@ export function walkPeriods(data, today = new Date()) {
 
   const history = new Map();
   const chain = new Map();
+  // From where carrying starts: what carries on so far, bill savings let go
+  // that no recorded period has taken in yet, and the last period walked.
   let carried = 0;
-  let lastKey = null;
+  let released = 0;
+  let walked = null;
+  // "Start fresh" (carry.resets): a listed period starts at 0, whatever came
+  // before. It takes effect at the first period walked at or after it, or
+  // at the running one. This is the only place the rule is applied;
+  // carriedInto reads its outcome.
+  const startFresh = (k) => {
+    if (resets.some((r) => (walked == null || r > walked) && r <= k)) {
+      carried = 0;
+      released = 0;
+    }
+  };
+
   for (const k of [...keys].sort()) {
     const m = data.months?.[k];
     const open = funds.filter((f) => f.line.cycle.has(k))
       .sort((a, b) => (a.line.cycle.get(k).dueKey < b.line.cycle.get(k).dueKey ? -1 : 1));
     // A bill due here is paid from what its fund had saved; its cycle ends.
+    // Whatever the fund had beyond that (the bill cost less, or wasn't paid)
+    // is let go.
     let fromFunds = 0;
+    let letGo = 0;
     const ending = open.filter((f) => f.line.due.has(k));
-    for (const f of ending) fromFunds += Math.min(paidIn(f, k), f.saved);
+    for (const f of ending) {
+      const paid = Math.min(paidIn(f, k), f.saved);
+      fromFunds += paid;
+      letGo += f.saved - paid;
+    }
     const saving = open.filter((f) => !f.line.due.has(k));
+
+    // From the start, money let go goes back into the period's money: it
+    // was the period's before it was saved. A period with no record holds
+    // it for the next recorded one. Before the start it simply goes, as in
+    // 0.8.0.
+    const counting = from != null && k >= from;
+    if (counting) {
+      startFresh(k);
+      released = cents(released + letGo);
+      walked = k;
+    }
 
     // What's left for bills after the set-aside. Before carrying starts (or
     // with it off), 0.8.0's own figure: the period's money alone. From the
@@ -149,26 +183,25 @@ export function walkPeriods(data, today = new Date()) {
     // with no record saves nothing and carries nothing: what came before
     // passes on to the next one untouched.
     let left;
-    if (from && k >= from && m) {
-      // "Start fresh" zeroes what came in at a listed period, or at the
-      // first recorded one after it when it has no record of its own.
-      const fresh = lastKey != null && resets.some((r) => r > lastKey && r <= k);
-      const carriedIn = fresh ? 0 : carried;
+    if (counting && m) {
+      const carriedIn = carried;
       const income = periodIncome(m, k, today, cal).total;
       const spent = periodSpending(m, k, today, cal).total;
       const billsWanted = cents(saving.reduce((a, f) => a + share(f, k), 0));
-      const split = splitPeriod({ carriedIn, income, spent, paidFromFund: fromFunds, setAside: setAsideIn(k), billsWanted });
+      const split = splitPeriod({ carriedIn, income, spent, paidFromFund: fromFunds, billsReleased: released,
+        setAside: setAsideIn(k), billsWanted });
       left = split.billsSaved;
       const step = {
         carriedIn,
         setAsideApplied: money(split.setAsideApplied),
         billsSaved: money(split.billsSaved),
         billsPaid: money(fromFunds),
+        billsReleased: money(released),
         carriedOut: money(split.carriedOut),
       };
       chain.set(k, step);
       carried = step.carriedOut;
-      lastKey = k;
+      released = 0;
     } else {
       left = m ? Math.max(0, periodIncome(m, k, today, cal).total - periodSpending(m, k, today, cal).total
         + fromFunds - setAsideIn(k)) : 0;
@@ -186,7 +219,14 @@ export function walkPeriods(data, today = new Date()) {
     if (took || fromFunds) history.set(k, { saved: cents(took), paid: cents(fromFunds) });
   }
 
-  return { funds, cal, curKey, paidIn, share, history, chain };
+  // What the running period starts with: the same rules, one step on.
+  let carryOn = 0;
+  if (from != null && curKey >= from) {
+    startFresh(curKey);
+    carryOn = money(carried + released);
+  }
+
+  return { funds, cal, curKey, paidIn, share, history, chain, carryOn };
 }
 
 // This period, over all funds: what to set aside, and what they pay.

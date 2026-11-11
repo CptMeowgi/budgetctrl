@@ -21,23 +21,25 @@ export { splitPeriod } from "./setAside.js";
 
 // Each closed period from where carrying starts, oldest first, with how its
 // money was shared out:
-//   { carriedIn, setAsideApplied, billsSaved, billsPaid, carriedOut }
-// Only periods the budget has a record of are listed. Empty when carrying is
-// off.
+//   { carriedIn, setAsideApplied, billsSaved, billsPaid, billsReleased, carriedOut }
+// `billsPaid` is what bills' savings paid towards them (the Dashboard's
+// "paid from fund"); `billsReleased` is what a bill's savings had left over
+// when its cycle ended, back in the period's money. Only periods the budget
+// has a record of are listed. Empty when carrying is off.
 export function carryChain(data, today = new Date()) {
   return walkPeriods(data, today).chain;
 }
 
-// What a period starts with from the one before: the carry out of the latest
-// recorded period before it. A period with no record in between passes it on
-// unchanged. Nothing before the start, with carrying off, or at a period
-// listed to start fresh (or after one with no record of its own).
+// What a period starts with from the ones before it, as the walk decided it
+// (a minus included, and 0 where "Start fresh" applies).
+//
+// Meant for the running period: the Dashboard and the forecast start from
+// it. A closed period the budget has a record of gets its chain entry's
+// `carriedIn`. Anything else - a period before the start, one with no
+// record, one still to come - gets 0, because the walk decides only for the
+// periods it records and the running one.
 export function carriedInto(data, periodKey, today = new Date()) {
-  const chain = carryChain(data, today);
-  let last = null;
-  for (const k of chain.keys()) if (k < periodKey) last = k;
-  if (last == null) return 0;
-  const resets = Array.isArray(data.carry.resets) ? data.carry.resets : [];
-  if (resets.some((r) => r > last && r <= periodKey)) return 0;
-  return chain.get(last).carriedOut;
+  const { chain, curKey, carryOn } = walkPeriods(data, today);
+  if (periodKey === curKey) return carryOn;
+  return chain.get(periodKey)?.carriedIn ?? 0;
 }
